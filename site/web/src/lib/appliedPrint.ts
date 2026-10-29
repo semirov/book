@@ -4,8 +4,10 @@
  * The print's clock is `appliedAt` (the moment the revision was created), never `landed.at`:
  * the pass closes minutes after the text is live, and clocking the ink from the close is the
  * 6 s – 12 min lie D1 removes. Every changed block inside the reader's 1.5 viewports is
- * planned in document order, at most `MAX_PRINT_BLOCKS` of them, each with an absolute start
- * `appliedAt + offset` from that one clock; blocks off screen are simply set.
+ * planned in **document order**, with no block cap (BOOK-220 §11.2 supersedes D2's four): the
+ * page prints them one at a time, the earlier place first, and each print opens when the one
+ * before it settles — the chain's contract of BOOK-220 §11.2 B4: no block cap and no artificial
+ * stagger. Blocks off screen are simply set.
  *
  * Honest exits, all of them a plan of zero blocks:
  *
@@ -25,13 +27,6 @@ import { passSpanOf, type PassSpan } from './passDiff.ts';
 
 /** A print older than this is never started (D5): the write is text, not motion. */
 export const PRINT_WINDOW_MS = 6_000;
-/** At most four blocks paint one write (D2): the pass's evidence is a handful, not a chapter. */
-export const MAX_PRINT_BLOCKS = 4;
-/** The whole print, offset included, stays inside this bound (D2). */
-export const MAX_PRINT_MS = 12_000;
-/** The breath between two changed blocks: one ink lands as the next begins. */
-export const PRINT_BLOCK_STAGGER_MS = 2_600;
-
 /** The one shape both carriers of a write share: the frame and `live.applied`. */
 export type AppliedRecord = Pick<
   ChapterAppliedPayload,
@@ -54,8 +49,13 @@ export type PrintPlan = {
   before: string;
   after: string;
   span: PassSpan;
-  /** Absolute epoch ms at which this block's ink starts (`appliedAt + offset`). */
+  /**
+   * Absolute epoch ms at which this block's ink starts. For the first plan of a write it is
+   * `appliedAt`; a later plan is started by the page when the print before it settles.
+   */
   startAt: number;
+  /** The plan's place in document order: the chain prints 0, then 1, then 2 … */
+  order: number;
 };
 
 /** Either carrier: a `chapter:applied` frame or the `live.applied` entry of `hello`. */
@@ -68,7 +68,7 @@ export function printWindowOpen(record: AppliedSource | null, nowMs: number): bo
   return nowMs - record.appliedAt < PRINT_WINDOW_MS;
 }
 
-/** The plans for one write, in document order, bounded by D2 and by the reader's viewport. */
+/** The plans for one write, in document order, bounded only by the reader's viewport. */
 export function appliedPrintPlans(
   record: AppliedSource | null,
   options: { nowMs: number; visible?: PrintViewport },
@@ -79,20 +79,19 @@ export function appliedPrintPlans(
   const visible = options.visible;
   const plans: PrintPlan[] = [];
   for (const entry of record.span as readonly StageSpan[]) {
-    if (plans.length >= MAX_PRINT_BLOCKS) break;
     // A truncated side is half a sentence: the rest lives in the chapter, so this block waits.
     if (entry.truncated) continue;
     if (visible !== undefined && !visible(entry.blockId)) continue;
     const span = passSpanOf(entry.before, entry.after);
     if (span === null) continue;
-    const offset = Math.min(plans.length * PRINT_BLOCK_STAGGER_MS, MAX_PRINT_MS);
     plans.push({
       key: `${record.n}:${record.rev}:${entry.blockId ?? `i${plans.length}`}`,
       blockId: entry.blockId,
       before: entry.before,
       after: entry.after,
       span,
-      startAt: record.appliedAt + offset,
+      startAt: record.appliedAt,
+      order: plans.length,
     });
   }
   return plans;

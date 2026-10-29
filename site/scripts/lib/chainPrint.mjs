@@ -5,9 +5,8 @@
  *   • **the store**: one write in the temp copy — the block rows and the chapter row the API
  *     serves, the content-addressed snapshot, and the `revisions` row the bridge narrates as
  *     `chapter:applied` (`engineState/applied.ts` derives the patch from rev and rev−1);
- *   • **the page**: one sampler (the paragraph, the run's first glyph, both carets, the ink, the
- *     frame the page received) and the numbers the contract is made of — caret onset, px/s,
- *     the chain gap.
+ *   • **the page**: one sampler (the printing paragraph, its one caret, its revealed count, the
+ *     clip, the ghost, the plan the renderer publishes) and the numbers the contract is made of.
  *
  * The parser is the server's own (`server/dist/ingest/parseChapter.js`), installed after the
  * build: the block ids and `chars` the snapshot is written with are the ones the site reads.
@@ -198,11 +197,16 @@ export function probeApplied(dir, chapter, rev) {
 
 // ── the page ───────────────────────────────────────────────────────────────────────────────
 
-/** One in-page reading: the paragraph, the run's first glyph, both carets, the ink, the frame. */
+/** One in-page reading of the printing block: its one caret, the revealed count, the clip, the
+ *  ghost, its box, and the plan it published (`window.__print`) — the engine's answer to "what
+ *  should be revealed now?", never the DOM's own number. */
 export const SAMPLE_SOURCE = String.raw`
 (locator) => {
-  const node = Array.from(document.querySelectorAll('p[data-block-id]'))
-    .find((item) => (item.textContent || '').includes(locator)) || null;
+  const nodes = Array.from(document.querySelectorAll('p[data-block-id]'));
+  // The reading follows the print: while a block prints it is the one sampled (its node, its
+  // caret, its clip), and the anchor is the fallback for the idle frames between prints.
+  const printing = document.querySelector('p.p-pass');
+  const node = printing || nodes.find((item) => (item.textContent || '').includes(locator)) || null;
   const t = Date.now();
   if (node === null) return { t, found: false };
   const box = node.getBoundingClientRect();
@@ -212,17 +216,30 @@ export const SAMPLE_SOURCE = String.raw`
     const opacity = Number(getComputedStyle(el).opacity);
     const rect = el.getBoundingClientRect();
     return {
-      count: 1,
+      count: node.querySelectorAll(selector).length,
       opacity: Number.isFinite(opacity) ? opacity : null,
       left: Math.round(rect.left * 100) / 100,
       top: Math.round(rect.top * 100) / 100,
+      height: Math.round(rect.height * 100) / 100,
       visible:
         Number.isFinite(opacity) && opacity > 0.05 && rect.left >= -2 &&
         rect.left <= window.innerWidth + 2 && rect.top >= -2 && rect.top <= window.innerHeight + 2,
     };
   };
-  const first = node.querySelector('.pass-span .pg');
-  const firstRect = first === null ? null : first.getBoundingClientRect();
+  const copy = node.querySelector('.pass-copy');
+  const copyText = copy === null ? null : (copy.textContent || '');
+  const ghost = node.querySelector('.pass-ghost');
+  const ghostStyle = ghost === null ? null : getComputedStyle(ghost);
+  const plan = window.__print && window.__print.blockId === node.getAttribute('data-block-id') ? window.__print : null;
+  const elapsed = plan === null ? null : Date.now() - plan.startAt;
+  let expected = null;
+  let painted = null;
+  if (plan !== null && elapsed !== null) {
+    expected = 0;
+    for (const at of plan.inkTimes) { if (at <= elapsed) expected += 1; else break; }
+    painted = 0;
+    for (const at of plan.inkTimes) { if (at <= plan.at) painted += 1; else break; }
+  }
   const frames = window.__frames || [];
   let applied = null;
   for (let i = frames.length - 1; i >= 0; i -= 1) {
@@ -232,29 +249,76 @@ export const SAMPLE_SOURCE = String.raw`
     t,
     found: true,
     blockId: node.getAttribute('data-block-id'),
+    index: nodes.indexOf(node),
     pass: node.classList.contains('p-pass'),
     beat: node.getAttribute('data-pass'),
-    pending: node.querySelectorAll('.pg.is-pending').length,
-    clusters: node.querySelectorAll('.pg').length,
-    passSpan: node.querySelector('.pass-span') !== null,
-    ticks: node.querySelectorAll('.pass-tick').length,
-    carets: { read: caret('.caret-read'), write: caret('.caret-write') },
-    firstGlyphLeft: firstRect === null ? null : Math.round(firstRect.left * 100) / 100,
+    // The page as a whole: the new contract is one place at a time, so this is the number that
+    // proves it — never two.
+    passCount: document.querySelectorAll('p.p-pass').length,
+    passes: Array.from(document.querySelectorAll('p.p-pass')).map((item) => ({
+      id: item.getAttribute('data-block-id'),
+      index: nodes.indexOf(item),
+      beat: item.getAttribute('data-pass'),
+      revealed: Number(item.getAttribute('data-revealed') ?? '-1'),
+    })),
+    revealed: Number(node.getAttribute('data-revealed') ?? '-1'),
+    chars: copyText === null ? null : copyText.length,
+    clip: copy === null ? null : copy.style.clipPath,
+    carets: {
+      ink: caret('.caret-ink'),
+      read: caret('.caret-read'),
+      write: caret('.caret-write'),
+      all: node.querySelectorAll('.caret-ink, .caret-read, .caret-write').length,
+    },
+    ghost:
+      ghost === null
+        ? null
+        : {
+            text: (ghost.textContent || '').slice(0, 40),
+            opacity: (() => { const value = Number(ghostStyle.opacity); return Number.isFinite(value) ? value : null; })(),
+            position: ghostStyle.position,
+            strike: ghostStyle.textDecorationLine,
+          },
     rect: { top: Math.round(box.top * 100) / 100, height: Math.round(box.height * 100) / 100 },
+    plan:
+      plan === null
+        ? null
+        : {
+            total: plan.total,
+            duration: plan.inkTimes.length === 0 ? 0 : plan.inkTimes[plan.inkTimes.length - 1],
+            expected,
+            painted,
+            at: plan.at,
+            behindMs: elapsed === null ? null : Math.round(elapsed - plan.at),
+          },
+    passNodes: node.querySelectorAll('*').length,
+    documentNodes: document.querySelectorAll('*').length,
     animations: node.getAnimations({ subtree: true }).filter((item) => item.playState === 'running').length,
     applied: applied === null ? null : { n: applied.n, rev: applied.rev, appliedAt: applied.appliedAt, receivedAt: applied.t },
     viewport: { width: window.innerWidth, height: window.innerHeight },
   };
 }`;
 
-/**
- * The frame watcher, injected before any page script: it records **when** `chapter:applied`
- * reached the page. That is the only honest split between the bridge's 500 ms poll (a fixture
- * of a replayed write) and the client's own mount time.
- */
+/** The frame watcher, injected before any page script: when `chapter:applied` reached the page
+ * (the only honest split between the bridge's poll and the client's own mount) and every rAF's
+ * own spacing (the perf capture's p95). */
 export const WATCH_SOURCE = String.raw`
 (() => {
   window.__frames = [];
+  // BOOK-220 §11.2 B4 — the renderer's own frame cadence: every rAF the page schedules is
+  // timed here, so the perf capture's p95 is the chain the print actually ran on.
+  window.__frameTimes = [];
+  let lastFrame = 0;
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (callback) => raf((time) => {
+    const now = performance.now();
+    if (lastFrame > 0) {
+      window.__frameTimes.push(now - lastFrame);
+      if (window.__frameTimes.length > 4000) window.__frameTimes.shift();
+    }
+    lastFrame = now;
+    return callback(time);
+  });
   const proto = WebSocket.prototype;
   const desc = Object.getOwnPropertyDescriptor(proto, 'onmessage');
   if (desc === undefined || desc.set === undefined) return;
@@ -308,6 +372,20 @@ export async function collect(cdp, locator, { sampleMs, timeoutMs, done, onSampl
     if (done(samples, state) === true) return samples;
     if (Date.now() - started > timeoutMs) return samples;
     await sleep(sampleMs);
+  }
+}
+
+/**
+ * No block prints at all: called between stages, so a measurement never starts inside the
+ * previous write's print (the harness writes are minutes apart in real use, not 200 ms).
+ */
+export async function waitIdle(cdp, locator, timeoutMs = 30_000) {
+  const started = Date.now();
+  for (;;) {
+    const state = await sample(cdp, locator);
+    if (state.found === true && state.passCount === 0) return true;
+    if (Date.now() - started > timeoutMs) return false;
+    await sleep(50);
   }
 }
 

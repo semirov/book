@@ -7,6 +7,7 @@ import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { HeadStatus } from './HeadStatus.tsx';
 import { PageNumber } from './PageNumber.tsx';
+import { PrintFollow } from './PrintFollow.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -134,6 +135,8 @@ export function Header({
             closedAt={closedAt}
             nowMs={nowMs}
           />
+          {/* BOOK-220 §11.2 — «следить»: the print's one control, absent when nothing prints. */}
+          <PrintFollow />
           {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />

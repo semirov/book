@@ -16,15 +16,16 @@ import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
 import { reserveHeight } from '../lib/cssom.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
-import { appliedPrintPlans, type AppliedRecord, type PrintPlan } from '../lib/appliedPrint.ts';
+import { printWindowOpen, type AppliedRecord } from '../lib/appliedPrint.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
+import { useAppliedPrint } from '../lib/useAppliedPrint.ts';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { usePending } from '../usePending.ts';
 import { usePrintingReveal } from '../lib/usePrintingReveal.ts';
-import { createReveal, finishReveal, printsChange } from '../lib/reveal.ts';
+import { createReveal, finishReveal, printsChange, revealCps } from '../lib/reveal.ts';
 import { ChapterHeader } from './ChapterHeader.tsx';
 import { ChapterProse } from './ChapterProse.tsx';
 import { PremiseEntry } from './PremiseEntry.tsx';
@@ -35,8 +36,9 @@ import { Skeleton } from './Skeleton.tsx';
  * One chapter slot (ARCHITECTURE §11.2, §11.3, §11.5):
  *
  * - the header comes from the catalog on the first paint, the prose on scroll;
- * - new text prints at 18 cps, block by block, only in the viewport; everything else is
- *   already set (ADR-006 — the server never streams tokens);
+ * - new text prints on the print engine's clock (30 cps desk / 26 phone, BOOK-220 §11.2),
+ *   block by block, only in the viewport; everything else is already set (ADR-006 — the server
+ *   never streams tokens);
  * - a revision is applied by `rev`; a rewrite cross-fades, it never re-types old text;
  * - the caret sits after the block being printed, or after the last block of the lane's
  *   chapter; a cascade moves no caret;
@@ -117,11 +119,18 @@ export function ChapterArticle({
   const { article, reveal, setReveal, printing, line, startReveal } = printingReveal;
   /** BOOK-117: the change behind a revision, held across the refetch it forces. */
   const changeIds = useRef<ReadonlySet<string> | null>(null);
-  /** The print plans of the write this chapter just received (§4/D2). */
-  const [prints, setPrints] = useState<readonly PrintPlan[]>([]);
+  /**
+   * BOOK-220 §11.2 — the write this chapter is *receiving right now*: its `appliedAt` is the
+   * print's clock, and a created chapter has no prose on the page yet, so the slot fetches it
+   * and prints from that moment instead of restarting at zero.
+   */
+  const appliedHere = applied !== null && applied.n === entry.n && printWindowOpen(applied, Date.now());
+  /** The print's own start: `appliedAt` while the write is inside its window, else none. */
+  const printClock = appliedHere ? applied.appliedAt : undefined;
+
 
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
-  const showsText = entry.written || entry.basis;
+  const showsText = entry.written || entry.basis || appliedHere;
   const basisSentence = basisSentenceOf(entry, chapter);
   /**
    * BOOK-DOC-43 §4 — the wait is real from the fetch until it settles, data or failure, and
@@ -130,7 +139,7 @@ export function ChapterArticle({
    */
   const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
   const stage = usePending(busy);
-  const load = useCallback(async () => {
+  const load = useCallback(async (clock?: number) => {
     if (loading.current) return;
     loading.current = true;
     try {
@@ -145,13 +154,18 @@ export function ChapterArticle({
       // request, and never a pass landing — a write is printed only by an applied record.
       const changed = changeIds.current;
       changeIds.current = null;
-      startReveal(result, changed);
+      // BOOK-220 §11.2 — a chapter being written has one clock: `appliedAt`. A page load has
+      // none, and only a young chapter's tail prints there.
+      startReveal(result, changed, clock);
     } catch {
       setFailed(true);
     } finally {
       loading.current = false;
     }
   }, [entry.n, startReveal]);
+
+  /** The write's print plans (BOOK-DOC-84 §4/D2, BOOK-220 §11.2): one place at a time. */
+  const prints = useAppliedPrint({ applied, n: entry.n, article, loaded: chapter !== null, load });
 
   // Load when the slot comes within 1.5 viewports (mobile-first: a 45 KB chapter is not
   // fetched until it is nearly on screen).
@@ -189,39 +203,20 @@ export function ChapterArticle({
     return () => observer.disconnect();
   }, [entry.n, showsText]);
 
-  /**
-   * BOOK-DOC-84 §4/D2 — the write's print, planned once per applied record.
-   *
-   * The clock is `appliedAt` (never `landed.at`): every changed block inside 1.5 viewports is
-   * planned in document order, at most four, each with its own offset from that one moment.
-   * Off-screen blocks are set, not planned. A record older than the print window, a truncated
-   * patch or an unreadable pre-image gives no plan — the prose is refetched, never guessed.
-   * The boxes are read once here, never per animation frame.
-   */
-  useEffect(() => {
-    if (applied === null || applied.n !== entry.n) return;
-    const node = article.current;
-    const height = typeof window === 'undefined' ? 800 : window.innerHeight || 800;
-    const visible = (blockId: string | null): boolean => {
-      if (node === null || blockId === null) return true;
-      const element = node.querySelector<HTMLElement>(`[data-block-id="${blockId}"]`);
-      if (element === null) return true;
-      const rect = element.getBoundingClientRect();
-      return rect.bottom > -1.5 * height && rect.top < 2.5 * height;
-    };
-    setPrints(appliedPrintPlans(applied, { nowMs: Date.now(), visible }));
-  }, [applied, entry.n, article]);
-
   // Apply or refetch on a revision. `rev` is the only ordering authority (§10.4).
   useEffect(() => {
     if (!showsText || !inView) return;
     if (chapter === null) {
-      void load();
+      void load(printClock);
       return;
     }
     // A chapter emptied down to its basis sentence keeps `rev`: the projection is not a
     // revision, so the loading slot must drop the prose it still holds (§BOOK-6).
     if (chapterMatchesEntry(entry, chapter)) return;
+    // BOOK-220 §11.2 — a chapter *ahead* of the catalog is the newer truth: this page just
+    // printed a write whose catalog row has not caught up (`refreshCatalog` follows). Only a
+    // newer catalog row, or a different basis shape, means the prose we hold is stale.
+    if (chapter.rev > entry.rev && chapter.basis === entry.basis) return;
 
     if (
       revision !== null &&
@@ -249,7 +244,12 @@ export function ChapterArticle({
         const change = revisedBlockIds(revision.patch);
         setRevisedIds(new Set());
         line.current = change[0] ?? null;
-        setReveal(createReveal(patched.filter((block) => change.includes(block.id)), { reducedMotion: reducedMotion() }));
+        setReveal(
+          createReveal(patched.filter((block) => change.includes(block.id)), {
+            reducedMotion: reducedMotion(),
+            cps: revealCps(typeof window === 'undefined' ? 390 : window.innerWidth),
+          }),
+        );
         printingReveal.startReveal; // the hook owns `measured`; the change prints where it is
         return;
       }
@@ -265,7 +265,7 @@ export function ChapterArticle({
       changeIds.current = new Set(revisedBlockIds(revision.patch));
     }
     void load();
-  }, [chapter, entry, showsText, inView, load, revision]);
+  }, [chapter, entry, printClock, showsText, inView, load, revision]);
 
   // The reload that a stale send asks for is the moment to re-key the draft: the new block
   // id, sentence and revision come from the chapter that just arrived (BOOK-33).
@@ -305,8 +305,14 @@ export function ChapterArticle({
     setReanchor(null);
   }, [chapter, entry.n, reanchor, seam]);
 
-  /** §6: `null` while the wait is quiet — the header then prints what it prints today. */
-  const status = statusLine('chapter', stage, entry.n);
+  /**
+   * §6: `null` while the wait is quiet — and `null` while the chapter is being written: the
+   * slot is about to print its prose, so the wait sentence would be a second, false state.
+   */
+  const printPending = appliedHere && chapter === null;
+  const status = printPending ? null : statusLine('chapter', stage, entry.n);
+  /** The head's title: the catalog's, else the chapter's own (a chapter just created). */
+  const title = entry.title ?? chapter?.title ?? null;
 
   const header = <ChapterHeader entry={entry} printing={printing} status={status} basisSentence={basisSentence} />;
 
@@ -353,11 +359,11 @@ export function ChapterArticle({
       aria-busy={busy ? 'true' : undefined}
     >
       {header}
-      {entry.title !== null ? (
-        <h3 className="ch-title fade-in" key={`title-${entry.rev}-${entry.title}`}>
-          {entry.title}
+      {title === null ? null : (
+        <h3 className="ch-title" key={`title-${entry.rev}-${title}`}>
+          {title}
         </h3>
-      ) : null}
+      )}
 
       {/*
         BOOK-137 — a written chapter keeps its premise's one entry. The filing must not move
@@ -436,7 +442,9 @@ export function ChapterArticle({
           }}
           aria-hidden="true"
         >
-          {stage === 'quiet' ? null : <Skeleton variant="chapter" />}
+          {/* BOOK-220 §11.2: a chapter being written has no bars — the prose is coming, and
+              the head already says the number and the title. */}
+          {stage === 'quiet' || printPending ? null : <Skeleton variant="chapter" />}
         </div>
       ) : null}
 

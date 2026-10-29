@@ -72,116 +72,15 @@ import {
   storedRevisions,
   WATCH_SOURCE,
 } from './lib/chainPrint.mjs';
-import { arrivals, carets, chain, checker, folioGap, reducedMotion, shotter, STAGE, tooLate } from './lib/chainStages.mjs';
+import { arrivals, chain, checker, folioGap, newChapter, perf, reducedMotion, shotter, STAGE, tooLate, twoPlaces } from './lib/chainStages.mjs';
 import { buildSite, PROD_DB, prepareTemp, SITE, WORKTREE } from './lib/passBook.mjs';
+import { RUNS } from './lib/chainRuns.mjs';
 
 const PORT = 8092;
 const CDP_PORT = 9334;
 const API = `http://127.0.0.1:${PORT}`;
 const LOAD_TIMEOUT_MS = 120_000;
 
-/**
- * The two runs, one per width. `anchor` is a phrase every edit leaves alone: it finds the
- * paragraph in the API and in the DOM before, during and after every write. `edits` is the
- * ordered script of writes: the chain's two, the reduced-motion one, the prime print the
- * arrivals join, three arrivals and the late one. Each `phrase` occurs exactly once in the text
- * it is written against — the harness refuses the write otherwise, so a drifted fixture fails
- * loudly instead of editing nothing. The four long sentences are one skeleton with one word
- * changed, so every arrival's run is the whole tail and every print lasts about as long.
- */
-const RUNS = [
-  {
-    width: 1440,
-    height: 900,
-    chapter: 12,
-    anchor: 'Я сел на стул',
-    edits: [
-      // The edit sits mid-paragraph of a nine-line block, so the blue caret climbs five lines and
-      // the red one still has lines to descend — even when the frame arrives 400 ms late.
-      { id: 'chain-1', phrase: 'Она походила на мою', replacement: 'Она походила на мою подпись, как тень на человека' },
-      { id: 'chain-2', phrase: 'как тень на человека', replacement: 'как тень на человека, брошенная на снег' },
-      {
-        id: 'reduced',
-        phrase: 'Или была моя, но из другого времени.',
-        replacement: 'Или была моя, но из другого времени и другой жизни.',
-      },
-      // Four sentences with nothing in common: each write's run is the whole sentence, so the
-      // ink lasts long enough to arrive into, and a replacement is never a one-word blur.
-      {
-        id: 'prime',
-        phrase:
-          'Я узнал бы её среди тысяч: это была подпись, стоявшая на акте 1965 года, на обороте которого значилось «Подпись П.».',
-        replacement:
-          'Я узнал бы её среди тысяч других подписей, и от этого узнавания мне стало холодно, как бывает, когда находишь своё имя в чужом документе.',
-      },
-      {
-        id: 'arrival-30',
-        phrase:
-          'Я узнал бы её среди тысяч других подписей, и от этого узнавания мне стало холодно, как бывает, когда находишь своё имя в чужом документе.',
-        replacement:
-          'В коридоре пахло пылью и старой бумагой, и женщина за стеклом перекладывала листки так, будто каждый из них был чьей-то чужой жизнью.',
-      },
-      {
-        id: 'arrival-70',
-        phrase:
-          'В коридоре пахло пылью и старой бумагой, и женщина за стеклом перекладывала листки так, будто каждый из них был чьей-то чужой жизнью.',
-        replacement:
-          'Стрелка над дверью стояла, и я перестал понимать, сколько прошло времени и зачем я всё ещё стою у этого окошка с бумагами в руках.',
-      },
-      {
-        id: 'arrival-95',
-        phrase:
-          'Стрелка над дверью стояла, и я перестал понимать, сколько прошло времени и зачем я всё ещё стою у этого окошка с бумагами в руках.',
-        replacement:
-          'Очередь за спиной дышала и переступала с ноги на ногу, и каждый в ней ждал своей очереди так, как будто она была последней.',
-      },
-      { id: 'late', phrase: 'как будто она была последней.', replacement: 'как будто она была последней и единственной.' },
-    ],
-  },
-  {
-    width: 390,
-    height: 844,
-    chapter: 5,
-    anchor: 'Потом понадобились копии',
-    edits: [
-      { id: 'chain-1', phrase: 'В два ноль четыре окно открылось.', replacement: 'В два ноль четыре окно открылось, и я поднялся.' },
-      { id: 'chain-2', phrase: 'окно открылось, и я поднялся.', replacement: 'окно открылось, и я поднялся к самому стеклу.' },
-      { id: 'reduced', phrase: 'зелёный и размытый.', replacement: 'зелёный и размытый, не читая.' },
-      {
-        id: 'prime',
-        phrase: 'не читая.',
-        replacement:
-          'не читая. Она перекладывала бумаги с места на место, и я ждал, хотя ждать было уже нечего.',
-      },
-      {
-        id: 'arrival-30',
-        phrase: 'не читая. Она перекладывала бумаги с места на место, и я ждал, хотя ждать было уже нечего.',
-        replacement:
-          'не читая. За стеклом шуршали листки, и каждый был чьей-то чужой просьбой, к которой я не имел отношения.',
-      },
-      {
-        id: 'arrival-70',
-        phrase:
-          'не читая. За стеклом шуршали листки, и каждый был чьей-то чужой просьбой, к которой я не имел отношения.',
-        replacement:
-          'не читая. Я считал минуты до конца приёма и не мог досчитать, потому что часы над дверью стояли.',
-      },
-      {
-        id: 'arrival-95',
-        phrase:
-          'не читая. Я считал минуты до конца приёма и не мог досчитать, потому что часы над дверью стояли.',
-        replacement:
-          'не читая. Очередь за спиной дышала и переступала, и я перестал понимать, зачем стою и чего жду.',
-      },
-      { id: 'late', phrase: 'чего жду.', replacement: 'чего жду и куда пойду.' },
-      // BOOK-220 B3 — the folio gap's three forced words, each a write of its own so the head
-      // says «сейчас записывает» while the rects are read at that width (`folioGap`).
-      { id: 'folio-1440', phrase: 'чего жду и куда пойду.', replacement: 'чего жду, куда пойду и зачем.' },
-      { id: 'folio-768', phrase: 'куда пойду и зачем.', replacement: 'куда пойду и зачем — не знаю.' },
-      { id: 'folio-390', phrase: 'зачем — не знаю.', replacement: 'зачем — не знаю, и это честно.' },
-    ],
-  },
-];
 
 const args = process.argv.slice(2);
 const keepTemp = args.includes('--keep');
@@ -194,7 +93,7 @@ const chainOnly = args.includes('--chain');
  */
 const dataCwd = args.includes('--data-cwd');
 const outIndex = args.indexOf('--out');
-const OUT = resolve(outIndex >= 0 ? args[outIndex + 1] : join(SITE, 'shots', 'live', 'chain'));
+const OUT = resolve(outIndex >= 0 ? args[outIndex + 1] : join(SITE, 'shots', 'live', 'one-caret'));
 
 const log = (message) => console.log(`[chain-print] ${message}`);
 
@@ -260,7 +159,7 @@ async function prepareRun(run) {
   if (matches.length !== 1) throw new Error(`the anchor occurs in ${matches.length} blocks of chapter ${run.chapter}`);
   const source = chapter.blocks.map((entry) => entry.text).join('\n\n');
   if (source.split(run.anchor).length - 1 !== 1) throw new Error(`the anchor is not unique in chapter ${run.chapter}`);
-  Object.assign(run, { block: matches[0] });
+  Object.assign(run, { block: matches[0], api: API });
   log(`${run.width}: chapter ${run.chapter}, block ${matches[0].id} (${matches[0].text.length} chars)`);
 }
 
@@ -277,7 +176,6 @@ async function runOnce({ cdp, run, dir, consoleLog, check, log, shot }) {
     `rev ${String(snapshot.rev)} ${snapshot.restored ? 'rebuilt from the block rows' : 'was on disk'}, ${String(snapshot.blocks)} blocks${snapshot.rebuiltMatchesServedRows ? '' : ` — ${JSON.stringify(snapshot.rebuiltDiff)}`}`,
   );
   const measured = await chain({ cdp, run, dir, stepId, check, log, shot });
-  if (measured.printed === true) carets(run, measured.caret1, check);
   const after = await shot(`${String(run.width)}-after`);
   const result = {
     width: run.width,
@@ -300,20 +198,25 @@ async function runOnce({ cdp, run, dir, consoleLog, check, log, shot }) {
       note: "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph",
     },
     printed: measured.printed,
+    contract: measured.contract,
+    twoPlaces: null,
+    perf: null,
+    newChapter: null,
     frame: measured.frame,
     frameShape: measured.shape,
     serverProbe: measured.probe,
-    caretWindow: measured.caret1,
+    caretWindow: measured.contract,
     secondWindow: measured.second,
     samples: measured.samples1.map((item) => ({
       t: item.t,
       pass: item.pass,
       beat: item.beat,
-      pending: item.pending,
-      clusters: item.clusters,
-      read: item.carets.read,
-      write: item.carets.write,
-      firstGlyphLeft: item.firstGlyphLeft,
+      revealed: item.revealed,
+      expected: item.plan?.expected ?? null,
+      carets: item.carets.ink.count,
+      caretTop: item.carets.ink.top,
+      passNodes: item.passNodes,
+      rect: item.rect,
     })),
     secondSamples: measured.samples2.length,
     stored: storedRevisions(dir, run.chapter),
@@ -344,7 +247,8 @@ async function main() {
   }
 
   await buildSite({ skip: skipBuild, log });
-  installParser(await import(pathToFileURL(join(SITE, 'server', 'dist', 'ingest', 'parseChapter.js')).href));
+  const parser = await import(pathToFileURL(join(SITE, 'server', 'dist', 'ingest', 'parseChapter.js')).href);
+  installParser(parser);
   installApplied(await import(pathToFileURL(join(SITE, 'server', 'dist', 'engineState', 'applied.js')).href));
 
   const dir = await prepareTemp();
@@ -374,6 +278,7 @@ async function main() {
     process.exit(130);
   });
 
+  let harnessAssertions = [];
   try {
     await waitForUrl(`${API}/healthz`, LOAD_TIMEOUT_MS, 'the API');
     const launched = await launchChromium({
@@ -410,6 +315,7 @@ async function main() {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: WATCH_SOURCE });
 
     const { assertions, check } = checker(log);
+    harnessAssertions = assertions;
     const shot = shotter(cdp, OUT);
     mkdirSync(OUT, { recursive: true });
     const runs = [];
@@ -421,6 +327,38 @@ async function main() {
     // B3 — the head's word against the folio, at the three widths, after every print is done.
     const last = RUNS[RUNS.length - 1];
     const folio = await folioGap({ cdp, run: last, dir, stepId: pickStepId(dir, last.chapter), check });
+    // BOOK-220 §11.2 B3/B4, on the phone's width and after the folio's own writes: two changed
+    // places print in document order, one at a time; then a 27 000-character chapter prints at
+    // the device rate with a node count that does not follow the text.
+    const lastResult = runs[runs.length - 1];
+    lastResult.chainPassNodes = lastResult.samples.find((item) => item.pass === true)?.passNodes ?? null;
+    last.chainPassNodes = lastResult.chainPassNodes;
+    lastResult.twoPlaces = await twoPlaces({ cdp, run: last, dir, stepId: pickStepId(dir, last.chapter), check, log, shot });
+    lastResult.perf = await perf({ cdp, run: last, dir, stepId: pickStepId(dir, last.chapter), check, log, shot, out: OUT });
+    // BOOK-220 §11.2 B5 — «новая глава так же пишется», at both widths, last: the create changes
+    // the book's state under the page, so nothing after it may assume a settled catalog.
+    const newChapters = [];
+    for (const width of [1440, 390]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: width === 390 ? 844 : 900,
+        deviceScaleFactor: 1,
+        mobile: width < 600,
+      });
+      await sleep(300);
+      const run = RUNS.find((entry) => entry.width === width) ?? last;
+      const measured = await newChapter({
+        cdp,
+        run,
+        dir,
+        stepId: pickStepId(dir, run.chapter),
+        check,
+        log,
+        shot,
+        parseChapter: parser.parseChapter,
+      });
+      newChapters.push({ width, ...measured });
+    }
 
     const errors = runs
       .flatMap((run) => run.console)
@@ -449,6 +387,7 @@ async function main() {
       },
       runs,
       folio,
+      newChapters,
       assertions,
       console: { errors, entries: runs.flatMap((run) => run.console) },
       network: { failures: requestsFailed },
@@ -467,7 +406,7 @@ async function main() {
       if (child?.output) console.error(`${name}:\n${child.output.split('\n').slice(-12).join('\n')}`);
     }
     // Nothing measured at all means the harness could not run (a crash, not a verdict): 2.
-    process.exitCode = assertions.length === 0 ? 2 : 1;
+    process.exitCode = harnessAssertions.length === 0 ? 2 : 1;
   } finally {
     cleanup();
     await sleep(400);

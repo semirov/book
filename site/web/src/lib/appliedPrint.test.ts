@@ -1,22 +1,15 @@
 import type { StageSpan } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import {
-  MAX_PRINT_BLOCKS,
-  MAX_PRINT_MS,
-  PRINT_BLOCK_STAGGER_MS,
-  PRINT_WINDOW_MS,
-  appliedPrintPlans,
-  printWindowOpen,
-  type AppliedSource,
-} from './appliedPrint.ts';
+import { PRINT_WINDOW_MS, appliedPrintPlans, printWindowOpen, type AppliedSource } from './appliedPrint.ts';
 
 /**
- * BOOK-DOC-84 §4/D2 — one print path, one clock, four blocks.
+ * BOOK-220 §11.2 — one print path, one clock, every place.
  *
- * Every assertion here is a bound the design names: `appliedAt` is the clock (never a close),
- * a write older than `PRINT_WINDOW_MS` is text and not motion, at most `MAX_PRINT_BLOCKS`
- * blocks print with offsets inside `MAX_PRINT_MS`, and a truncated patch has no plan at all.
+ * Every assertion here is a bound the design names: `appliedAt` is the clock (never a close), a
+ * write older than `PRINT_WINDOW_MS` is text and not motion, **every** changed place inside the
+ * reader's viewport is planned in document order with no block cap (D2's four are superseded),
+ * and a truncated patch has no plan at all.
  */
 
 const APPLIED_AT = 1_764_000_000_000;
@@ -69,19 +62,29 @@ describe('what is planned', () => {
     expect(plan?.after).toBe('Новый');
     expect(plan?.span.kind).toBe('replacement');
     expect(plan?.key).toBe('3:4:ch03#a');
+    expect(plan?.order).toBe(0);
   });
 
-  it('prints at most four blocks, in document order, with offsets inside twelve seconds', () => {
+  it('prints every changed place, in document order, with no block cap', () => {
     const many = record({
       span: Array.from({ length: 8 }, (_, index) => span(`ch03#${index}`, `Старый ${index}`, `Новый ${index}`)),
     });
     const plans = appliedPrintPlans(many, { nowMs: APPLIED_AT });
-    expect(plans).toHaveLength(MAX_PRINT_BLOCKS);
-    expect(plans.map((plan) => plan.blockId)).toEqual(['ch03#0', 'ch03#1', 'ch03#2', 'ch03#3']);
-    expect(plans[0]?.startAt).toBe(APPLIED_AT);
-    expect(plans[1]?.startAt).toBe(APPLIED_AT + PRINT_BLOCK_STAGGER_MS);
-    const last = (plans.at(-1)?.startAt ?? 0) - APPLIED_AT;
-    expect(last).toBeLessThanOrEqual(MAX_PRINT_MS);
+    expect(plans).toHaveLength(8);
+    expect(plans.map((plan) => plan.blockId)).toEqual([
+      'ch03#0',
+      'ch03#1',
+      'ch03#2',
+      'ch03#3',
+      'ch03#4',
+      'ch03#5',
+      'ch03#6',
+      'ch03#7',
+    ]);
+    // The order is the document's, and every plan of one write shares the write's own clock:
+    // the page starts the next when the one before it settles.
+    expect(plans.map((plan) => plan.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(plans.every((plan) => plan.startAt === APPLIED_AT)).toBe(true);
   });
 
   it('leaves off-screen blocks set: only the visible ones are planned', () => {
@@ -90,9 +93,7 @@ describe('what is planned', () => {
     });
     const plans = appliedPrintPlans(two, { nowMs: APPLIED_AT, visible: (blockId) => blockId === 'ch03#b' });
     expect(plans.map((plan) => plan.blockId)).toEqual(['ch03#b']);
-    // The single planned block starts at the record's own moment: offsets follow the plan's
-    // own order, never the span's skipped entries.
-    expect(plans[0]?.startAt).toBe(APPLIED_AT);
+    expect(plans[0]?.order).toBe(0);
   });
 
   it('has no plan for a truncated patch, no pre-image, or a truncated span entry', () => {
@@ -103,9 +104,12 @@ describe('what is planned', () => {
     ).toEqual([]);
   });
 
-  it('skips an entry that names no change', () => {
-    expect(
-      appliedPrintPlans(record({ span: [span('ch03#a', 'Тот же', 'Тот же')] }), { nowMs: APPLIED_AT }),
-    ).toEqual([]);
+  it('skips an entry that names no change without renumbering the rest', () => {
+    const mixed = record({
+      span: [span('ch03#a', 'Тот же', 'Тот же'), span('ch03#b', 'Было', 'Стало')],
+    });
+    const plans = appliedPrintPlans(mixed, { nowMs: APPLIED_AT });
+    expect(plans.map((plan) => plan.blockId)).toEqual(['ch03#b']);
+    expect(plans.map((plan) => plan.order)).toEqual([0]);
   });
 });

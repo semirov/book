@@ -41,6 +41,34 @@
   white-space: nowrap;
   color: var(--ink-3);
 }
+/* BOOK-220 §11.2 — «следить»: the print's control, in the status line's area and in the same
+   register (lowercase mono 12, the quiet ink, no box, no background). It exists only while
+   something prints (`components/PrintFollow.tsx` renders nothing when idle), so the row's
+   tallest item stays the brand's 16.2 px label line: no padding, no border, no growth. Off is
+   underlined — the reader's page — and on is not; the state is also `aria-pressed`. */
+.print-follow {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+  margin-inline-start: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.print-follow[data-follow='on'] {
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
 /* The pass's own mark, before the line: five pixels resting on the baseline, in --live. */
 .head-nib {
   flex: none;

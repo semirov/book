@@ -41,13 +41,17 @@ const LINE = 24;
 const rect = (top: number, left: number, width: number, height: number): DOMRect =>
   ({ top, left, width, height, bottom: top + height, right: left + width, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
 
-/** Every grapheme of a live pass sits on one line of the block; the block itself is one line. */
+/** The printing block is one line tall; its graphemes are read from its one text node. */
 function stubRects(): void {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-    if (this.classList.contains('p-pass')) return rect(0, 0, 342, LINE);
-    const index = Number(this.getAttribute('data-i') ?? '-1');
-    if (index < 0) return rect(0, 0, 0, 0);
-    return rect(0, 8 + index * 6, 6, LINE);
+    if (this.classList.contains('p-pass') || this.classList.contains('pass-copy')) return rect(0, 0, 342, 6 * LINE);
+    return rect(0, 0, 0, 0);
+  });
+  type RectFn = { getClientRects: () => DOMRectList };
+  const proto = Range.prototype as unknown as RectFn;
+  if (typeof proto.getClientRects !== 'function') proto.getClientRects = () => [] as unknown as DOMRectList;
+  vi.spyOn(proto, 'getClientRects').mockImplementation(function (this: Range) {
+    return [rect(0, 8 + this.startOffset * 6, 6, LINE)] as unknown as DOMRectList;
   });
   vi.spyOn(window, 'getComputedStyle').mockReturnValue({ lineHeight: `${LINE}px` } as CSSStyleDeclaration);
 }

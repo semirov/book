@@ -5,9 +5,10 @@
  *
  *   - `ProseParagraph` — the ordinary paragraph, as it has always been: the printing reveal,
  *     the seam's rails, the marks;
- *   - `LivePass` — the pass renderer, mounted from an **applied print plan** (§4/D2): the plans
- *     come from `lib/appliedPrint.ts`, clocked by `chapter:applied.appliedAt`, and each plan is
- *     mounted once. A settled plan is never re-keyed: the prose never replays (D5).
+ *   - `PrintPass` — the printing renderer, mounted from an **applied print plan** (`lib/appliedPrint.ts`):
+ *     the clock is `chapter:applied.appliedAt`, the places are printed **one at a time in document
+ *     order** (BOOK-220 §11.2 B3 — one caret, never two), and each plan is mounted once. A settled
+ *     plan is never re-keyed: the prose never replays (D5).
  *
  * BOOK-207 — nothing sits after the paragraph: the live paragraph is the whole process, and
  * a settled pass leaves the ordinary paragraph and the record's `правка` section.
@@ -29,7 +30,7 @@ import type { PrintPlan } from '../lib/appliedPrint.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { activeBlockId, blockText, type RevealState } from '../lib/reveal.ts';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
-import { LivePass } from './LivePass.tsx';
+import { PrintPass } from './PrintPass.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 export type ChapterProseProps = {
@@ -84,8 +85,16 @@ export function ChapterProse({
 }: ChapterProseProps) {
   /** The plans whose renderer has already settled: those blocks are ordinary paragraphs again. */
   const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
+  /** When the print before this one settled: the chain's own clock, the earlier place first. */
+  const [chainAt, setChainAt] = useState<ReadonlyMap<string, number>>(() => new Map());
   const reduced = reducedMotion();
   const live = useMemo(() => prints.filter((plan) => !settled.has(plan.key)), [prints, settled]);
+  /**
+   * BOOK-220 §11.2 B3 — **one place at a time**: only the first unsettled plan of the write has
+   * a renderer, so exactly one caret exists on the page. The next opens on the settle that the
+   * one before it reports (`onSettled`), never on an offset guessed before anything measured.
+   */
+  const head = live[0] ?? null;
 
   const showCaret = caret?.show === true && entry.written;
   const caretBlockId =
@@ -109,15 +118,15 @@ export function ChapterProse({
         // not hold yet (the prose has not been re-read) — and only when that sentence stands
         // once: a twin paragraph is never painted as the block the pass wrote.
         const plan =
-          live.find(
-            (item) =>
-              !claimed.has(item.key) &&
-              (item.blockId === block.id ||
-                (item.blockId !== null &&
-                  !chapterIds.has(item.blockId) &&
-                  block.text === item.after &&
-                  textCounts.get(block.text) === 1)),
-          ) ?? null;
+          head !== null &&
+          !claimed.has(head.key) &&
+          (head.blockId === block.id ||
+            (head.blockId !== null &&
+              !chapterIds.has(head.blockId) &&
+              block.text === head.after &&
+              textCounts.get(block.text) === 1))
+            ? head
+            : null;
         if (plan !== null) claimed.add(plan.key);
         return (
           <Fragment key={block.id}>
@@ -143,12 +152,12 @@ export function ChapterProse({
                 revising={revisingCause === null ? null : revisingCause === 'cascade' ? 'правится · по замечанию' : 'правится'}
               />
             ) : (
-              <LivePass
+              <PrintPass
                 key={plan.key}
                 blockId={block.id}
                 text={plan.after}
                 span={plan.span}
-                startAt={plan.startAt}
+                startAt={chainAt.get(plan.key) ?? plan.startAt}
                 reduced={reduced}
                 // The pass paints the same `⋯` door the ordinary paragraph paints — hidden and
                 // unreachable, so handing the block back moves no line (the door is inline).
@@ -159,6 +168,12 @@ export function ChapterProse({
                     next.add(plan.key);
                     return next;
                   });
+                  // The next place of the write opens now: the chain's clock is the settle.
+                  const next = live[1];
+                  if (next !== undefined) {
+                    const openedAt = Date.now();
+                    setChainAt((current) => new Map(current).set(next.key, openedAt));
+                  }
                   onPrintSettled?.(plan.key);
                 }}
               />
