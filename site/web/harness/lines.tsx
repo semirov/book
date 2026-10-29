@@ -169,7 +169,7 @@ function Gallery() {
         <RecordHead />
       </Line>
       <Line id=".rec-row">
-        <RowsList rows={REC_WINDOW} lifted={false} total={REC_WINDOW.rows.length} onLift={noop} onFold={noop} />
+        <RowsList rows={REC_WINDOW} lifted={false} onLift={noop} onFold={noop} />
       </Line>
       <Line id=".comment-meta / .sec-h / .comment-attempt / .qline">
         <Discussion depth={0} comments={COMMENTS} changes={[ATTEMPT]} live nowMs={FIXED_NOW} />

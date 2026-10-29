@@ -155,6 +155,14 @@ describe('the pass strip’s anatomy', () => {
     expect(empty.querySelector('.pass-strip-receipt')).toBeNull();
   });
 
+  it('prints the absence for a typing-only story — an empty rail never claims a pass', async () => {
+    const view = await draw({ events: [event('typing', 5)], now: T0 + MIN });
+    expect(rows(view)).toEqual([]);
+    expect(view.querySelector('.pass-strip')?.getAttribute('data-phase')).toBe('absent');
+    expect(view.querySelector('.pass-strip-heading')?.textContent).toBe('пока ничего не записано\u00a0·\u00a0глава 7');
+    expect(text(view)).not.toContain('книга пишется');
+  });
+
   it('prints each row with its own stored moment', async () => {
     const view = await draw();
     const times = rows(view).map((row) => row.querySelector('.pass-row-time')?.textContent);

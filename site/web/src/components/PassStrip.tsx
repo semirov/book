@@ -8,9 +8,10 @@
  *
  * IFACE — the data lifecycle, from the strip's side:
  *
- *   (a) states: closed (not rendered) · open on a live pass · open on an ended pass · absent
- *       (no target). The model's `phase` says live or ended; a refused pass is an ended one
- *       whose rail ends in a dash.
+ *   (a) states: closed (not rendered) · open on a live pass · open on an ended pass · open on
+ *       an empty rail. The model's `phase` says `live`, `ended` or `absent` — the last for a
+ *       rail with no row at all, which prints the absence instead of a pass; a refused pass is
+ *       an ended one whose rail ends in a dash.
  *   (b) on each: opening the slot mounts this component, which reads the pass's earlier stages
  *       **once** (`getStages`) when the page's log lacks them; every `pass:stage` frame after
  *       that arrives as a new `events` prop and appends a row. Closing renders nothing and

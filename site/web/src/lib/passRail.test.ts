@@ -205,6 +205,19 @@ describe('the strip’s head', () => {
     // Lowercase, as every mark line is.
     expect(empty.heading).toBe(empty.heading.toLowerCase());
   });
+
+  it('claims no pass when the stored stages print no row — a typing-only story', () => {
+    // `typing` is not a row of its own: the rail is empty, and an empty rail is not liveness on
+    // any path, not only when the read came back with nothing at all (BOOK-199, audit #2).
+    const typing = passStripModel({ chapter: 7, events: [event('typing', 5)], nowMs: T0 + MIN });
+    expect(typing.phase).toBe('absent');
+    expect(typing.heading).toBe('пока ничего не записано\u00a0·\u00a0глава 7');
+    expect(typing.heading).not.toContain('пишется');
+    expect(typing.rows).toEqual([]);
+    expect(typing.right).toBeNull();
+    expect(typing.receipt).toEqual({ tokens: null, costUsd: null, durationMs: null });
+    expect(typing.refused).toBe(false);
+  });
 });
 
 describe('the live row’s lines', () => {

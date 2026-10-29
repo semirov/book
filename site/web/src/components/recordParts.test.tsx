@@ -34,10 +34,8 @@ function windowOf(total: number, lifted: boolean): RowWindow<Row> {
   return rowWindow(rowsOf(total), lifted);
 }
 
-function list(rows: RowWindow<Row>, total: number, lifted: boolean): string {
-  return renderToStaticMarkup(
-    <RowsList rows={rows} lifted={lifted} onLift={noop} onFold={noop} total={total} />,
-  );
+function list(rows: RowWindow<Row>, lifted: boolean): string {
+  return renderToStaticMarkup(<RowsList rows={rows} lifted={lifted} onLift={noop} onFold={noop} />);
 }
 
 let root: Root | null = null;
@@ -50,7 +48,6 @@ function Door({ total }: { total: number }) {
     <RowsList
       rows={rowWindow(rowsOf(total), lifted)}
       lifted={lifted}
-      total={total}
       onLift={() => setLifted(true)}
       onFold={() => setLifted(false)}
     />
@@ -90,7 +87,7 @@ afterEach(async () => {
 
 describe('the fold’s count', () => {
   it('prints the rows it drew and the real total, beside the door', () => {
-    const html = list(windowOf(8, false), 8, false);
+    const html = list(windowOf(8, false), false);
     expect(html).toContain(`показаны ${String(RECORD_CUT)} из 8`);
     // The door names exactly the rows the count leaves out, and it is in the same line.
     expect(html).toContain(`ещё 5 →`);
@@ -100,7 +97,7 @@ describe('the fold’s count', () => {
   it('never prints a count without a control — every length, both steps', () => {
     for (let total = 1; total <= 12; total += 1) {
       for (const lifted of [false, true]) {
-        const html = list(windowOf(total, lifted), total, lifted);
+        const html = list(windowOf(total, lifted), lifted);
         const counted = html.includes('показаны');
         if (counted) {
           // A count is a promise: the way to see the rest stands in the same line.
@@ -114,14 +111,14 @@ describe('the fold’s count', () => {
   });
 
   it('prints no fold line while nothing is over the cut', () => {
-    const html = list(windowOf(3, false), 3, false);
+    const html = list(windowOf(3, false), false);
     expect(html).not.toContain('показаны');
     expect(html).not.toContain('ещё');
     expect(html).not.toContain('свернуть');
   });
 
   it('when nothing remains, `свернуть` only — no count, no second door', () => {
-    const html = list(windowOf(9, true), 9, true);
+    const html = list(windowOf(9, true), true);
     expect(html).not.toContain('показаны');
     expect(html).not.toContain('ещё');
     expect(html).toContain('свернуть');

@@ -394,14 +394,14 @@ export const PARAGRAPH =
 
 /**
  * The record's own rows, as `rowWindow` hands them to `RowsList` (BOOK-128 §2, audit #14): the
- * facts on one mono 12 line, the pair the book wrote under it. `over: 0` here — the fold line is
- * a fact about a longer list, and this section measures the row, not the lift.
+ * facts on one mono 12 line, the pair the book wrote under it, and the fold line with its door
+ * (`показаны N из M` + `ещё K →`, BOOK-199 m3) — a count never stands without the control that
+ * opens the rest. `rest` is what the window still hides; `RowsList` derives M from it.
  */
 export const REC_WINDOW = {
   rows: [
     { id: 'rec-1', facts: '28.10.2026 · 14:42 · Аня', specimen: '«старый фонарь» → «новый фонарь»' },
     { id: 'rec-2', facts: '27.10.2026 · 09:15 · Филипп', specimen: '«свет был включён» → «свет горел»' },
   ],
-  more: 0,
-  over: 0,
+  rest: 2,
 };

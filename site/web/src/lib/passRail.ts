@@ -325,9 +325,11 @@ export function passStripModel(input: PassStripInput): PassStripModel {
   const rows = railRows(ordered, { blocks: input.blocks, blockId: input.blockId });
   const first = ordered[0] ?? null;
   const place = `глава ${input.chapter}`;
-  // No stored stage, no pass: the strip says the absence instead of borrowing the live words.
-  // The rail stays empty and no time is invented — there is no event whose moment it could be.
-  if (first === null) {
+  // An empty rail is never liveness: no stored stage, or only stages that print no row, means
+  // there is no pass to show — the strip says the absence instead of borrowing the live words,
+  // and invents no time, because there is no event whose moment it could be. The guard stands
+  // after `railRows` so it catches every path to an empty rail (BOOK-199, audit #2).
+  if (first === null || rows.length === 0) {
     return {
       phase: 'absent',
       heading: `${RAIL_ABSENT}${MIDDOT}${place}`,
@@ -339,8 +341,7 @@ export function passStripModel(input: PassStripInput): PassStripModel {
   }
   // The strip is live while its last row is: reading, weighing, writing, or a landing whose
   // text the browser is printing. A pass that landed and settled — or was refused — is past.
-  const phase: 'live' | 'ended' =
-    rows.length === 0 || rows[rows.length - 1]?.state === 'live' ? 'live' : 'ended';
+  const phase: 'live' | 'ended' = rows[rows.length - 1]?.state === 'live' ? 'live' : 'ended';
   const lead = phase === 'live' ? PASS_WRITING : PASS_WROTE;
   const heading = `${lead}${MIDDOT}${place}${MIDDOT}${timeOf(first.at)}`;
   const terminal = [...ordered].reverse().find((event) => event.stage === 'landed' || event.stage === 'refused') ?? null;

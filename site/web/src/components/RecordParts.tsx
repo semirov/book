@@ -44,7 +44,6 @@ export function SectionHeader({
 export function RowsList({
   rows,
   lifted,
-  total,
   history = false,
   onLift,
   onFold,
@@ -52,12 +51,15 @@ export function RowsList({
 }: {
   rows: RowWindow<InterventionRow | { id: string; facts: string; specimen: string }>;
   lifted: boolean;
-  total: number;
   history?: boolean;
   onLift: () => void;
   onFold: () => void;
   onOpen?: (row: InterventionRow) => void;
 }) {
+  // One source for one invariant: the list's length is what the window shows plus what its door
+  // still hides. A `total` handed in beside them could disagree with both (BOOK-199 m3).
+  const shown = rows.rows.length;
+  const total = shown + rows.rest;
   return (
     <div className="rec-rows">
       {rows.rows.map((row) => {
@@ -85,7 +87,7 @@ export function RowsList({
       })}
       {rows.rest > 0 ? (
         <div className="rec-fold rec-fold-end">
-          <span>{`показаны ${String(rows.rows.length)} из ${String(total)}`}</span>
+          <span>{`показаны ${String(shown)} из ${String(total)}`}</span>
           {/* BOOK-199 m3 — the count is never a dead end: its own control opens the rest. */}
           <button type="button" onClick={onLift}>{`ещё ${String(rows.rest)} →`}</button>
         </div>

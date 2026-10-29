@@ -135,11 +135,10 @@ describe('the page has one column (BOOK-88/BOOK-91)', () => {
   });
 
   it('puts the folio on the running head’s first-row baseline, not at 40vh', () => {
-    // The number's top is the head's first-row baseline, taken from the head's own geometry and
-    // the shipped fonts (hhea per 1000 em: PT Mono 885/−235): `.top-in` starts row 1 at 14 px;
-    // this 12 px PT Mono line carries its own baseline (16.2 − 1.12 × 12) / 2 + 0.885 × 12 = 12
-    // down its 16.2 px box, and the head's row box leaves it starting at 15.598 ≈ 15.6. The
-    // 15.6 is the pinned declaration below; the derivation only has to agree with the font.
+    // The folio's `top: 15.6px` is the design value, pinned in `live.css` and asserted below; it
+    // is not re-derived here. What this test proves with the shipped font (hhea per 1000 em:
+    // PT Mono 885/−235) is the line's own arithmetic: this 12 px PT Mono line carries its
+    // baseline (16.2 − 1.12 × 12) / 2 + 0.885 × 12 = 12 px down its 16.2 px box.
     const folio = declarationsIn('../styles/live.css', '.folio');
     const head = declarationsIn('../styles/chrome.css', '.top-in');
     const rowTop = Number.parseFloat(head.get('padding-top') ?? '0');
