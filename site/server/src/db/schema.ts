@@ -35,12 +35,16 @@
  * §2.1) and `extraction_runs` (BOOK-DOC-77); `threads` names the run that opened it.
  * BOOK-206 (v30, ADR-045) gives `comment_attempts` the claim, the tries, the backoff and the one
  * stored verdict, so a filing is claimed out of its own ledger and no filing waits for a person.
+ * v31 adds `steps.reopened_at` (BOOK-117): a re-opened step is a fresh window for the step wall,
+ * and the column is how the wall knows where that window starts.
+ * v32 adds the frozen plan of a change (BOOK-173, `change_plans`): its `mode`/`price_usd` and the
+ * verification record (BOOK-DOC-80).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
  * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
  * only door a file may still come through. BOOK-173 adds the frozen plan of a change
- * (`change_plans`, v31) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
+ * (`change_plans`, v32) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
  * ripple's graph itself is BOOK-185's `fact_dependency`, not a second table. The engine tables are the only
  * home of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
@@ -51,7 +55,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,

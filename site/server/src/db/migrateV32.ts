@@ -1,5 +1,5 @@
 /**
- * Migration v31 (BOOK-173, BOOK-DOC-75 §3, BOOK-DOC-80) — the frozen plan of a change: the mode
+ * Migration v32 (BOOK-173, BOOK-DOC-75 §3, BOOK-DOC-80) — the frozen plan of a change: the mode
  * it was written in, the money it was priced at, and the record of its verification.
  *
  * **The graph is not here.** `main`'s v29 (BOOK-185 stage 3, BOOK-DOC-77) already owns the graph
@@ -25,13 +25,13 @@
  * the table before the migration ran, and an install that carries it in its pre-`mode` shape all
  * converge on the same schema.
  *
- * **v31, not v24/26/29/30.** This step was written as v24 while `main` was at v23 and renumbered
- * for every number `main` took since — the sentence (25), the push tables (26), the disposition
- * chain (27), the book's own state (28), BOOK-185's graph (29) and BOOK-206's triage ledger (30).
- * `user_version` only moves forward: an install already at 30 would never run a step numbered
- * below it, so it would boot without `change_plans` — a lane that can plan nothing and drain
- * nothing. It is **31** now, so every upgrade path (fresh, 22, 23, 25, 27, 28, 29, 30) arrives at
- * the same schema.
+ * **v32, not v24/26/29/30/31.** This step was written as v24 while `main` was at v23 and
+ * renumbered for every number `main` took since — the sentence (25), the push tables (26), the
+ * disposition chain (27), the book's own state (28), BOOK-185's graph (29), BOOK-206's triage
+ * ledger (30) and BOOK-117's `steps.reopened_at` (31). `user_version` only moves forward: an
+ * install already at 31 would never run a step numbered below it, so it would boot without
+ * `change_plans` — a lane that can plan nothing and drain nothing. It is **32** now, so every
+ * upgrade path (fresh, 22, 23, 25, 27, 28, 29, 30, 31) arrives at the same schema.
  */
 
 import type { Db } from './db.ts';
@@ -57,7 +57,7 @@ function addColumn(db: Db, table: string, column: string, definition: string): v
   if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-export function migrateV31(db: Db): void {
+export function migrateV32(db: Db): void {
   db.exec(CHANGE_PLANS_SQL);
   for (const [column, definition] of COLUMN_ADDITIONS) addColumn(db, 'change_plans', column, definition);
 }

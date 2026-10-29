@@ -211,8 +211,8 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
   it('builds the same shape on a fresh and on a migrated install, and keeps every v28 column', () => {
     const fresh = openDatabase(':memory:');
     migrate(fresh);
-    // BOOK-173's plan is v31, after this step, and BOOK-206's triage ledger (30) sits between.
-    expect(SCHEMA_VERSION).toBe(31);
+    // BOOK-173's plan is v32, after this step; BOOK-206's triage ledger (30) and BOOK-117's `reopened_at` (31) sit between.
+    expect(SCHEMA_VERSION).toBe(32);
     const freshShape = {
       facts: info(fresh, 'facts'),
       dependency: info(fresh, 'fact_dependency'),

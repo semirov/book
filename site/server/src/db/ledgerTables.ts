@@ -221,7 +221,7 @@ CREATE INDEX IF NOT EXISTS fact_dependency_to   ON fact_dependency("to", chapter
 `;
 
 /**
- * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v31.
+ * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v32.
  *
  * The ripple's graph is `fact_dependency` (BOOK-185): this is the one table the ripple keeps of
  * its own. `closure` is the plan without its patches, `patches` the list the writer produces per
@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS change_plans (
   outcome      TEXT NOT NULL CHECK (outcome IN ('local','ripple','wide')),
   -- BOOK-173 §4: how the change was written — the mode the pass ran, recorded with the plan so
   -- the answer «did this patch or rewrite?» is a row and not a log line. Null for a plan written
-  -- before v31; a change with no plan at all records its mode on the close (step.closed).
+  -- before v32; a change with no plan at all records its mode on the close (step.closed).
   mode         TEXT CHECK (mode IN ('patch','rewrite')),
   -- BOOK-173 §4: the estimate frozen at planning, replaced by the pass's actual at close. Null
   -- means «never priced», never «free» — the same rule cost_priced follows (BOOK-23).
