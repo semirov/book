@@ -23,7 +23,8 @@ import { currentRev } from './close.ts';
 import { releaseLease, stepWallOf } from './leases.ts';
 import {
   BUDGET_STOP_REASON,
-  gateWindowReason,
+  GATE_WINDOW_REASON,
+  gateWindowNote,
   lostSessionReason,
   refuseChange,
   stepWallReason,
@@ -313,8 +314,10 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     if (store.getVerdict(db, dispatch.step_id, dispatch.role)) continue;
     refuseChange(deps, {
       stepId: step.step_id,
-      // BOOK-222: a candidate was never served, so the sentence does not claim a restore.
-      because: gateWindowReason(Math.round(deps.config.gateTtlMs / 60_000), step.landed_at !== null),
+      // BOOK-222: a candidate was never served, so the note does not claim a restore; the
+      // reader's sentence says only whose failure it was, and the minutes stay the operator's.
+      because: GATE_WINDOW_REASON,
+      note: gateWindowNote(Math.round(deps.config.gateTtlMs / 60_000), step.landed_at !== null),
       cause: 'escalated:gate_timeout',
       premiseCause: 'failed',
       now,

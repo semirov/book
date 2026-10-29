@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
+import { GATE_WINDOW_REASON } from '../../src/engine/refuse.ts';
 import * as store from '../../src/engine/store.ts';
 import type { EngineError } from '../../src/engine/types.ts';
 import { PIPELINE_MODEL, chapterText, createEngineFixture, submitRights, type Fixture } from './helpers.ts';
@@ -197,7 +198,9 @@ describe('a provisional land publishes nothing (BOOK-222)', () => {
       expect(revisions(fixture)).toBe(published);
       const change = changeOf(fixture, assignment);
       expect([change.status, change.outcome]).toEqual(['void', 'dropped']);
-      expect(change.reason).toMatch(/текст не опубликован/u);
+      // The reader hears whose failure it was; the note keeps the fact that nothing was served.
+      expect(change.reason).toBe(GATE_WINDOW_REASON);
+      expect(step?.note).toContain('правка не опубликована');
     } finally {
       fixture.close();
     }

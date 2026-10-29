@@ -36,7 +36,12 @@ export type FloorVerdict = {
   reading: { rung: 'as_said'; lock: null; intent: string; carrier: null; refusal: null };
 };
 
-/** The one note the row keeps: an operator's copy of what the sixth attempt did, never the reader's. */
+/**
+ * The note a row that never widened keeps: an operator's copy of what the sixth attempt did,
+ * never the reader's. A row that widened at the third failure keeps that note instead — the
+ * schema's `widening_note` says why the reading widened, and `desperate = 1` already carries
+ * the sixth.
+ */
 const DESPERATE_NOTE = 'шестая попытка — нижняя ступень лестницы применена правилом, без модели';
 
 export type TriageFloor = {
@@ -127,8 +132,9 @@ export function createTriageFloor(deps: EngineDeps): TriageFloor {
       const marked = db
         .prepare(
           `UPDATE comment_attempts
-              SET tries = ?, desperate = 1, verdict = ?, verdict_at = ?, widening_note = ?,
-                  widened = COALESCE(widened, 'rung'), next_at = NULL, claim_by = NULL, claim_until = NULL
+              SET tries = ?, desperate = 1, verdict = ?, verdict_at = ?,
+                  widening_note = COALESCE(widening_note, ?),
+                  widened = COALESCE(widened, 'as-document'), next_at = NULL, claim_by = NULL, claim_until = NULL
             WHERE comment_id = ? AND n = ? AND outcome = 'submitted' AND verdict IS NULL`,
         )
         .run(TRIAGE_MAX_TRIES, JSON.stringify(reading.verdict), at, DESPERATE_NOTE, commentId, n).changes;

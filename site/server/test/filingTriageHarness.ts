@@ -33,7 +33,7 @@ const SITE_ROOT = resolve(import.meta.dirname, '..', '..');
 /** The book's own root: the role prompt is read from here, never written. */
 export const BOOK_ROOT = resolve(SITE_ROOT, '..');
 const PIPELINE = join(SITE_ROOT, 'config', 'pipeline.json');
-const TOKEN = 'triage-test-token';
+export const TOKEN = 'triage-test-token';
 export const QUOTE = 'Тестовый абзац номер один.';
 export const BLOCK_TEXT = 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
 export const WORDING = 'В регистратуре выдают уведомление: срок тридцать дней и подпись.';
@@ -46,6 +46,8 @@ export type Call = { request: ProviderRequest; itemId: string; world: string; sy
 export type Context = {
   h: Harness;
   db: Db;
+  /** The control app the client speaks to: a test builds its own client over the same routes. */
+  control: FastifyInstance;
   engine: ReturnType<typeof createEngine>;
   client: EngineClient;
   config: WriterConfig;
@@ -75,7 +77,7 @@ function payloadOf(user: string): { envelope: Record<string, unknown>; world: st
 }
 
 /** The writer's client over the control app's own `inject` — no port, no socket. */
-function shim(control: FastifyInstance): FetchLike {
+export function shim(control: FastifyInstance): FetchLike {
   return async (url, init) => {
     const parsed = new URL(url);
     const headers = Object.fromEntries(Object.entries((init.headers ?? {}) as Record<string, string>));
@@ -134,8 +136,8 @@ export function changeOf(db: Db): Record<string, unknown> | undefined {
   return db.prepare('SELECT * FROM changes').get() as Record<string, unknown> | undefined;
 }
 
-export async function bootTriage(): Promise<Context> {
-  const h = await bootComments();
+export async function bootTriage(options: { chapters?: Record<string, string> } = {}): Promise<Context> {
+  const h = await bootComments(options);
   const alerts: EngineAlert[] = [];
   const engine = createEngine({
     db: h.db,
@@ -196,6 +198,7 @@ export async function bootTriage(): Promise<Context> {
   return {
     h,
     db: h.db,
+    control,
     engine,
     client,
     config,

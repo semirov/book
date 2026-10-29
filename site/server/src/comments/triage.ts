@@ -13,7 +13,7 @@
  *
  *   · attempts 1–3 read the filing at its narrow rung;
  *   · the **third** failure widens the reading — the next rung of the ladder is accepted instead
- *     of the narrower one, and the row records it (`widened = 'rung'`, `widening_note`);
+ *     of the narrower one, and the row records it (`widened = 'as-document'`, `widening_note`);
  *   · attempts 4–5 read under that widening;
  *   · attempt 6 is **desperate**: the ladder's floor rung is applied by the coded rule
  *     (`feedback/disposition.ts`), with no model at all, and the row says `desperate`;
@@ -59,11 +59,12 @@ export const TRIAGE_CLAIM_TTL_MS = 2 * TRIAGE_CALL_TIMEOUT_MS + 60_000;
 export const TRIAGE_BACKOFF_MS: readonly number[] = [60_000, 5 * 60_000, 20 * 60_000, 40 * 60_000];
 
 /**
- * The widening the record keeps: the rung accepted from the fourth claim on, and the note an
- * operator reads. It is stored on the attempt row, so the widening is a fact of the ledger and
- * not a variable of whichever process happened to make the claim.
+ * The widening the record keeps: the code from the book's one vocabulary (`widenedWord()`,
+ * `shared/liveWords.ts`) — the reading is asked to be read as a document, not at the narrow rung
+ * it insisted on — plus the note an operator reads. It is stored on the attempt row, so the
+ * widening is a fact of the ledger and not a variable of whichever process made the claim.
  */
-export const WIDENED_RUNG = 'rung';
+export const WIDENED_RUNG = 'as-document';
 /** The next rung of the ladder the widened reading accepts: `through_paper`, the paper it can be. */
 export const WIDENED_NEXT_RUNG = 'through_paper';
 export const WIDENING_NOTE = `third failed read — the next rung of the ladder (${WIDENED_NEXT_RUNG}) is accepted`;
@@ -268,7 +269,7 @@ export type AttemptVerdict = {
   verdict_at: string | null;
   next_at: string | null;
   claim_by: string | null;
-  /** `'rung'` once the reading was widened at the third failure. */
+  /** The widening code (`'as-document'`) once the reading was widened at the third failure. */
   widened: string | null;
   widening_note: string | null;
   /** 1 when the sixth attempt was the engine's own coded floor. */

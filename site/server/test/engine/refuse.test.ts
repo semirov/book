@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import { filingStatus } from '../../src/comments/filingState.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
+import { GATE_WINDOW_REASON } from '../../src/engine/refuse.ts';
 import * as store from '../../src/engine/store.ts';
 import type { EngineError } from '../../src/engine/types.ts';
 import { toIso } from '../../src/util/time.ts';
@@ -109,7 +110,7 @@ describe('the wall is a refusal (BOOK-34, owner’s invariant)', () => {
     }
   });
 
-  it('refuses a gate that never answered, and never leaves `escalated` as a change status', () => {
+  it('refuses a gate that never answered as our failure, and never leaves `escalated` as a change status', () => {
     const fixture = chapterOne();
     try {
       const { changeId, assignment, before } = landedChange(fixture);
@@ -123,7 +124,12 @@ describe('the wall is a refusal (BOOK-34, owner’s invariant)', () => {
       expect(revisionsOf(fixture)[0]?.kind).toBe('restore');
       const change = changeOf(fixture, changeId);
       expect(change).toMatchObject({ status: 'void', outcome: 'dropped' });
-      expect(change?.reason).toContain('проверка не ответила');
+      // The gate never answered: that is our failure, and the reader is told the filing was not
+      // judged. The window's own fact (the minutes, the restore) is the step's note, not the line.
+      expect(change?.reason).toBe(GATE_WINDOW_REASON);
+      expect(change?.reason).not.toContain('проверка не ответила');
+      expect(store.getStep(fixture.db, assignment.stepId)?.note).toContain('20 мин');
+      expect(store.getStep(fixture.db, assignment.stepId)?.note).toContain('текст возвращён');
       expect(filingStateOf(fixture, changeId)).toBe('rejected');
       expect(
         (fixture.db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'escalated'`).get() as { n: number }).n,

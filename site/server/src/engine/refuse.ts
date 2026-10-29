@@ -48,14 +48,17 @@ export function stepWallReason(minutes: number): string {
 }
 
 /**
- * The gate window: the reading gate never answered. `published` is whether the step's text was
- * ever served: since BOOK-222 a pass's text is a candidate until the close, so there is nothing to
- * put back — and the sentence must not claim a restore that never happened.
+ * The gate window: the reading gate never answered — that is **our** failure, so the reader is
+ * told the filing was not judged, in the same words a broken call uses. The window itself (the
+ * minute count, and whether a text had to go back) is the operator's fact, `gateWindowNote`.
  */
-export function gateWindowReason(minutes: number, published = true): string {
+export const GATE_WINDOW_REASON = 'это сбой на нашей стороне — заявку не судили, попробуйте ещё раз';
+
+/** What the window cost, for the step's note: the minutes, and what happened to the text. */
+export function gateWindowNote(minutes: number, published = true): string {
   return published
-    ? `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции, заявка отклонена`
-    : `проверка не ответила за ${String(minutes)} мин — правка не принята, текст не опубликован`;
+    ? `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции`
+    : `проверка не ответила за ${String(minutes)} мин — правка не опубликована`;
 }
 
 /** The session that did not come back to its step, three attempts in a row. */
