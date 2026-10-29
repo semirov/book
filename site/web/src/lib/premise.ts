@@ -86,7 +86,7 @@ export type PremiseRow = {
   reason: string | null;
   /** BOOK-158 — the hint, the door and the limit that closes it, or null when nothing was refused. */
   revise: ReviseView | null;
-  /** The latest attempt: the entry's one number and its one `прицел`; null with no change. */
+  /** The latest attempt: the entry's one number and its one change door; null with no change. */
   attempt: FilingAttempt | null;
   actionable: boolean;
 };

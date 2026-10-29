@@ -93,26 +93,16 @@ export const OUTSIDE_CANVAS: ReadonlyArray<{
 
 /** The closed list of box widths that are neither the canvas nor the column nor a `ch` copy
  *  cap. Each row is a design decision with the one reason it may leave the one-column rule;
- *  adding a row is a new decision, not a fix. Both are overlays laid *over* the page, not
- *  registers in it. */
-export const OVERLAYS = [
-  {
-    selector: '.focus-stage',
-    property: 'max-width',
-    value: '590px',
-    why: 'the прицел’s lit sheet is its own narrower paper over the page (BOOK-DOC-35 §7)',
-  },
-] as const;
+ *  adding a row is a new decision, not a fix. It is empty now: the focus view's narrower sheet
+ *  was the last box laid over the page, and a change is a section of the record. */
+export type OverlayRule = { selector: string; property: string; value: string; why: string };
+
+export const OVERLAYS: readonly OverlayRule[] = [];
 
 /** The only rules allowed to centre themselves with a horizontal `auto` margin: the canvas
- *  (once), the one box outside it, and the overlays. `.title-ripple::after` is a 46 px
- *  decoration under the cover title, not a text box. */
-const CENTRED = [
-  CANVAS,
-  '.focus-stage',
-  '.title-ripple::after',
-  ...OUTSIDE_CANVAS.map((row) => row.selector),
-] as const;
+ *  (once) and the one box outside it. `.title-ripple::after` is a 46 px decoration under the
+ *  cover title, not a text box. */
+const CENTRED = [CANVAS, '.title-ripple::after', ...OUTSIDE_CANVAS.map((row) => row.selector)] as const;
 
 /** What may legitimately narrow a `ch` line: one cap, or one against the parent's width. A
  *  `percentage`/`none` cap is a media cap too (`img { max-width: 100% }`), never a page width. */

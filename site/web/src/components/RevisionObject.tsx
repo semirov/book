@@ -1,11 +1,12 @@
-import type { ChangeDto, CommentDto } from '@book/shared';
+import { changeHref, type ChangeDto, type CommentDto } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import { getChange } from '../api.ts';
+import { loadChange } from '../lib/changeCache.ts';
 import { reachCopy } from '../lib/changeStatus.ts';
+import { plainChangeClick } from '../lib/changeDoor.ts';
+import { waveCopy, waveOf } from '../lib/changeWave.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { filingInk, filingNumber } from '../lib/filings.ts';
-import { focusHash, waveCopy, waveOf } from '../lib/focus.ts';
 import { filingMarginalia, revisionOf } from '../lib/marginalia.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 
@@ -28,21 +29,6 @@ import { scheduleMarginPass } from '../lib/marginPass.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
-
-/** The opened record's change, fetched once per id for the life of the page. */
-const changes = new Map<string, ChangeDto | null>();
-
-async function loadChange(id: string): Promise<ChangeDto | null> {
-  const known = changes.get(id);
-  if (known !== undefined) return known;
-  try {
-    const change = await getChange(id);
-    changes.set(id, change);
-    return change;
-  } catch {
-    return null; // not cached: a later open may reach the card again
-  }
-}
 
 export function RevisionObject({
   comment,
@@ -84,9 +70,11 @@ export function RevisionObject({
   useEffect(() => {
     if (comment.changeId === null) return;
     let alive = true;
-    void loadChange(comment.changeId).then((loaded) => {
-      if (alive) setChange(loaded);
-    });
+    void loadChange(comment.changeId)
+      .then((loaded) => {
+        if (alive) setChange(loaded);
+      })
+      .catch(() => undefined);
     return () => {
       alive = false;
     };
@@ -151,8 +139,12 @@ export function RevisionObject({
       ) : null}
       {comment.body.length === 0 ? null : <span className="revision-body">{comment.body}</span>}
       {comment.changeId === null ? null : (
-        <a className="revision-door" href={focusHash(comment.changeId)}>
-          прицел →
+        <a
+          className="revision-door"
+          href={changeHref(comment.changeId)}
+          onClick={(event) => plainChangeClick(event, comment.changeId as string)}
+        >
+          правка →
         </a>
       )}
     </span>

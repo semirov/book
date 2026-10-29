@@ -209,7 +209,7 @@
 .comment-kind {
   color: var(--ink-2);
 }
-/* BOOK-137 — the entry's one attempt number and its one `прицел`, quiet, under the state
+/* BOOK-137 — the entry's one attempt number and its one change door, quiet, under the state
    line: the record's own reference, never a second row. */
 .comment-attempt {
   display: flex;

@@ -35,7 +35,7 @@ function record(hseq: number, at: string): HistoryRecordDto {
     outcome: 'applied',
     reason: null,
     changeId: 'chg_9',
-    recordHref: '#правка-chg_9',
+    recordHref: '?change=chg_9',
     span: null,
   };
 }

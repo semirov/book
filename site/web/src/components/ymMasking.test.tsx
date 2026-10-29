@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Authors } from './Authors.tsx';
-import { ChangeCard } from './ChangeCard.tsx';
+import { ChangeSection } from './ChangeSection.tsx';
 import { Chronicle } from './Chronicle.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { MarginNote } from './MarginNote.tsx';
@@ -158,7 +158,7 @@ const RECORD: HistoryRecordDto = {
   outcome: 'applied',
   reason: null,
   changeId: 'chg_1',
-  recordHref: '#правка-chg_1',
+  recordHref: '?change=chg_1',
   span: null,
 };
 
@@ -201,10 +201,9 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expect(html).toContain('own-trace ym-disable-clickmap');
   });
 
-  it('masks the change card: the intent and the reader it came from', () => {
-    const html = renderToStaticMarkup(<ChangeCard change={CHANGE} onClose={() => undefined} />);
-    expectMasked(html, SENTINEL.intent, '.change-card');
-    expectMasked(html, `из замечания ${SENTINEL.name}`, '.change-card');
+  it('masks the record’s change section: the filing’s quote and the author’s words', () => {
+    const html = renderToStaticMarkup(<ChangeSection change={CHANGE} before={SENTINEL.quote} after={null} />);
+    expectMasked(html, SENTINEL.quote, '.rec-change');
   });
 
   it('masks the filing panel: the author, the quote and the body', () => {
@@ -248,7 +247,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expect(row).not.toContain(SENTINEL.name);
     // BOOK-DOC-50 dates the label, so the accessible name opens with the record's own moment.
     expect(row).toContain(
-      `aria-label="25.10.2026${MIDDOT}15:05, глава 8, правка читателя — открыть прицел правки"`,
+      `aria-label="25.10.2026${MIDDOT}15:05, глава 8, правка читателя — открыть правку"`,
     );
   });
 

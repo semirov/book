@@ -271,7 +271,7 @@
 .revision-row {
   display: block;
 }
-/* The label/value pair is `.change-facts`' stacked form; the element is a span because the
+/* The label/value pair is the record's stacked form (`.rec-change-row`); the element is a span because the
    object opens inside a paragraph, where a `dl` would not be phrasing content. */
 .revision-label {
   display: block;

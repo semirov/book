@@ -126,6 +126,30 @@ describe('the deleted floating layer', () => {
   });
 });
 
+describe('the change is a section, not a sheet', () => {
+  it('has no `.change-card` rule anywhere, and none of them is fixed', () => {
+    const all = Object.values(sheets).join('\n');
+    // The card was deleted with its stylesheet block; a quiet return of the selector is the
+    // failure. If it ever comes back, this is the rule that forbids the fixed sheet.
+    expect(all).not.toContain('.change-card');
+    const fixed = Object.entries(sheets)
+      .flatMap(([file, text]) => rules(text).map(([selector, body]) => ({ file, selector, body })))
+      .filter(({ selector, body }) => selector.includes('change') && /position:\s*fixed/u.test(body));
+    expect(fixed).toEqual([]);
+  });
+
+  it('keeps the change rows in the record’s flow: no position, no overflow, no height cap', () => {
+    const change = firstDeclarations(Object.values(sheets).join('\n'), '.rec-change');
+    expect(change, 'the section is styled').not.toBe('');
+    expect(change).not.toMatch(/position\s*:/u);
+    expect(change).not.toContain('overflow');
+    expect(change).not.toContain('max-height');
+    // A label sits above its value: stacked, never a mono label beside a serif sentence.
+    expect(firstDeclarations(Object.values(sheets).join('\n'), '.rec-change-label')).toContain('display: block');
+    expect(firstDeclarations(Object.values(sheets).join('\n'), '.rec-change-quote')).toContain('display: block');
+  });
+});
+
 describe('the prose owns its tap', () => {
   it('declares `touch-action: manipulation`, so a second tap is a toggle and never a zoom', () => {
     expect(firstDeclarations(book, '.p')).toContain('touch-action: manipulation');

@@ -10,7 +10,7 @@ import { closeOverlays } from './overlays.ts';
 /**
  * BOOK-111 (owner, 2026-10-27) — `closeOverlays` is the one act that clears the page.
  *
- * Two half-written surfaces must never coexist, and the прицел is a mode of the same page:
+ * Two half-written surfaces must never coexist, and the record is a mode of the same page:
  * entering it drops the seam, the panel and the record in one call.
  */
 
@@ -52,12 +52,12 @@ afterEach(() => {
   closeOverlays();
 });
 
-describe('entering the прицел closes every overlay', () => {
+describe('entering the record closes every overlay', () => {
   it('drops the seam, the panel and the revision object together', () => {
     openSeam({ chapter: 8, blockId: 'ch08#aa11bb22', key: 'ch8:text', anchor, origin: null });
     // The panel came from the strip, so the strip legitimately stands for it (BOOK-111 «two
     // popovers»: the strip is the panel's collapsed origin, not a second surface). `closeOverlays`
-    // still has to clear both — entering the прицел leaves no surface behind.
+    // still has to clear both — entering the record leaves no surface behind.
     showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment(), origin: null, rect, fromSeam: true });
     expect(currentSeam()).not.toBeNull();
     expect(currentFiling()).not.toBeNull();

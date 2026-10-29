@@ -1,15 +1,17 @@
-import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
+import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
 import { FRAME_WARNING } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { track } from '../lib/analytics.ts';
 import { holdAnchor } from '../lib/anchorHold.ts';
+import { useChangeRead } from '../lib/changeCache.ts';
+import { changeBefore } from '../lib/changeView.ts';
 import { emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingNumber, isAlive, sortFilings } from '../lib/filings.ts';
 import { offsetTopOfPage } from '../lib/headerOffset.ts';
 import { keepPlace } from '../lib/keepPlace.ts';
 import { filingConsequence } from '../lib/marginalia.ts';
-import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
+import { useChainRead } from '../lib/paragraphChainCache.ts';
 import {
   countOf,
   handOf,
@@ -21,21 +23,15 @@ import {
   type RecordState,
 } from '../lib/recState.ts';
 import { seamKey, type SeamAnchor } from '../lib/seam.ts';
+import { RecordChangeSection } from './ChangeSection.tsx';
 import { InterventionForm } from './InterventionForm.tsx';
 import { ExistingFilingNotice, FilingBody, QuoteBody, RowsList, SectionHeader } from './RecordParts.tsx';
 
 /**
  * BOOK-128 comments #3863 / #3862 — **the sentence's record**: one block, in the flow, after
- * the paragraph.
- *
- * Order: the sentence quoted (the touched word underlined inside it) → the hand and its moment
- * → the head row (state word · `вмешаться` · one ✕) → `замечания N` (open, the reader's own
- * first) → `история N` (closed) → `связи N` (not rendered while the ledger has no route). One
- * section's body is open at a time; the form, the receipt and a filing read in full are states
- * of the same body, never a second surface.
- *
- * Geometry is `record.css` and nothing here measures the design: the block grows with its
- * content, never scrolls, and the page's tail carries what stands below it.
+ * the paragraph. Order: the sentence quoted → its hand and moment → the head row (state word ·
+ * `вмешаться` · one ✕) → `замечания N` → `правка 014` → `история N`. One section body is open
+ * at a time; the form, the receipt and a filing read in full are states of that body.
  */
 
 export type RecordProps = {
@@ -58,6 +54,13 @@ export type RecordProps = {
   composer: ComposerInfo;
   viewer: ViewerDto;
   history: boolean;
+  /**
+   * The change the record was opened for (a `?change=` link, a thread's «правка →»). The
+   * `правка` section is expanded on mount and the record reads the change itself.
+   */
+  changeId?: string | null;
+  /** The filing's stored quote — the sentence as the change found it. */
+  changeQuote?: string | null;
   onPosted: (comment: CommentDto) => void;
   onClose: () => void;
   onReanchor?: (draft: SeamDraft) => void;
@@ -70,7 +73,7 @@ function reduceMotion(): boolean {
 }
 
 type Body = 'list' | 'form' | 'notice' | 'receipt' | 'filing';
-type Section = 'interventions' | 'history';
+type Section = 'interventions' | 'change' | 'history';
 
 export function Record({
   entry,
@@ -87,6 +90,8 @@ export function Record({
   composer,
   viewer,
   history,
+  changeId = null,
+  changeQuote = null,
   onPosted,
   onClose,
   onReanchor,
@@ -98,39 +103,22 @@ export function Record({
       emptyDraft({ chapter: entry.n, blockId, sentence: anchor?.quote ?? '', baseRev, blockIndex }),
   );
   const [body, setBody] = useState<Body>('list');
-  const [section, setSection] = useState<Section | null>('interventions');
+  const [section, setSection] = useState<Section | null>(changeId === null ? 'interventions' : 'change');
+  const changeRead = useChangeRead(changeId, section === 'change');
+  const change = changeRead.change;
   const [lifted, setLifted] = useState(false);
   const [openFiling, setOpenFiling] = useState<CommentDto | null>(null);
   const [receipt, setReceipt] = useState<CommentDto | null>(null);
   const [phase, setPhase] = useState<'enter' | 'open' | 'closing'>('enter');
-  const [chain, setChain] = useState<ParagraphChainDto | null>(() => {
-    const memo = knownParagraphChain(blockId);
-    return memo.known ? memo.chain : null;
-  });
-  const [chainSettled, setChainSettled] = useState(() => knownParagraphChain(blockId).known);
-  const [chainFailed, setChainFailed] = useState(false);
+  const { chain, settled: chainSettled, failed: chainFailed } = useChainRead(blockId);
   const [marker, setMarker] = useState(false);
   const closing = useRef(false);
   const releaseAnchor = useRef<(() => void) | null>(null);
   const closingTimer = useRef<number | null>(null);
   const settledScroll = useRef(false);
-  /** The head row and the sheet: the stable places `keepPlace` measures, and the CTA's focus. */
   const headRef = useRef<HTMLDivElement>(null);
   const ctaRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (knownParagraphChain(blockId).known) return;
-    void loadParagraphChain(blockId)
-      .then((loaded) => {
-        setChain(loaded);
-        setChainSettled(true);
-      })
-      .catch(() => {
-        setChainFailed(true);
-        setChainSettled(true);
-      });
-  }, [blockId]);
 
   // The reader's line is taken before the height arrives and put back after it (`anchorHold`).
   useLayoutEffect(() => {
@@ -428,7 +416,7 @@ export function Record({
                   });
                 }}
               />
-            ) : state.empty ? (
+            ) : state.empty && changeId === null ? (
               <p className="rec-empty">{state.line}</p>
             ) : (
               <div className="rec-sections">
@@ -462,6 +450,17 @@ export function Record({
                     ) : null}
                   </>
                 ) : null}
+                {/* The change the record was opened for: the numeral is the header's value,
+                    and the section is the change's whole content — there is no sheet behind it. */}
+                {changeId === null ? null : (
+                  <RecordChangeSection
+                    open={section === 'change'}
+                    read={changeRead}
+                    before={change === null ? null : (changeBefore(change, sorted) ?? changeQuote)}
+                    after={quote === '' ? null : quote}
+                    onPress={(control) => toggleSection('change', control)}
+                  />
+                )}
                 {history && historyList.length > 0 ? (
                   <>
                     <SectionHeader

@@ -262,7 +262,7 @@ export function threadFilings(comments: readonly CommentDto[]): CommentDto[] {
 
 /** The number an entry prints for a change: `14` → `014` (§DESIGN 7.12). */
 export type FilingAttempt = {
-  /** The change the entry's `прицел` link opens. */
+  /** The change the entry's «правка →» door opens. */
   id: string;
   /** The attempt's own number (`001`), or null when the page's window does not carry it. */
   number: string | null;
@@ -308,7 +308,7 @@ export function attemptsOf(changes: readonly ChangeSummaryDto[], commentId: stri
     .sort((left, right) => left.seq - right.seq);
 }
 
-/** The latest attempt — the one number and the one `прицел` an entry carries. */
+/** The latest attempt — the one number and the one change door an entry carries. */
 export function filingAttempt(
   comment: Pick<CommentDto, 'id' | 'changeId'>,
   changes: readonly ChangeSummaryDto[] = [],

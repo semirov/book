@@ -1,19 +1,16 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, ChangeDto, CommentDto } from '@book/shared';
-import { act, useCallback, type ReactNode } from 'react';
+import type { CatalogEntry, CommentDto } from '@book/shared';
+import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { closeOverlays } from '../lib/overlays.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
 import { hideRevision } from '../lib/useRevision.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
-import { useFocusMode } from '../useFocus.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
-import { FocusView } from './FocusView.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
@@ -21,18 +18,17 @@ import { ProseParagraph } from './ProseParagraph.tsx';
  *
  * This file enumerates the page's surface combinations rather than one feature: the strip, the
  * strip with its form, the strip with its form under a word's panel or under the filing its own
- * refusal names, the same three on an empty chapter's premise, the strip under a card, the
- * revision object and the прицел. Each one may show exactly one floating frame and exactly one
- * close, and no two close-carrying frames may stand together — the owner's screenshot was two
- * of them.
+ * refusal names, the same three on an empty chapter's premise, the strip under a card and the
+ * revision object. Each one may show exactly one floating frame and exactly one close, and no
+ * two close-carrying frames may stand together — the owner's screenshot was two of them.
  *
- * Every combination is mounted for real (no store poked from the test): the прицел is entered
- * through the hash and the app's own `enterFocus`, and each close is asserted by where focus
- * lands — the door, the strip's trigger or nothing at all — not only by what the DOM holds.
+ * Every combination is mounted for real (no store poked from the test), and each close is
+ * asserted by where focus lands — the door, the strip's trigger or nothing at all — not only by
+ * what the DOM holds.
  *
- * The прицел is not a floating layer and the revision object is an inline margin object, so the
- * prescribed selector (`.filing-panel, [data-open="true"]`) counts 0 for them on purpose: the one
- * frame is asserted by its own class in those cases.
+ * The revision object is an inline margin object, so the prescribed selector
+ * (`.filing-panel, [data-open="true"]`) counts 0 for it on purpose: the one frame is asserted by
+ * its own class in that case.
  *
  * BOOK-128 comment #3815 — the word's record and the phrase's facts are **marginalia** now
  * (`ProvBlock` under the strip's row, `SentenceBlock` beside the phrase): they carry no close, no
@@ -61,7 +57,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 /** The two questions the enumeration asks of the DOM. */
 const FLOATING = '.filing-panel, [data-open="true"]';
-const CLOSES = '.seam-close, .prov-close, .filing-close, .revision-close, .focus-exit';
+const CLOSES = '.seam-close, .prov-close, .filing-close, .revision-close';
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
@@ -86,36 +82,6 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     ...overrides,
   };
 }
-
-/** A dropped change: the settled прицел prints its sheet and fetches nothing. */
-const CHANGE: ChangeDto = {
-  premiseLanded: false,
-  id: 'chg_1',
-  seq: 14,
-  kind: 'accepted_comment',
-  interventionKind: null,
-  chapter: 8,
-  intent: 'в абзаце дважды «слово» — оставить одно упоминание',
-  premise: false,
-  source: { commentId: null, author: null },
-  base: { rev: 3 },
-  scopeHint: 'phrase',
-  status: 'void',
-  outcome: 'dropped',
-  reason: 'в главе уже одно упоминание — второе убрано',
-  position: null,
-  relevance: null,
-  cascade: null,
-  modes: [],
-  steps: [],
-  appliedRevs: [],
-  cost: null,
-  scienceCheck: null,
-  history: null,
-  enqueuedAt: '2026-10-25T11:59:00Z',
-  startedAt: '2026-10-25T12:00:00Z',
-  decidedAt: '2026-10-25T12:05:00Z',
-};
 
 let root: Root | null = null;
 let container: HTMLDivElement;
@@ -267,27 +233,6 @@ function refusing(dto: CommentDto): void {
   );
 }
 
-/**
- * The app's own door into the прицел: `App.tsx` hands `enterFocus` (`card.close()` +
- * `closeOverlays()`) to `useFocusMode`, so entering the mode clears every overlay before the
- * lit sheet is drawn. The enumeration enters it the same way — the hash, not a test shortcut.
- */
-function FocusDoor() {
-  const enterFocus = useCallback(() => closeOverlays(), []);
-  const focus = useFocusMode(enterFocus);
-  return focus.id === null ? null : (
-    <FocusView
-      change={focus.change}
-      impact={focus.impact}
-      missing={focus.missing}
-      ribbon={null}
-      revisions={{}}
-      onClose={focus.close}
-      live
-    />
-  );
-}
-
 /** One floating frame (or none, where the frame is inline) and exactly one close. */
 function expectOneFrame(expected: { floating: number; close: string; frame?: string }): void {
   expect(document.querySelectorAll(FLOATING).length, 'floating frames').toBe(expected.floating);
@@ -335,39 +280,6 @@ describe('one close on screen for every surface combination', () => {
     expect(document.querySelector('.prov-block')).toBeNull();
     expect(document.querySelector('.seam')).toBeNull();
     expectOneFrame({ floating: 0, close: 'revision-close', frame: '.revision' });
-    await restart();
-
-    // 6 — the прицел: a mode of the same page, entered exactly as the app enters it (§11.9).
-    // The app's `enterFocus` clears every overlay; the sheet's «выйти» is the only close, and
-    // when it goes the strip behind is not resurrected.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input) === `/api/changes/${CHANGE.id}`) {
-          return new Response(JSON.stringify(CHANGE), { status: 200, headers: { 'content-type': 'application/json' } });
-        }
-        return new Response('{}', { status: 404 });
-      }),
-    );
-    await mount([comment()], <FocusDoor />);
-    await click('.seam-filing');
-    expect(document.querySelector('.filing-panel')).not.toBeNull();
-    await act(async () => {
-      window.location.hash = '#правка-chg_1';
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-      // jsdom queues its own `hashchange` for the same assignment: let it land inside this act.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(document.querySelector('.focus-n')?.textContent, 'the sheet loaded the change').toBe('правка 014');
-    expect(document.querySelector('.seam'), 'entering the прицел closes the strip').toBeNull();
-    expect(document.querySelector('.filing-panel'), 'and the panel under it').toBeNull();
-    expectOneFrame({ floating: 0, close: 'focus-exit', frame: '.focus' });
-    await click('.focus-exit');
-    expect(document.querySelector('.focus')).toBeNull();
-    expect(document.querySelector('.seam'), 'the strip does not resurrect').toBeNull();
-    // The sheet's exit hands nothing to a strip: the page behind is clean, and no focus was
-    // left on a control that no longer exists.
-    expect(document.activeElement).toBe(document.body);
     await restart();
 
     // 7 — the strip with its form under the word's record: two half-written surfaces never

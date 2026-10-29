@@ -28,7 +28,7 @@ function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecordDto {
     outcome: 'applied',
     reason: null,
     changeId: 'chg_7',
-    recordHref: '#правка-chg_7',
+    recordHref: '?change=chg_7',
     span: null,
     ...overrides,
   };

@@ -108,7 +108,7 @@ describe('the record’s one id', () => {
   });
 
   it('is not the change card’s link and not a malformed key', () => {
-    expect(parsePassRecordHash('#правка-chg_9')).toBeNull();
+    expect(parsePassRecordHash('#чужое-chg_9')).toBeNull();
     expect(parsePassRecordHash('#проход-')).toBeNull();
     expect(parsePassRecordHash('#проход-7-')).toBeNull();
     expect(parsePassRecordHash('chg_9')).toBeNull();

@@ -1,16 +1,8 @@
-import type {
-  BookCostDto,
-  CatalogEntry,
-  ChangeDto,
-  FrontDto,
-  StateSnapshot,
-  ViewerDto,
-} from '@book/shared';
+import type { BookCostDto, CatalogEntry, FrontDto, StateSnapshot, ViewerDto } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { PassRecordSession } from '../lib/usePassRecord.ts';
 import { CapacityPlate } from './CapacityPlate.tsx';
-import { ChangeCard } from './ChangeCard.tsx';
 import { Colophon } from './Colophon.tsx';
 import { ConsentBanner } from './ConsentBanner.tsx';
 import { Header } from './Header.tsx';
@@ -39,14 +31,12 @@ export type PassRecordPageProps = {
     capacity: boolean;
     live: boolean;
   };
-  /** The change the header's ribbon opened, if any; the card is the page's only overlay here. */
-  card: ChangeDto | null;
-  onCloseCard: () => void;
+  /** The page's change door: the ribbon's marker hands over to the book's record. */
   onOpenChange: (changeId: string) => void;
   onOpenChapter: (n: number) => void;
 };
 
-export function PassRecordPage({ record, chrome, card, onCloseCard, onOpenChange, onOpenChapter }: PassRecordPageProps) {
+export function PassRecordPage({ record, chrome, onOpenChange, onOpenChapter }: PassRecordPageProps) {
   return (
     <>
       <Header
@@ -68,7 +58,6 @@ export function PassRecordPage({ record, chrome, card, onCloseCard, onOpenChange
         exportBytes={chrome.exportBytes}
       />
       <CapacityPlate active={chrome.capacity} />
-      {card === null ? null : <ChangeCard change={card} onClose={onCloseCard} onOpenChapter={onOpenChapter} />}
     </>
   );
 }

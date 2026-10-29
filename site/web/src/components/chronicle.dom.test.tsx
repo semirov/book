@@ -43,7 +43,7 @@ function record(hseq: number, at: string, seq: number): HistoryRecordDto {
     outcome: 'applied',
     reason: null,
     changeId: id,
-    recordHref: `#правка-${id}`,
+    recordHref: `?change=${id}`,
     span: null,
   };
 }

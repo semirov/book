@@ -211,11 +211,11 @@ describe('the revision object of a landed change', () => {
     expect(text()).not.toContain('стало');
   });
 
-  it('opens the record through the existing прицел link', async () => {
+  it('opens the record through the existing правка link', async () => {
     await mount(comment());
     const door = container.querySelector<HTMLAnchorElement>('.revision-door');
-    expect(door?.textContent).toContain('прицел →');
-    expect(door?.getAttribute('href')).toBe('#правка-chg_1');
+    expect(door?.textContent).toContain('правка →');
+    expect(door?.getAttribute('href')).toBe('?change=chg_1');
   });
 
   it('is a non-modal dialog, focusable, and takes focus on open', async () => {
@@ -258,7 +258,7 @@ describe('the revision object of a landed change', () => {
     expect(text()).not.toContain('волна');
     expect(text()).not.toContain('дошло до глав');
     // The door is still the record's own id, not a fabricated card.
-    expect(container.querySelector('.revision-door')?.getAttribute('href')).toBe('#правка-chg_missing');
+    expect(container.querySelector('.revision-door')?.getAttribute('href')).toBe('?change=chg_missing');
   });
 });
 

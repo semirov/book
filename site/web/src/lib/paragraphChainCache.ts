@@ -1,4 +1,5 @@
 import type { ParagraphChainDto } from '@book/shared';
+import { useEffect, useState } from 'react';
 
 import { getHistoryParagraph } from '../api.ts';
 
@@ -44,4 +45,38 @@ export function loadParagraphChain(blockId: string): Promise<ParagraphChainDto |
 export function resetParagraphChainCache(): void {
   answers.clear();
   inflight.clear();
+}
+
+/**
+ * The block's chain as the record reads it: a memo first, then one request, and the two
+ * facts the block waits for — `settled` (an answer or a failure) and `failed` (a failure).
+ */
+export function useChainRead(blockId: string): { chain: ParagraphChainDto | null; settled: boolean; failed: boolean } {
+  const [chain, setChain] = useState<ParagraphChainDto | null>(() => {
+    const memo = knownParagraphChain(blockId);
+    return memo.known ? memo.chain : null;
+  });
+  const [settled, setSettled] = useState(() => knownParagraphChain(blockId).known);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (knownParagraphChain(blockId).known) return;
+    let cancelled = false;
+    void loadParagraphChain(blockId)
+      .then((loaded) => {
+        if (cancelled) return;
+        setChain(loaded);
+        setSettled(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFailed(true);
+        setSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [blockId]);
+
+  return { chain, settled, failed };
 }

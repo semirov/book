@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { useEffect, type ReactNode } from 'react';
 
 import { Authors } from '../src/components/Authors.tsx';
-import { ChangeCard } from '../src/components/ChangeCard.tsx';
+import { ChangeSection } from '../src/components/ChangeSection.tsx';
 import { ChapterHeader } from '../src/components/ChapterHeader.tsx';
 import { Colophon } from '../src/components/Colophon.tsx';
 import { Discussion } from '../src/components/Discussion.tsx';
@@ -73,7 +73,6 @@ import '../src/styles/capacity.css';
 import '../src/styles/cascade.css';
 import '../src/styles/ribbon.css';
 import '../src/styles/chronicle.css';
-import '../src/styles/focus.css';
 import '../src/styles/seam.css';
 import '../src/styles/pass-live.css';
 import '../src/styles/pass-strip.css';
@@ -83,6 +82,7 @@ import '../src/styles/seam-form.css';
 import '../src/styles/marginalia.css';
 import '../src/styles/reader.css';
 import '../src/styles/record.css';
+import '../src/styles/record-change.css';
 import '../src/styles/foot-jumps.css';
 import '../src/styles/first-load.css';
 
@@ -211,8 +211,8 @@ function Gallery() {
       <Line id=".pass-strip-head / .pass-row-line">
         <PassStrip chapter={1} events={PASS_EVENTS} blocks={[{ id: 'ch01#aa11bb22' }]} blockId="ch01#aa11bb22" now={FIXED_NOW} onClose={noop} />
       </Line>
-      <Line id=".change-card-h / .change-facts div / .change-steps li / .change-foot">
-        <ChangeCard change={CHANGE} onClose={noop} />
+      <Line id=".rec-change-row / .rec-change-facts / .rec-change-step">
+        <ChangeSection change={CHANGE} before="была одна лампа" after="лампа погасла" />
       </Line>
       <Line id=".premise-row / .premise-meta">
         <PremiseRow row={PREMISE} onOpen={noop} onRevise={noop} />

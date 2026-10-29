@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * BOOK-63 — a chapter deep link opens once and reports only the chapter number.
  *
- * `#ch-12` is the element id the chapter already has; `#правка-…`, a typo and a number
+ * `#ch-12` is the element id the chapter already has; `?change=…` is another surface, and a typo or a number
  * outside the book open nothing and report nothing.
  *
  * BOOK-168 — a copied *place* names the paragraph (`#ch-3-b12`), and the address bar can change

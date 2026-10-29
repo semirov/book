@@ -22,9 +22,9 @@
  */
 
 import {
-  CHANGE_RECORD_PREFIX,
   PASS_RECORD_PREFIX,
   TOTAL_CHAPTERS,
+  changeHref,
   passEntryId,
   readerReason,
   type ChangeOutcome,
@@ -220,8 +220,10 @@ function passSpan(db: Db, changeId: string | null, own: string | null): HistoryR
  */
 function identityOf(row: RecordRow): { id: string; recordHref: string } {
   if (row.id !== null) {
-    const prefix = row.cause === 'reader' ? CHANGE_RECORD_PREFIX : PASS_RECORD_PREFIX;
-    return { id: row.id, recordHref: `#${prefix}${row.id}` };
+    // A reader's change is a section of the record at the sentence it touched, so its door is
+    // the query the page reads; a pass keeps its own record page (`#проход-`).
+    if (row.cause === 'reader') return { id: row.id, recordHref: changeHref(row.id) };
+    return { id: row.id, recordHref: `#${PASS_RECORD_PREFIX}${row.id}` };
   }
   const passId = row.pass_id ?? '';
   return {

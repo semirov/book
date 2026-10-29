@@ -178,7 +178,7 @@ describe('the record is the union of changes and landed passes (the fix)', () =>
       alias: 'Аня',
       cause: 'reader',
       status: 'done',
-      recordHref: `#правка-${seeded.reader}`,
+      recordHref: `?change=${seeded.reader}`,
     });
 
     const machine = byId.get(seeded.machine);

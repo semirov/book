@@ -17,7 +17,6 @@ import '../src/styles/marginalia.css';
 import '../src/styles/reader.css';
 import '../src/styles/record.css';
 import '../src/styles/record-notice.css';
-import '../src/styles/focus.css';
 import '../src/styles/foot-jumps.css';
 
 /**

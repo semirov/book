@@ -193,7 +193,7 @@ function FilingBody({
       {/*
         BOOK-137 — the attempts before the latest one, inside the entry they belong to and
         without a number or a link of their own: the entry's quiet line above the card carries
-        the one number and the one `прицел` of the latest attempt.
+        the one number and the one change door of the latest attempt.
       */}
       {earlierAttempts.length === 0 ? null : (
         <ol className="filing-attempts">

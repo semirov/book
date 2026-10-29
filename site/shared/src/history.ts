@@ -95,10 +95,16 @@ export type HistoryEventDto = {
 export type HistoryRecordCause = 'reader' | 'pass';
 
 /**
- * The one door of a reader's change — the focus view: `#правка-<changeId>`. The web's deep
- * link (`web/src/lib/focus.ts`) reads the same constant, so the row and the door cannot drift.
+ * The one door of a reader's change — the record's `правка` section, selected by
+ * `?change=<changeId>`. The web's deep link reads the same constant, and a change the page
+ * cannot show no longer opens a surface of its own.
  */
-export const CHANGE_RECORD_PREFIX = 'правка-';
+export const CHANGE_QUERY_PARAM = 'change';
+
+/** `?change=<id>` — the address a change's row carries and the page reads on load. */
+export function changeHref(changeId: string): string {
+  return `?${CHANGE_QUERY_PARAM}=${encodeURIComponent(changeId)}`;
+}
 
 /**
  * The one door of a pass: `#проход-<changeId>` when the pass carries a change row, and
@@ -190,7 +196,7 @@ export type HistoryRecordDto = {
   changeId: string | null;
   /**
    * The one way in, built from the same id the record behind the door uses:
-   * `#правка-<changeId>` for a reader's change, `#проход-<changeId>` for a pass that carries a
+   * `?change=<changeId>` for a reader's change, `#проход-<changeId>` for a pass that carries a
    * change row, `#проход-<chapter>-<passId>` for a landed pass that has none.
    */
   recordHref: string;

@@ -7,6 +7,7 @@ import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { FilingPanel } from './FilingPanel.tsx';
+import { ChapterChange } from './ChapterChange.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { Seam } from './Seam.tsx';
 
@@ -129,6 +130,7 @@ export function PremiseEntry({
           }}
         />
       )}
+      <ChapterChange chapter={entry.n} comments={comments} />
       {strip ? (
         <Seam
           entry={entry}

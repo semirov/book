@@ -123,7 +123,7 @@
   color: var(--ink-3);
 }
 /* BOOK-137 — the attempts before the latest one, inside the entry: short lines, no numbers
-   and no links (the entry above the card owns the one number and the one `прицел`). */
+   and no links (the entry above the card owns the one number and the one change door). */
 .filing-attempts {
   margin: 0;
   padding: 0;

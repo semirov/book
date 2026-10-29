@@ -104,7 +104,7 @@ const TIMELINE: HistoryTimelineDto = {
       outcome: 'applied',
       reason: null,
       changeId: 'chg_1',
-      recordHref: '#правка-chg_1',
+      recordHref: '?change=chg_1',
       span: null,
     },
   ],

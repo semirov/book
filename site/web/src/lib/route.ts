@@ -29,7 +29,7 @@ export function staticPageHref(page: StaticPage): string {
 
 /**
  * BOOK-63 — `#ch-12` is the one chapter deep link, and it is the element id the chapter
- * already has. Anything else (`#правка-…`, a typo, a number outside the book) is not a
+ * already has. Anything else (`?change=…` is a query, not a hash) is not a
  * chapter link, and the page must not scroll for it.
  */
 export function chapterFromHash(hash: string, totalChapters: number): number | null {

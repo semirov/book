@@ -143,8 +143,6 @@ describe('the record page', () => {
         <PassRecordPage
           record={{ phase: 'ready', hash: '#проход-chg_gone', key: { kind: 'change', changeId: 'chg_gone' }, view: VIEW }}
           chrome={CHROME}
-          card={null}
-          onCloseCard={() => undefined}
           onOpenChange={() => undefined}
           onOpenChapter={() => undefined}
         />,
@@ -170,8 +168,6 @@ describe('the record page', () => {
         <PassRecordPage
           record={{ phase: 'ready', hash: '#проход-chg_7', key: { kind: 'change', changeId: 'chg_7' }, view: ENDED }}
           chrome={CHROME}
-          card={null}
-          onCloseCard={() => undefined}
           onOpenChange={() => undefined}
           onOpenChapter={onOpenChapter}
         />,

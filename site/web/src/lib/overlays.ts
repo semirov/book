@@ -9,7 +9,7 @@ import './usePassStrip.ts';
 /**
  * BOOK-111 (owner, 2026-10-27) — the page holds one overlay at a time.
  *
- * Entering the прицел is the one act that must clear all three: the seam, the panel and the
+ * Entering the record is the one act that must clear all three: the seam, the panel and the
  * revision object go, so the lit sheet is the only surface and nothing half-written is left
  * behind it. Nothing is destroyed by it — a draft lives in `draft.ts` and is found again when
  * its seam reopens (`BOOK-33`).

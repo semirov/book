@@ -12,7 +12,7 @@ import { Skeleton } from './Skeleton.tsx';
  * `aria-hidden`, empty and inert. Counts and widths come from data attributes only.
  */
 
-const VARIANTS: readonly SkeletonVariant[] = ['chapter', 'register', 'chronicle', 'authors', 'chain', 'sheet'];
+const VARIANTS: readonly SkeletonVariant[] = ['chapter', 'register', 'chronicle', 'authors', 'chain'];
 
 function markup(variant: SkeletonVariant): string {
   return renderToStaticMarkup(<Skeleton variant={variant} />);
@@ -46,7 +46,7 @@ describe('a skeleton is a form with blank fields', () => {
       const html = markup(variant);
       const total = SKELETON_LINES[variant].reduce((sum, lines) => sum + lines, 0);
       expect(html, variant).toContain(`class="skel skel-${variant}"`);
-      expect(html, variant).toContain(`data-${variant === 'chapter' || variant === 'sheet' ? 'lines' : 'rows'}="${total}"`);
+      expect(html, variant).toContain(`data-${variant === 'chapter' ? 'lines' : 'rows'}="${total}"`);
       expect(html, variant).toContain('aria-hidden="true"');
       expect(html, variant).not.toMatch(/style=|tabindex|role=|aria-label|<button|<a /u);
       // Only the «Авторы» share column prints anything, and it prints the honest unknown.
@@ -62,13 +62,5 @@ describe('a skeleton is a form with blank fields', () => {
     expect(markup('authors')).toContain('class="skel-share">—<');
     // The chronicle carries its day label above the rows: the shape of a day, not row 4.
     expect(markup('chronicle')).toContain('skel-day');
-  });
-
-  it('draws the прицел sheet as two paragraphs of two lines', () => {
-    const html = markup('sheet');
-    expect(html).toContain('data-lines="4"');
-    expect(count(html, /<p class="skel-p">/gu)).toBe(2);
-    expect(count(html, /<span class="skel-line"/gu)).toBe(4);
-    expect(text(html)).toBe('');
   });
 });

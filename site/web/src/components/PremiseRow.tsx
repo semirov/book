@@ -1,4 +1,6 @@
-import { focusHash } from '../lib/focus.ts';
+import { changeHref } from '@book/shared';
+
+import { plainChangeClick } from '../lib/changeDoor.ts';
 import type { PremiseRow as PremiseRowData } from '../lib/premise.ts';
 import { ReviseNote } from './ReviseNote.tsx';
 
@@ -23,9 +25,11 @@ import { ReviseNote } from './ReviseNote.tsx';
  * again and is refused (BOOK-111, owner 2026-10-27). The word is the deck's own
  * (`filingMarginalia`), never a label invented here.
  *
- * BOOK-137 — the entry's **one** number and its **one** `прицел` sit on a quiet line under the
- * row, as siblings of the row's button: a link inside the button would fire both acts on one
- * tap, and a second number on the page would be a second entry.
+ * BOOK-137 — the entry's **one** number and its one door («правка →») sit on a quiet line under
+ * the row, as siblings of the row's button: a link inside the button would fire both acts on
+ * one tap, and a second number on the page would be a second entry. The door opens the record
+ * at the change's sentence with the `правка` section expanded — a real `?change=` address that
+ * works on a cold load too.
  */
 export function PremiseRow({
   row,
@@ -75,8 +79,14 @@ export function PremiseRow({
           {row.attempt.number === null ? null : (
             <span className="premise-attempt">{row.attempt.number}</span>
           )}
-          <a className="premise-open" href={focusHash(row.attempt.id)}>
-            прицел →
+          <a
+            className="premise-open"
+            href={changeHref(row.attempt.id)}
+            onClick={(event) => {
+              if (row.attempt !== null) plainChangeClick(event, row.attempt.id);
+            }}
+          >
+            правка →
           </a>
         </p>
       )}

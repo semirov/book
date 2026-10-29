@@ -78,7 +78,7 @@ const ENTRIES: HistoryRecordDto[] = [
     outcome: 'dropped',
     reason: 'текст успел измениться',
     changeId: 'chg_9',
-    recordHref: `#правка-chg_9`,
+    recordHref: `?change=chg_9`,
     span: null,
   },
 ];
@@ -173,14 +173,14 @@ describe('one row per change to the book, whoever caused it', () => {
     expect(rows[2]?.querySelector('.chr-state')?.textContent).toBe('не внесено');
   });
 
-  it('gives each row the id the door uses: #правка- for a reader, #проход- for a pass', async () => {
+  it('gives each row the address the door uses: ?change= for a reader, #проход- for a pass', async () => {
     const container = await mount(page(ENTRIES));
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li.chr-row .chr-change')];
 
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       `#${PASS_RECORD_PREFIX}4-stp_bare`,
       `#${PASS_RECORD_PREFIX}chg_m`,
-      `#правка-chg_9`,
+      `?change=chg_9`,
     ]);
     // The bare pass's door carries its chapter, because the pass id alone cannot be found; the
     // pass with a change row is keyed by that change — exactly the id the entry carries, so row

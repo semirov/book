@@ -12,7 +12,7 @@ import { SeamPanel } from './SeamPanel.tsx';
  *
  * BOOK-137 — the card is where a filing keeps what its one entry does not print: the earlier
  * attempts (`earlierAttempts`, without numbers or links — the entry above the card owns the
- * one number and the one `прицел`) and, for a premise, the change's own intent as the derived
+ * one number and the one change door) and, for a premise, the change's own intent as the derived
  * reading of what was accepted into the basis.
  *
  * `filing-panel ym-hide-content` is the masked root the Webvisor guard (BOOK-77) reads here,

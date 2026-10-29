@@ -354,10 +354,11 @@ describe('the landing never leaves the target under the footer grip', () => {
     document.body.append(gone);
     expect(gripHeight(document)).toBe(0);
 
-    const card = document.createElement('div');
-    card.className = 'change-card';
-    card.getBoundingClientRect = () => rect(0, 120);
-    document.body.append(card);
+    // A change has no band over the bottom edge any more; the notice's ticket still is one.
+    const ticket = document.createElement('div');
+    ticket.className = 'ticket';
+    ticket.getBoundingClientRect = () => rect(0, 120);
+    document.body.append(ticket);
     expect(gripHeight(document)).toBe(120);
   });
   it('clamps at the last scroll of the book and keeps the paragraph above the plate', async () => {

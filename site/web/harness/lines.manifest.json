@@ -25,7 +25,7 @@
     ".past-ch summary",
     ".pass-strip-head / .pass-row-line",
     ".pr-head / .pr-span / .pr-cost / .pr-absent",
-    ".change-card-h / .change-facts div / .change-steps li / .change-foot",
+    ".rec-change-row / .rec-change-facts / .rec-change-step",
     ".premise-row / .premise-meta",
     ".authors-row",
     ".own-decision-meta",

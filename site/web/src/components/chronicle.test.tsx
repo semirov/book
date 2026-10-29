@@ -87,7 +87,7 @@ const ITEMS: HistoryRecordDto[] = [
     outcome: 'applied',
     reason: null,
     changeId: 'chg_9',
-    recordHref: '#правка-chg_9',
+    recordHref: '?change=chg_9',
     span: { before: 'старый фонарь', after: 'новый фонарь' },
   },
   {
@@ -123,7 +123,7 @@ const ITEMS: HistoryRecordDto[] = [
     outcome: null,
     reason: null,
     changeId: 'chg_4',
-    recordHref: '#правка-chg_4',
+    recordHref: '?change=chg_4',
     span: null,
   },
 ];

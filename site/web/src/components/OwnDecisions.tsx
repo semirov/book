@@ -1,7 +1,7 @@
-import type { MyDecisionsDto } from '@book/shared';
+import { changeHref, type MyDecisionsDto } from '@book/shared';
 
+import { plainChangeClick } from '../lib/changeDoor.ts';
 import { commentStamp } from '../lib/commentView.ts';
-import { focusHash } from '../lib/focus.ts';
 import { decisionLine } from '../lib/ownDecisions.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { PlaceLink } from './PlaceLink.tsx';
@@ -56,8 +56,12 @@ export function OwnDecisions({
                 )}
                 <span className="stamp-time">{commentStamp(decision.decidedAt)}</span>
                 {decision.changeId === null ? null : (
-                  <a className="own-decision-open" href={focusHash(decision.changeId)}>
-                    прицел →
+                  <a
+                    className="own-decision-open"
+                    href={changeHref(decision.changeId)}
+                    onClick={(event) => plainChangeClick(event, decision.changeId as string)}
+                  >
+                    правка →
                   </a>
                 )}
               </p>

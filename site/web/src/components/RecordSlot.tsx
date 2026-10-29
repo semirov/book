@@ -2,6 +2,7 @@ import type { CatalogEntry, ComposerInfo, CommentDto, ViewerDto } from '@book/sh
 import type { RefObject } from 'react';
 
 import { closeRecord, recordKey, type OpenRecord } from '../lib/record.ts';
+import { clearChangeParam } from '../lib/changeLink.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 
 import { Record } from './Record.tsx';
@@ -64,10 +65,13 @@ export function RecordSlot({
       composer={composer}
       viewer={viewer}
       history={history}
+      changeId={record.changeId ?? null}
+      changeQuote={record.changeQuote ?? null}
       onPosted={onPosted}
       {...(onReanchor === undefined ? {} : { onReanchor })}
       onClose={() => {
         closeRecord();
+        clearChangeParam();
         // The trigger comes back: the span a touch opened, the `⋯` a keyboard used. The
         // paragraph itself is not a target — a reader is never dropped mid-line.
         const origin = record.origin !== null && record.origin.isConnected ? record.origin : null;
