@@ -22,8 +22,11 @@ import { SITE_ROOT } from '../src/config.ts';
 
 import {
   DATA_ALLOW,
+  DATA_ALLOW_CONTENT,
   DATA_ALLOW_DIRS,
+  VOLUME_MARKER,
   checkDataHome,
+  classifyDataEntry,
   dataHomeProblems,
   readHome,
   type HomeEntry,
@@ -32,6 +35,9 @@ import {
 const DATA = '/data';
 const BOOK = '/repo/manuscript';
 
+/** The marker `server/src/db/boot.ts` writes today, with the schema number this volume carries. */
+const NAMED_MARKER = 'book-volume 1\nschema=28\n';
+
 /** A listing from paths: anything ending in `/` is a directory. */
 function listing(paths: string[]): HomeEntry[] {
   return paths.map((path) =>
@@ -39,12 +45,21 @@ function listing(paths: string[]): HomeEntry[] {
   );
 }
 
-function problems(data: string[], manuscript: string[] = []) {
+/**
+ * Problems over synthetic listings. `marker` is what `readMarker` answers — the named shape by
+ * default, because the listing is not on disk and nothing can be read from `/data`.
+ */
+function problems(
+  data: string[],
+  manuscript: string[] = [],
+  marker: string | null = NAMED_MARKER,
+) {
   return dataHomeProblems({
     dataDir: DATA,
     manuscriptDir: BOOK,
     data: listing(data),
     manuscript: listing(manuscript),
+    readMarker: () => marker,
   });
 }
 
@@ -118,11 +133,15 @@ describe('rule c — the volume is the book and nothing else', () => {
       'admin.token',
       'engine.token',
       'book-before-20261028.db',
+      'book-reset-20261028T120000Z.db',
+      'book-reset-20261028T120000Z-1.db',
       'cover.png',
       'cover.jpg',
       '.book-volume',
       'backups/',
       'backups/pre-v22-20261028T140210Z.db',
+      'backup/',
+      'backup/pre-v21.db',
       'archive/',
       'archive/ch01.md.old',
       'versions/',
@@ -133,6 +152,22 @@ describe('rule c — the volume is the book and nothing else', () => {
       'exchange/feedback/bat_one.jsonl',
     ];
     expect(problems(allowed)).toEqual([]);
+  });
+
+  it('allows the reset’s own copies — `server/src/reset/backup.ts` writes them in the data dir', () => {
+    expect(problems(['book-reset-20261028T120000Z.db'])).toEqual([]);
+    // Outside the volume's shape a `pre-v*.db` is not allowed: the dumps live in `backups/`.
+    expect(problems(['pre-v22-20261028T140210Z.db']).map((problem) => problem.path)).toEqual([
+      `${DATA}/pre-v22-20261028T140210Z.db`,
+    ]);
+  });
+
+  it('refuses `logs/` and `locks/`: the service logs to stdout and locks outside the volume', () => {
+    for (const name of ['logs', 'locks']) {
+      const found = problems([name === 'logs' ? 'logs/' : 'locks/']);
+      expect(found.map((problem) => problem.path), name).toEqual([`${DATA}/${name}`]);
+      expect(found[0]?.code, name).toBe('NOT_ALLOWED');
+    }
   });
 
   it('fails on a single new file, naming it', () => {
@@ -150,9 +185,12 @@ describe('rule c — the volume is the book and nothing else', () => {
     expect(legacy?.reason).toContain('bin/home-migrate.mjs');
   });
 
-  it('fails on a new nested file by the deepest path, and on a stray empty directory', () => {
-    expect(problems(['tmp/a']).map((problem) => problem.path)).toEqual([`${DATA}/tmp/a`]);
-    expect(problems(['tmp/']).map((problem) => problem.path)).toEqual([`${DATA}/tmp`]);
+  it('names the depth-one entry a stray lives in — one line per entry, as the doctor does', () => {
+    // A path below a refused directory is not a second finding: the doctor lists one level and
+    // read-only, so it can only name the entry, and both guards must name the same thing.
+    expect(problems(['tmp/a']).map((problem) => problem.path)).toEqual([`${DATA}/tmp`]);
+    expect(problems(['tmp/a', 'tmp/b']).map((problem) => problem.path)).toEqual([`${DATA}/tmp`]);
+    expect(problems(['tmp']).map((problem) => problem.path)).toEqual([`${DATA}/tmp`]);
   });
 
   it('names a depth-1 directory that holds nothing, and a file no allowed directory contains', () => {
@@ -163,9 +201,8 @@ describe('rule c — the volume is the book and nothing else', () => {
     expect(empty[0]?.path).toBe(`${DATA}/tmp`);
     expect(empty[0]?.message).toContain(`${DATA}/tmp`);
 
-    // A file below the top level is a finding unless an allow-listed directory holds it — and
-    // then the deepest path is what an operator can act on.
-    expect(problems(['nested/deep/x.txt']).map((problem) => problem.path)).toEqual([`${DATA}/nested/deep/x.txt`]);
+    // Anything inside an allow-listed directory is that directory's business.
+    expect(problems(['nested/deep/x.txt']).map((problem) => problem.path)).toEqual([`${DATA}/nested`]);
     expect(problems(['archive/nested/x.txt'])).toEqual([]);
     expect(problems(['index/slices/ch08.json'])).toEqual([]);
   });
@@ -174,10 +211,85 @@ describe('rule c — the volume is the book and nothing else', () => {
     const found = problems(['stray.json']);
     const message = found[0]?.message ?? '';
     for (const entry of DATA_ALLOW) expect(message).toContain(entry.name);
+    for (const entry of DATA_ALLOW_CONTENT) expect(message).toContain(entry.name);
     for (const entry of DATA_ALLOW_DIRS) expect(message).toContain(`${entry.name}/`);
     // Every allowed name carries a reason of its own — an entry without one is a name nobody
     // can defend in a review.
-    for (const entry of [...DATA_ALLOW, ...DATA_ALLOW_DIRS]) expect(entry.reason.length).toBeGreaterThan(10);
+    for (const entry of [...DATA_ALLOW, ...DATA_ALLOW_CONTENT, ...DATA_ALLOW_DIRS]) {
+      expect(entry.reason.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('names both remedies: the entry goes by hand, or the migrate tool when it is the old writer', () => {
+    // `home-migrate` refuses `logs/`, `notes.txt` and the like: promising it for every refused
+    // name sent the operator to a command that answers «nothing to do».
+    const message = problems(['logs/'])[0]?.message ?? '';
+    expect(message).toContain('remove it by hand');
+    expect(message).toContain('bin/home-migrate.mjs --apply once');
+  });
+
+  it('keeps the marker in the list of names without a rule nobody consults', () => {
+    // The marker is judged by its content, so it carries no `match`; the file list has no dead
+    // rule left, and the printed sentence still names every allowed entry.
+    expect(DATA_ALLOW.some((entry) => entry.name === VOLUME_MARKER)).toBe(false);
+    expect(DATA_ALLOW_CONTENT.map((entry) => entry.name)).toEqual([VOLUME_MARKER]);
+    for (const entry of DATA_ALLOW) {
+      expect(entry.match.test(entry.name.replaceAll('*', 'x')), entry.name).toBe(true);
+    }
+  });
+});
+
+describe('classifyDataEntry — the one classifier both guards call', () => {
+  it('allows an allowed file, an allowed directory and a legitimate marker', () => {
+    for (const name of ['book.db', 'admin.token', 'book-reset-20261028T120000Z.db', 'cover.png']) {
+      expect(classifyDataEntry({ name, directory: false, markerContent: null })).toEqual({ ok: true });
+    }
+    expect(classifyDataEntry({ name: 'backups', directory: true, markerContent: null })).toEqual({ ok: true });
+    expect(classifyDataEntry({ name: VOLUME_MARKER, directory: false, markerContent: NAMED_MARKER })).toEqual({ ok: true });
+    expect(classifyDataEntry({ name: VOLUME_MARKER, directory: false, markerContent: '28\n' })).toEqual({ ok: true });
+  });
+
+  it('refuses a marker whose content is not a marker, and a directory of that name', () => {
+    for (const markerContent of ['hello', '', null]) {
+      const verdict = classifyDataEntry({ name: VOLUME_MARKER, directory: false, markerContent });
+      expect(verdict.ok).toBe(false);
+      if (!verdict.ok) expect(verdict.reason).toContain('not a volume marker');
+    }
+    // A directory called `.book-volume` is judged by the directory rules: no content is a marker.
+    const asDir = classifyDataEntry({ name: VOLUME_MARKER, directory: true, markerContent: NAMED_MARKER });
+    expect(asDir.ok).toBe(false);
+  });
+
+  it('refuses a name outside the list, a dropped directory, and a file where a directory may be', () => {
+    expect(classifyDataEntry({ name: 'notes.txt', directory: false, markerContent: null }).ok).toBe(false);
+    expect(classifyDataEntry({ name: 'logs', directory: true, markerContent: null }).ok).toBe(false);
+    expect(classifyDataEntry({ name: 'backups', directory: false, markerContent: null }).ok).toBe(false);
+  });
+});
+
+describe('the marker inside the rule — the defect this fix removes', () => {
+  it('passes a named marker and the live legacy `28\\n`, and an absent marker is no problem', () => {
+    expect(problems(['book.db', '.book-volume'], [], NAMED_MARKER)).toEqual([]);
+    expect(problems(['book.db', '.book-volume'], [], '28\n')).toEqual([]);
+    // No marker at all is the normal state of a volume no boot has touched yet.
+    expect(problems(['book.db'], [], null)).toEqual([]);
+    // A file of that name whose content cannot be read proves nothing, so it is refused.
+    expect(problems(['book.db', '.book-volume'], [], null).map((problem) => problem.path)).toEqual([
+      `${DATA}/.book-volume`,
+    ]);
+  });
+
+  it('refuses a marker that does not name the volume, naming the absolute path', () => {
+    const found = problems(['book.db', '.book-volume'], [], 'hello');
+    expect(found.map((problem) => problem.code)).toEqual(['NOT_ALLOWED']);
+    expect(found[0]?.path).toBe(`${DATA}/.book-volume`);
+    expect(found[0]?.message).toContain(`${DATA}/.book-volume`);
+  });
+
+  it('refuses a directory named `.book-volume`', () => {
+    const found = problems(['.book-volume/'], [], NAMED_MARKER);
+    expect(found.map((problem) => problem.path)).toEqual([`${DATA}/.book-volume`]);
+    expect(found[0]?.code).toBe('NOT_ALLOWED');
   });
 });
 
@@ -198,6 +310,26 @@ describe('the walker and the whole check', () => {
       expect(listingOf.map((entry) => entry.rel)).toEqual(['backups', 'backups/pre-v22.db', 'book.db']);
       const report = checkDataHome({ dataDir: join(root, 'data'), manuscriptDir: join(root, 'manuscript') });
       expect(report).toMatchObject({ ok: true, problems: [] });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the marker from the volume itself: the named and the legacy shape pass, prose is named', () => {
+    const root = tree();
+    try {
+      const marker = join(root, 'data', '.book-volume');
+      const check = () => checkDataHome({ dataDir: join(root, 'data'), manuscriptDir: join(root, 'manuscript') });
+      writeFileSync(marker, 'book-volume 1\nschema=28\n', 'utf8');
+      expect(check().problems).toEqual([]);
+      // The live volume's marker: the schema number alone, as BOOK-187's first image wrote it.
+      writeFileSync(marker, '28\n', 'utf8');
+      expect(check().problems).toEqual([]);
+      writeFileSync(marker, 'not a marker\n', 'utf8');
+      const report = check();
+      expect(report.ok).toBe(false);
+      expect(report.problems.map((problem) => problem.path)).toEqual([marker]);
+      expect(report.problems[0]?.message).toContain(marker);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

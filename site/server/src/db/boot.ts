@@ -25,11 +25,12 @@
  * is no retry loop here and no attempt to heal by deleting data.
  */
 
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
 
+import { isLegacyVolumeMarker, VOLUME_MARKER, volumeMarkerContent } from '../dataHome.ts';
 import { readBuildStamp, type BuildStamp } from '../buildStamp.ts';
 import { databaseFile, openDatabase, type Db } from './db.ts';
 import { migrate } from './migrate.ts';
@@ -39,11 +40,10 @@ import { SCHEMA_VERSION } from './schema.ts';
 /** `/data/backups` — inside the volume, next to the database it copies (ADR-043 G9). */
 export const BACKUPS_DIR = 'backups';
 /**
- * `/data/.book-volume` — the marker the allow-list names (ADR-043 §3 row 12). Its content is the
- * schema version the volume was last booted at, mode 0644: a readable fact that this directory is
- * a book volume and not a mistyped path, never a secret.
+ * `/data/.book-volume` — the marker lives in `dataHome.ts`, with the rules that judge it; it is
+ * re-exported here because the boot is what writes it (ADR-043 §3 row 12).
  */
-export const VOLUME_MARKER = '.book-volume';
+export { VOLUME_MARKER };
 /** How many pre-migration dumps stay in the volume; older ones go, newest kept. */
 export const KEEP_DUMPS = 3;
 
@@ -200,19 +200,46 @@ function writeStamps(
 }
 
 /**
- * `<data>/.book-volume` — the allow-list's «volume marker», written once. Content is the schema
- * version, mode 0644. `wx` means "create, never overwrite": an existing marker is the volume's
- * own record of the boot that made it, and a later boot does not rewrite history.
+ * `<data>/.book-volume` — the marker, in the one shape `dataHome.ts` judges: its name and the
+ * schema the volume is being booted at, mode 0644, never a secret.
+ *
+ * `wx` on create: a marker that already exists is the volume's own record. The **one** exception
+ * is the legacy shape the first image wrote (the schema number alone): it is the same fact before
+ * it carried its name, so it is migrated like the schema it describes — rewritten once, and never
+ * again. Any other content is not ours: an operator's file is left exactly as it is, and the
+ * doctor names it.
  */
 export function writeVolumeMarker(dataDir: string, version: number = SCHEMA_VERSION): void {
   const path = join(dataDir, VOLUME_MARKER);
+  const content = volumeMarkerContent(version);
   try {
-    writeFileSync(path, `${String(version)}\n`, { flag: 'wx', mode: 0o644 });
+    writeFileSync(path, content, { flag: 'wx', mode: 0o644 });
+    return;
   } catch (error) {
     // EEXIST on a *file* is the normal second boot. A directory of that name is not a marker:
     // it is one line in the log, because a volume that grew a `.book-volume/` is worth a look.
     const code = (error as NodeJS.ErrnoException | null)?.code;
-    if (code === 'EEXIST' && statSync(path).isFile()) return;
+    if (code !== 'EEXIST' || !statSync(path).isFile()) throw error;
+  }
+  const existing = readFileSync(path, 'utf8');
+  if (!isLegacyVolumeMarker(existing)) return;
+  // The legacy marker becomes the named shape of this boot. Written to a sibling temp file and
+  // renamed over the marker: a death between the two writes must not leave a `.book-volume` that
+  // is neither shape, and `rename` inside one directory is atomic. A death before the rename
+  // leaves at most `.book-volume.tmp`, which the doctor names. Only a legacy-shaped regular file
+  // is ever replaced — the branch above is the whole permission.
+  const staging = `${path}.tmp`;
+  try {
+    writeFileSync(staging, content, { mode: 0o644 });
+    renameSync(staging, path);
+  } catch (error) {
+    // Clean up only what this function wrote: a directory an operator put at that name is not a
+    // half-written marker, and removing it would destroy the wrong thing.
+    try {
+      if (statSync(staging).isFile()) rmSync(staging, { force: true });
+    } catch {
+      // Nothing staged: the write failed before the file existed.
+    }
     throw error;
   }
 }
