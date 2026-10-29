@@ -419,16 +419,16 @@ describe('loadConfig — mounted secret files (§21.2)', () => {
     expect(config.ipSalt).toBe('inline-salt');
   });
 
-  it('fails on a named file that cannot be read, naming the variable only', () => {
+  it('fails on a named required file that cannot be read, naming the variable only', () => {
     withDir((dir) => {
       const missing = join(dir, 'absent');
       let message = '';
       try {
-        loadConfig({ YANDEX_CLIENT_SECRET_FILE: missing });
+        loadConfig({ SESSION_SECRET_FILE: missing });
       } catch (error) {
         message = error instanceof Error ? error.message : String(error);
       }
-      expect(message).toMatch(/invalid configuration: cannot read YANDEX_CLIENT_SECRET_FILE/u);
+      expect(message).toMatch(/invalid configuration: cannot read SESSION_SECRET_FILE/u);
       // A path is not a secret, but the message stays a name: no value, no path.
       expect(message).not.toContain(missing);
     });

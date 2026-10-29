@@ -91,8 +91,15 @@ services:
       # guard, the backup snapshots and the launchd fallback never see a file that changes.
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
       # Secrets: per-file, 0600 on the host, mode preserved (compose `secrets:` would mount 0444).
+      # BOOK-205: the sign-in pair is mounted here too. Compose cannot make a mount conditional, so on
+      # a host without those two files Docker mounts an empty directory and `configSecrets.ts` reads it
+      # as "sign-in off" — one boot warning per missing file, 503 on `/auth/yandex/start`, the book
+      # still serving. The secrets DIRECTORY is never mounted: that would hand this process the
+      # writer's model key too.
       - ${BOOK_SECRETS_DIR:-./secrets}/session_secret:/run/secrets/session_secret:ro
       - ${BOOK_SECRETS_DIR:-./secrets}/ip_salt:/run/secrets/ip_salt:ro
+      - ${BOOK_SECRETS_DIR:-./secrets}/yandex_client_id:/run/secrets/yandex_client_id:ro
+      - ${BOOK_SECRETS_DIR:-./secrets}/yandex_client_secret:/run/secrets/yandex_client_secret:ro
     environment:
       BOOK_ROLE: site
       NODE_ENV: production
@@ -127,11 +134,13 @@ services:
       IP_SALT_FILE: /run/secrets/ip_salt
       # BOOK-64: no challenge runs, so no captcha secret is mounted.
       CAPTCHA_SECRET_FILE: ""
-      # Sign-in is optional (ADR-021): empty means "no file", and an empty value also stops a host
-      # path from arriving this way. To enable it, mount both 0600 files and point these at
-      # /run/secrets/{yandex_client_id,yandex_client_secret}.
-      YANDEX_CLIENT_ID_FILE: ${BOOK_YANDEX_CLIENT_ID_FILE:-}
-      YANDEX_CLIENT_SECRET_FILE: ${BOOK_YANDEX_CLIENT_SECRET_FILE:-}
+      # Sign-in is optional (ADR-021): the two files are always mounted above and these always name
+      # the mounts, so the pair is "on" exactly when the host carries both files. A missing one is an
+      # empty directory, which the boot reports as "sign-in is off" — one warning per missing file,
+      # and a 503 for the pair — while the book keeps serving. An explicit `${BOOK_*}` still wins
+      # where a rehearsal needs different paths.
+      YANDEX_CLIENT_ID_FILE: ${BOOK_YANDEX_CLIENT_ID_FILE:-/run/secrets/yandex_client_id}
+      YANDEX_CLIENT_SECRET_FILE: ${BOOK_YANDEX_CLIENT_SECRET_FILE:-/run/secrets/yandex_client_secret}
     healthcheck:
       # `ok:true` AND the commit this image carries (read from /app/build-info.json inside the
       # image, not from a runtime env value).
