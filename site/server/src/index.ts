@@ -22,7 +22,7 @@ import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
 import { bootDatabase, bootFailureLine } from './db/boot.ts';
 import { SCHEMA_VERSION } from './db/schema.ts';
 import { listCatalog } from './db/repo/chapters.ts';
-import { EngineBridge } from './engineState/bridge.ts';
+import { createEngineBridge } from './engineState/wiring.ts';
 import { startErosionJob } from './history/erosion.ts';
 import { DecisionsTailer } from './feedback/decisions.ts';
 import { poll as pollTriage } from './feedback/triageApplier.ts';
@@ -104,7 +104,10 @@ async function main(): Promise<void> {
   });
 
   // The engine writes facts into the same database; the bridge narrates them to readers.
-  const bridge = new EngineBridge({
+  // BOOK-220: built from `config`, so the revision snapshots' root and the lane's day bound ride
+  // with it — without the data dir every `chapter:applied` is `patchTruncated` and prints nothing.
+  const bridge = createEngineBridge({
+    config,
     db,
     emit: (type, data) => hub.publish(type, data),
     snapshot: () => state.snapshot(),
