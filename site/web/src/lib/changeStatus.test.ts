@@ -48,10 +48,19 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 }
 
 describe('the thread’s two lines', () => {
-  it('separates the queue promise from the application', () => {
+  it('separates the writer’s lane from the application', () => {
     const lines = changeLines(summary({ status: 'pending', position: 4, outcome: null, chapters: [8] }));
     expect(lines).toMatchObject({ first: 'идёт', tone: 'waiting' });
-    expect(lines.second).toBe('4-я в очереди');
+    expect(lines.second).toBe('в работе: ещё 3 правки перед этой');
+  });
+
+  it('counts what stands before the row in the writer’s work, in the noun it counts', () => {
+    const second = (position: number): string =>
+      changeLines(summary({ status: 'pending', position, outcome: null, chapters: [8] })).second;
+    expect(second(1)).toBe('в работе: эта правка следующая');
+    expect(second(2)).toBe('в работе: ещё одна правка перед этой');
+    expect(second(3)).toBe('в работе: ещё 2 правки перед этой');
+    expect(second(6)).toBe('в работе: ещё 5 правок перед этой');
   });
 
   it('says the chapter being written while processing', () => {

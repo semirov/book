@@ -54,14 +54,14 @@ describe('the six situations', () => {
   it('ждёт — a filing waits, and the line says what the word cannot', () => {
     const result = state({ filings: [filing()] });
     expect(result.word).toBe('ждёт');
-    expect(result.line).toBe('решения ещё нет');
+    expect(result.line).toBe('её ещё не читали');
   });
 
   it('ждёт — the reader’s own filing: possession is a fact on the line, never a word', () => {
     const own = filing({ author: 'Филипп' });
     const result = state({ filings: [own], own: (comment) => comment.author === 'Филипп' });
     expect(result.word).toBe('ждёт');
-    expect(result.line).toBe('ваша — в очереди');
+    expect(result.line).toBe('ваша — её ещё не читали');
   });
 
   it('внесено — the text includes the accepted change, and the line says where it went', () => {
@@ -88,29 +88,29 @@ describe('the six situations', () => {
     expect(result.empty).toBe(true);
   });
 
-  it('the deck’s `идёт` — accepted, and only while the writer is at it', () => {
-    // BOOK-189: the row's word stops at triage; the linked change says whether the writer holds
-    // it now. `pending` waits, `processing` is «идёт» with the one line «пишется».
+  it('the deck’s `пишется` — accepted, and only while the writer is at it', () => {
+    // The accepted row says the writer's lane in its own word: `processing` is «пишется», and
+    // the word is the whole fact — no second line under it.
     const working = state({ filings: [filing({ status: 'accepted', changeStatus: 'processing' })] });
-    expect(working.word).toBe('идёт');
-    expect(working.line).toBe('пишется');
+    expect(working.word).toBe('пишется');
+    expect(working.line).toBeNull();
   });
 
-  it('ждёт — an accepted filing the lane has not reached yet', () => {
+  it('принято — an accepted filing the lane has not reached yet', () => {
     const pending = state({ filings: [filing({ status: 'accepted', changeStatus: 'pending' })] });
-    expect(pending.word).toBe('ждёт');
-    expect(pending.line).toBe('в очереди на запись');
-    // A row written before BOOK-189 carries no field: it is not a queue place either.
+    expect(pending.word).toBe('принято');
+    expect(pending.line).toBe('впишется, когда машина возьмёт главу');
+    // A row written before BOOK-189 carries no field: the lane has not reached it either.
     const legacy = state({ filings: [filing({ status: 'accepted' })] });
-    expect(legacy.word).toBe('ждёт');
-    expect(legacy.line).toBe('в очереди на запись');
-    // The reader's own filing says whose it is, in the same word.
+    expect(legacy.word).toBe('принято');
+    expect(legacy.line).toBe('впишется, когда машина возьмёт главу');
+    // The reader's own filing says the same thing: the sentence is the same for every reader.
     const own = state({ filings: [filing({ status: 'accepted', author: 'Филипп' })], own: (c) => c.author === 'Филипп' });
-    expect(own.word).toBe('ждёт');
-    expect(own.line).toBe('ваша — в очереди');
+    expect(own.word).toBe('принято');
+    expect(own.line).toBe('впишется, когда машина возьмёт главу');
   });
 
-  it('prints the same three words as the thread: внесено · ждёт · отклонено', () => {
+  it('prints the same three words as the thread: внесено · принято · отклонено', () => {
     // BOOK-189 — one fixture, three filings, three words, and the receipt under the landing.
     const rows = [
       filing({ id: 'cmt_a', status: 'applied', applied: { chapter: 67, rev: 4 } }),
@@ -119,7 +119,11 @@ describe('the six situations', () => {
     ];
     const words = rows.map((row) => state({ filings: [row] }));
     expect(words[0]).toMatchObject({ word: 'внесено', line: 'глава 67 · ревизия 4', situation: 'landed' });
-    expect(words[1]).toMatchObject({ word: 'ждёт', line: 'в очереди на запись', situation: 'waiting' });
+    expect(words[1]).toMatchObject({
+      word: 'принято',
+      line: 'впишется, когда машина возьмёт главу',
+      situation: 'waiting',
+    });
     expect(words[2]).toMatchObject({ word: 'отклонено', line: ': вне книги: этот мир не просит чудес', situation: 'refused' });
     expect(JSON.stringify(words[0])).not.toContain('идёт');
   });
@@ -264,6 +268,20 @@ describe('rows', () => {
     expect(row?.facts).toContain('№A7K');
     expect(row?.facts).toContain('ваше');
     expect(row?.own).toBe(true);
+  });
+
+  it('leaves the head filing’s specimen empty, and keeps every other row’s own sentence', () => {
+    // The line above the list already says the head filing's sentence: the row would repeat it.
+    const filings = [
+      filing({ id: 'cmt_head', status: 'accepted', changeStatus: 'pending' }),
+      filing({ id: 'cmt_other', status: 'batched' }),
+    ];
+    const rows = interventionRows({ filings, own: never }, 'cmt_head');
+    expect(rows[0]?.specimen).toBe('');
+    expect(rows[0]?.facts).toContain('принято');
+    expect(rows[1]?.specimen).toBe('читает триаж');
+    // Without the argument every row keeps its own line: the caller names the head.
+    expect(interventionRows({ filings, own: never })[0]?.specimen).toBe('впишется, когда машина возьмёт главу');
   });
 
   it('history rows carry the hand, the change and the honest absence of a pair', () => {

@@ -13,14 +13,12 @@ import { receiptLine } from './terms.ts';
 /**
  * BOOK-90 — marginalia: one vocabulary for the marks in the margin.
  *
- * The book has **six** state words and no seventh: «ждёт» (alive, waiting), «идёт» (alive, in
- * the machinery), «внесено» (landed in the text), «рассмотрено» (BOOK-137: decided as
- * **paperwork** — the record exists, the sentence's letters did not change), «ждёт решения
- * автора» (BOOK-174: the ladder could not place it and the author decides) and «отклонено»
- * (BOOK-189: the filing was refused, and nothing is coming). Every surface that prints a
- * state — the margin note, the phone strip, the filing panel, the thread, the change card's
- * stamp — reads them here, so the same row cannot be «в процессе» in one place and «идёт» in
- * another.
+ * The book has **seven** state words and no eighth: «ждёт» (alive, waiting), «идёт» (alive, in
+ * the machinery), «пишется» (the writer is at this filing), «принято» (in the writer's lane,
+ * not reached yet), «внесено» (landed), «рассмотрено» (BOOK-137: paperwork — the letters did
+ * not change) and «отклонено» (BOOK-189: refused). Every surface that prints a state — the
+ * margin note, the phone strip, the filing panel, the thread, the change card's stamp — reads
+ * them here, so one row cannot say «в процессе» where another says «идёт».
  *
  * «Рассмотрено» is never printed for a filing applied to text, and «внесено» never for one that
  * was not. A refusal is a state of its own — it never waits, never reads as a queue place. There
@@ -30,10 +28,10 @@ import { receiptLine } from './terms.ts';
  * The word alone does not carry the facts: a superseded anchor, a held check and an expired pass
  * are all «ждёт», and the second line (`consequence`) says which one — the deck is vocabulary.
  *
- * The code's comment status `accepted` («принято, правка в очереди») is a place in the writer's
- * work, not a state of its own: it is `идёт` only while the linked change is `processing`, and
- * `ждёт` while the lane has not reached it (BOOK-189). Only `applied` is «внесено»; only
- * `registered` is «рассмотрено»; only `rejected` is «отклонено».
+ * The code's comment status `accepted` is a place in the writer's work, said in its own two
+ * words: «пишется» while the linked change is `processing`, «принято» while the lane has not
+ * reached it. Only `applied` is «внесено»; only `registered` is «рассмотрено»; only `rejected`
+ * is «отклонено».
  *
  * Every terminal word is the **server's** (`server/src/comments/states.ts` derives a filing's
  * status and its sentence once, in one place): this module reads `status`, `reason` and `applied`,
@@ -42,7 +40,8 @@ import { receiptLine } from './terms.ts';
  * the DTO itself names it: the live words `pending`/`processing` (BOOK-189).
  */
 
-export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'refused';
+export type State =
+  'waiting' | 'working' | 'writing' | 'accepted' | 'landed' | 'registered' | 'refused';
 
 /** The deck's one line for a premise that waits for the chapter's first pass (one source). */
 export const PREMISE_PENDING = 'принято в основу, до первой редакции';
@@ -51,6 +50,9 @@ export const PREMISE_PENDING = 'принято в основу, до перво�
 export const STATE_WORDS: Readonly<Record<State, string>> = {
   waiting: 'ждёт',
   working: 'идёт',
+  // `accepted` is the writer's lane: «пишется» while the change is `processing`, «принято» else.
+  writing: 'пишется',
+  accepted: 'принято',
   landed: 'внесено',
   registered: 'рассмотрено',
   // BOOK-189 — a refusal is its own state; `filingMarginalia` heads it with the gate's word.
@@ -104,8 +106,8 @@ export type FilingFacts = Pick<CommentDto, 'status'> & {
    * BOOK-189 — the linked change's own place: the writer has the filing in hand (`processing`)
    * or the lane holds it (`pending`) — the two values the DTO names (a terminal change reaches
    * the page as `status` and `reason`, never as this field). It is the only fact that separates
-   * «идёт» from «ждёт» on an `accepted` row: the row's word alone cannot say whether the writer
-   * is there yet.
+   * «пишется» from «принято» on an `accepted` row: the row's word alone cannot say whether the
+   * writer is there yet.
    */
   changeStatus?: CommentDto['changeStatus'];
   /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
@@ -211,10 +213,10 @@ export function filingState(comment: FilingFacts): State {
     case 'accepted':
       // A receipt on the row is the server's landing fact: the text is in a chapter already.
       if (hasReceipt(comment)) return 'landed';
-      // The row's own word stops at triage: only the live `changeStatus` says whether the writer
-      // is at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
-      // A failed attempt carries no `changeStatus` and waits with the deck's sentence.
-      return comment.changeStatus === 'processing' ? 'working' : 'waiting';
+      // The row's own state is the writer's lane: the linked change says whether the writer is
+      // at this filing now (`processing` → «пишется») or the lane has not reached it («принято»).
+      // A failed attempt carries no `changeStatus` and stays «принято», with the deck's sentence.
+      return comment.changeStatus === 'processing' ? 'writing' : 'accepted';
     default:
       return 'waiting';
   }
@@ -270,17 +272,18 @@ export function filingConsequence(comment: FilingFacts): string {
     case 'delivered':
       return 'читает триаж';
     case 'accepted': {
-      // BOOK-189: one line for each side of the writer's work. «пишется» is the writer at this
-      // filing; «в очереди на запись» is the lane holding it. An `accepted` row carries no queue
-      // word at all — the queue is counted by the writer, never by a comment status.
+      // BOOK-189: one line for each side of the writer's work. «пишется» is the word above — the
+      // writer is at this filing — and «впишется, когда машина возьмёт главу» is the lane holding
+      // it. An `accepted` row carries no queue word at all — the queue is counted by the writer,
+      // never by a comment status.
       //
-      // B1 — a scheduled retry is the frame's own sentence: the row says «ждёт» and repeats
-      // what the server said, and it never claims a queue place for an attempt that failed.
+      // B1 — a scheduled retry is the frame's own sentence: the row keeps its lane's word and
+      // repeats what the server said, and it never claims a queue place for an attempt that failed.
       if (comment.retryAt !== null && comment.retryAt !== undefined) return comment.reason ?? '';
       // A receipt owes the same word-free line an `applied` row prints; no receipt, no line.
       const receipt = landedReceiptLine(comment.applied);
       if (receipt !== null) return receipt;
-      return comment.changeStatus === 'processing' ? 'пишется' : 'в очереди на запись';
+      return comment.changeStatus === 'processing' ? '' : 'впишется, когда машина возьмёт главу';
     }
     case 'applied': {
       // A note moved no text and transferred no right: its terminal stays «замечание сохранено».

@@ -84,10 +84,13 @@ function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 }
 
 describe('the state words', () => {
-  it('are the only vocabulary: ждёт · идёт · внесено · рассмотрено · отклонено', () => {
+  it('are the only vocabulary: ждёт · идёт · пишется · принято · внесено · рассмотрено · отклонено', () => {
     expect(STATE_WORDS).toEqual({
       waiting: 'ждёт',
       working: 'идёт',
+      // `accepted` says the writer's lane in its own two words.
+      writing: 'пишется',
+      accepted: 'принято',
       landed: 'внесено',
       registered: 'рассмотрено',
       // BOOK-189: a refusal is decided too, and it is not a wait.
@@ -100,9 +103,9 @@ describe('the state words', () => {
       ['new', 'ждёт'],
       ['batched', 'идёт'],
       ['delivered', 'идёт'],
-      // BOOK-189: `accepted` is not a state. It is «идёт» only while the writer is at it, and
-      // «ждёт» while the lane has not reached it.
-      ['accepted', 'ждёт'],
+      // `accepted` is the writer's lane: «пишется» while the change is processing, «принято»
+      // while the lane has not reached it.
+      ['accepted', 'принято'],
       ['applied', 'внесено'],
       // BOOK-137: accepted as paperwork — decided, and nothing was written.
       ['registered', 'рассмотрено'],
@@ -118,8 +121,8 @@ describe('the state words', () => {
     ];
     for (const [status, word] of table) expect(filingMarginalia(comment({ status })).word, status).toBe(word);
     // BOOK-189 — `accepted` reads only the two live values the DTO names for `changeStatus`.
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('working');
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('waiting');
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('writing');
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('accepted');
     // BOOK-219 — a receipt on the row is the server's landing fact, ahead of the durable read.
     expect(filingState(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } }))).toBe('landed');
     expect(filingMarginalia(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } })).word).toBe('внесено');
@@ -141,10 +144,11 @@ describe('the state words', () => {
     const landed = filingMarginalia(comment({ status: 'applied', applied: { chapter: 8, rev: 4 } }));
     expect(landed.word).toBe('внесено');
     expect(landed.consequence).toBe('глава 8 · ревизия 4');
-    // The live words stay live: the writer is at it, or the lane holds it.
-    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('пишется');
+    // The live words stay live: the word «пишется» is the whole fact, and a lane that holds the
+    // filing says so in the book's own nouns.
+    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('');
     expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'pending' })).consequence).toBe(
-      'в очереди на запись',
+      'впишется, когда машина возьмёт главу',
     );
   });
 
@@ -157,7 +161,7 @@ describe('the state words', () => {
         reason: 'провайдер не ответил — повтор в 12:05',
       }),
     );
-    expect(waiting.word).toBe('ждёт');
+    expect(waiting.word).toBe('принято');
     expect(waiting.consequence).toBe('провайдер не ответил — повтор в 12:05');
     expect(waiting.consequence).not.toContain('в очереди');
     // A frame that schedules a retry before it can write a sentence keeps the word alone.
@@ -195,11 +199,15 @@ describe('the deck’s second line', () => {
     expect(filingConsequence(comment({ status: 'new' }))).toBe('попадёт в триаж');
     expect(filingConsequence(comment({ status: 'batched' }))).toBe('читает триаж');
     expect(filingConsequence(comment({ status: 'delivered' }))).toBe('читает триаж');
-    expect(filingConsequence(comment({ status: 'accepted' }))).toBe('в очереди на запись');
-    expect(filingConsequence(comment({ status: 'accepted', interventionKind: null }))).toBe('в очереди на запись');
-    // BOOK-189 — the writer is at this filing: one line, and it never says «в очереди».
-    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('пишется');
-    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('в очереди на запись');
+    expect(filingConsequence(comment({ status: 'accepted' }))).toBe('впишется, когда машина возьмёт главу');
+    expect(filingConsequence(comment({ status: 'accepted', interventionKind: null }))).toBe(
+      'впишется, когда машина возьмёт главу',
+    );
+    // The word «пишется» is the whole fact while the writer is at it: no second line.
+    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('');
+    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe(
+      'впишется, когда машина возьмёт главу',
+    );
     expect(filingConsequence(comment({ status: 'superseded' }))).toBe('снято: текст успел измениться');
     // A refusal's line is its public reason; with none, the gate's own sentence.
     expect(filingConsequence(comment({ status: 'rejected' }))).toBe('отклонено');

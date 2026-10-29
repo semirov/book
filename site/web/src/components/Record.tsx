@@ -261,7 +261,9 @@ export function Record({
     frozen,
   });
   const hand = handOf({ chain, frozen });
-  const rows = interventionRows({ filings: sorted, own });
+  /** The filing the state block speaks about: the reader's own first, then the newest. */
+  const headFiling = sorted.find(own) ?? sorted[0] ?? null;
+  const rows = interventionRows({ filings: sorted, own }, headFiling?.id ?? null);
   const windowed = rowWindow(rows, lifted);
   const historyList = historyRows(chain);
   const historyWindowed = rowWindow(historyList, lifted);

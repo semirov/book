@@ -15,7 +15,7 @@ import { Discussion } from './Discussion.tsx';
  *
  * The prod page showed the premise `cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4` twice: as a comment block
  * in `ОБСУЖДЕНИЕ` and as the chapter's own premise row — the same words, two numbers, two
- * states, and «в очереди пусто» printed above an entry that looked queued. The owner's phone
+ * states, and «правок в работе нет» printed above an entry that looked queued. The owner's phone
  * shows the pair; this file pins the single entry and counts it three ways: by
  * `data-comment-id`, by the attempt's number and by the `правка →` link.
  *
@@ -127,7 +127,7 @@ afterEach(async () => {
 
 /**
  * BOOK-189 — `depth` is the writer's lane, never the rows: a page full of waiting filings prints
- * «в очереди пусто» until the writer actually holds a change.
+ * «правок в работе нет» until the writer actually holds a change.
  */
 async function mount(comments: CommentDto[], changes: ChangeSummaryDto[], depth = 0): Promise<void> {
   const page: ReactElement = (
@@ -180,7 +180,7 @@ describe('one filing, one entry (BOOK-137)', () => {
 
     // No contradiction with the queue line: the premise holds no queue place, and nothing on
     // the page presents it as queued.
-    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди пусто');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain('правок в работе нет');
     expect(count(text, 'ждёт')).toBe(0);
   });
 
@@ -198,7 +198,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
     expect(count(text, 'правка →')).toBe(1);
     // The line counts the writer's lane (one change the writer holds), never the rows.
-    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди 1 правка');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в работе 1 правка');
   });
 
   it('keeps the attempts inside the premise’s card: one number on the row, none in the panel', async () => {

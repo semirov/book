@@ -86,8 +86,9 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
     case 'accepted':
       // BOOK-189: the accepted row has no reason of its own to add — the stale acceptance
       // sentence («входит в книгу») is not a fact about the writer's lane. One explanatory line
-      // only: «пишется» while the writer is at it, «в очереди на запись» while the lane holds
-      // it, or the failed-attempt sentence when the attempt behind it came back empty.
+      // only: «впишется, когда машина возьмёт главу» while the lane holds it, nothing while the
+      // writer is at it (the word «пишется» is the whole fact), or the failed-attempt sentence
+      // when the attempt behind it came back empty.
       //
       // B1 — the ink follows the line: a change that landed (or stopped) moved the row's state,
       // and its shape table already says which tone that is. A landing without a receipt, or a

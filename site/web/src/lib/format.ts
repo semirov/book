@@ -103,10 +103,10 @@ export function formatDate(iso: string | null | undefined): string {
   return dateFormatter.format(date);
 }
 
-/** `0` → `в очереди пусто`; otherwise the depth with the noun it counts — правки. */
+/** `0` → `правок в работе нет`; otherwise the depth with the noun it counts — правки. */
 export function queueLabel(depth: number): string {
-  if (depth === 0) return 'в очереди пусто';
-  return `в очереди ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
+  if (depth === 0) return 'правок в работе нет';
+  return `в работе ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
 }
 
 /** A row the register presents as still on its way: a filing, by its public id. */
@@ -123,7 +123,7 @@ export type QueueRow = { kind: 'filing'; id: string };
  * BOOK-189 — this set decides only which **rows** the register presents as on their way; it
  * never counts the lane. A filing waiting for a decision is not in the writer's queue: the
  * count is the writer's own pending changes (`queueView`), and a page that added the two said
- * «в очереди 2 правки» over text that was already written.
+ * «в работе 2 правки» over text that was already written.
  */
 const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
 
@@ -137,7 +137,7 @@ type QueueComment = Pick<CommentDto, 'id' | 'status'> & { premise?: boolean };
  * `pending` and not a premise) — the same predicate the writer picks its head with. It is the
  * **only** source of the count: a filing is not a queue place, so the rows below are what the
  * page lists, never a second count. When the writer would pick up nothing, the line says
- * «в очереди пусто», whatever the thread still shows as waiting.
+ * «правок в работе нет», whatever the thread still shows as waiting.
  */
 export function queueView(
   depth: number,

@@ -65,11 +65,11 @@ describe('times and dates', () => {
 });
 
 describe('queueLabel', () => {
-  it('states the queue as a fact, with the noun it counts', () => {
-    expect(queueLabel(0)).toBe('в очереди пусто');
-    expect(queueLabel(1)).toBe('в очереди 1 правка');
-    expect(queueLabel(4)).toBe('в очереди 4 правки');
-    expect(queueLabel(11)).toBe('в очереди 11 правок');
+  it('states the writer’s work as a fact, with the noun it counts', () => {
+    expect(queueLabel(0)).toBe('правок в работе нет');
+    expect(queueLabel(1)).toBe('в работе 1 правка');
+    expect(queueLabel(4)).toBe('в работе 4 правки');
+    expect(queueLabel(11)).toBe('в работе 11 правок');
   });
 
   it('never counts nothing and never says «замечание» — the queue is made of правки', () => {

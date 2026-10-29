@@ -128,7 +128,7 @@ export function recordStateOf(input: {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'решения ещё нет',
+          line: mine ? 'ваша — её ещё не читали' : 'её ещё не читали',
           empty: false,
         };
       case 'batched':
@@ -137,19 +137,19 @@ export function recordStateOf(input: {
           situation: 'working',
           word,
           ink: 'live',
-          line: 'в очереди на запись',
+          line: 'её читают',
           empty: false,
         };
       case 'accepted':
-        // BOOK-189: the row's word stops at triage. Only the linked change says whether the
-        // writer is at this filing now (`processing` → «идёт» · «пишется») or the lane holds it
-        // («ждёт», and the reader's own line says whose it is).
+        // The writer's lane says its own word: «пишется» while the change is `processing` and
+        // the word alone carries the fact (no second line), «принято» while the lane has not
+        // reached the filing yet.
         if (filing.changeStatus === 'processing') {
           return {
             situation: 'working',
             word,
             ink: 'live',
-            line: 'пишется',
+            line: null,
             empty: false,
           };
         }
@@ -157,7 +157,7 @@ export function recordStateOf(input: {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'в очереди на запись',
+          line: 'впишется, когда машина возьмёт главу',
           empty: false,
         };
       case 'quarantined':
@@ -250,10 +250,17 @@ function shortMoment(iso: string): string {
 }
 
 /** One intervention row: the reader's own first, then pending, then newest (`sortFilings`). */
-export function interventionRows(input: {
-  filings: readonly CommentDto[];
-  own: (comment: CommentDto) => boolean;
-}): InterventionRow[] {
+export function interventionRows(
+  input: {
+    filings: readonly CommentDto[];
+    own: (comment: CommentDto) => boolean;
+  },
+  /**
+   * The filing the head already speaks about: its own line is printed above the list, so the
+   * row leaves its specimen empty instead of saying the same sentence twice.
+   */
+  headId: string | null = null,
+): InterventionRow[] {
   return input.filings.map((comment) => {
     const mine = input.own(comment);
     return {
@@ -261,7 +268,7 @@ export function interventionRows(input: {
       facts: [filingNumber(comment), mine ? 'ваше' : null, stateWordOf(comment), shortMoment(comment.createdAt)]
         .filter((part): part is string => part !== null && part.length > 0)
         .join(' · '),
-      specimen: filingConsequence(comment),
+      specimen: comment.id === headId ? '' : filingConsequence(comment),
       own: mine,
       comment,
     };

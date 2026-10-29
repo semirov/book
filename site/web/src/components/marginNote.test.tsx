@@ -167,13 +167,13 @@ describe('the mark at the sentence', () => {
 });
 
 describe('AC4 — one vocabulary, three surfaces', () => {
-  // BOOK-189: `accepted` is not a word of its own — it waits until its change is in hand — and
-  // a refusal is «отклонено», never «ждёт».
+  // `accepted` says the writer's lane — «принято» until the change is in hand, «пишется» while
+  // it is — and a refusal is «отклонено», never «ждёт».
   const table: Array<[CommentDto['status'], string]> = [
     ['new', STATE_WORDS.waiting],
     ['batched', STATE_WORDS.working],
     ['delivered', STATE_WORDS.working],
-    ['accepted', STATE_WORDS.waiting],
+    ['accepted', STATE_WORDS.accepted],
     ['applied', STATE_WORDS.landed],
     ['superseded', STATE_WORDS.waiting],
     ['rejected', STATE_WORDS.refused],
@@ -194,14 +194,14 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     }
   });
 
-  it('prints «идёт» on an accepted filing only while the writer is at it', () => {
+  it('prints «пишется» on an accepted filing only while the writer is at it', () => {
     const working = comment({ status: 'accepted', changeStatus: 'processing' });
     for (const html of [
       renderToStaticMarkup(<MarginNote comment={working} onOpen={noop} />),
       renderToStaticMarkup(<PhoneStrip comments={[working]} skipQuote={null} onOpen={noop} />),
       renderToStaticMarkup(<FilingCard comment={working} onClose={noop} />),
     ]) {
-      expect(html).toContain(`>${STATE_WORDS.working}<`);
+      expect(html).toContain(`>${STATE_WORDS.writing}<`);
     }
   });
 
@@ -238,9 +238,17 @@ describe('AC4 — one vocabulary, three surfaces', () => {
 
   it('has one word per state, and none of them is a phrase', () => {
     // BOOK-137 added «рассмотрено» (a decision about a record) and BOOK-189 «отклонено» (a
-    // refusal); BOOK-206 removed the author's word. None is a phrase, and «внесено» stays what
-    // the text says.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено', 'отклонено']);
+    // refusal), and the writer's lane its own two («пишется», «принято»); BOOK-206 removed the
+    // author's word. None is a phrase, and «внесено» stays what the text says.
+    expect(Object.values(STATE_WORDS)).toEqual([
+      'ждёт',
+      'идёт',
+      'пишется',
+      'принято',
+      'внесено',
+      'рассмотрено',
+      'отклонено',
+    ]);
     for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }

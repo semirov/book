@@ -107,11 +107,16 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
     return { first, second: registrationLine(change.frameMode ?? undefined), tone: 'done' };
   }
   if (change.status === 'pending') {
-    return {
-      first,
-      second: `${change.position ?? 1}-я в очереди`,
-      tone: 'waiting',
-    };
+    // BOOK-189 — the count is the writer's own lane, so the line says what the row waits for,
+    // not a place in a queue of filings.
+    const ahead = Math.max(0, (change.position ?? 1) - 1);
+    const second =
+      ahead === 0
+        ? 'в работе: эта правка следующая'
+        : ahead === 1
+          ? 'в работе: ещё одна правка перед этой'
+          : `в работе: ещё ${ahead} ${plural(ahead, 'правка', 'правки', 'правок')} перед этой`;
+    return { first, second, tone: 'waiting' };
   }
   if (change.status === 'stale') {
     return { first, second: 'основа изменилась, решается заново', tone: 'live' };

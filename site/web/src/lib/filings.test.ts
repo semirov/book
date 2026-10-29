@@ -69,12 +69,12 @@ const STALE = comment({
 describe('filingInk', () => {
   it('gives every state one of the deck’s words and a rule shape, never colour alone', () => {
     // BOOK-90: the word is the vocabulary's (waiting · working · landed); the shape and the
-    // ink stay this table's. BOOK-189: an `accepted` filing waits until its change is in hand,
-    // and a refusal says «отклонено» — the fact is on line two.
+    // ink stay this table's. `accepted` says the writer's lane — «принято» until its change is
+    // in hand, «пишется» while it is — and a refusal says «отклонено»; the fact is on line two.
     expect(filingInk(NEW)).toEqual({ word: 'ждёт', rule: 'dotted', tone: 'quiet' });
-    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'ждёт', rule: 'solid', tone: 'live' });
+    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'принято', rule: 'solid', tone: 'live' });
     expect(filingInk({ status: 'accepted', changeStatus: 'processing' })).toEqual({
-      word: 'идёт',
+      word: 'пишется',
       rule: 'solid',
       tone: 'live',
     });

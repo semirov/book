@@ -35,9 +35,9 @@ export type ChipPin = {
 };
 
 export const CHIP_PINS: readonly ChipPin[] = [
-  { surface: 'discussion · .qline', condition: 'an empty queue', text: 'в очереди пусто', length: 15, tier: 'count' },
-  { surface: 'discussion · .qline', condition: 'three changes waiting', text: 'в очереди 3 правки', length: 18, tier: 'count' },
-  { surface: 'discussion · .qline', condition: 'eleven changes waiting', text: 'в очереди 11 правок', length: 19, tier: 'count' },
+  { surface: 'discussion · .qline', condition: 'an empty lane', text: 'правок в работе нет', length: 19, tier: 'count' },
+  { surface: 'discussion · .qline', condition: 'three changes in work', text: 'в работе 3 правки', length: 17, tier: 'count' },
+  { surface: 'discussion · .qline', condition: 'eleven changes in work', text: 'в работе 11 правок', length: 18, tier: 'count' },
   { surface: 'discussion · .sec-meta', condition: 'no filings', text: 'замечаний нет', length: 13, tier: 'count' },
   { surface: 'discussion · .sec-meta', condition: 'three filings', text: '3 замечания', length: 11, tier: 'count' },
   { surface: 'ribbon · wing state', condition: 'the wing has finished', text: 'остановилось', length: 12, tier: 'state' },
@@ -188,7 +188,7 @@ describe('the chip table (BOOK-70)', () => {
     // BOOK-189 — «отклонено» is a state now, and it is the same word C's gate already printed;
     // it joins the three the audits named rather than adding a sixth vocabulary.
     const states = [...new Set(FILING_PINS.map((pin) => pin.state))].sort();
-    expect(states).toEqual(['внесено', 'ждёт', 'идёт', 'отклонено']);
+    expect(states).toEqual(['внесено', 'ждёт', 'идёт', 'отклонено', 'принято']);
     for (const pin of FILING_PINS) {
       expect(pin.form, pin.state).toBe('chip');
       expect(pin.state.length, pin.state).toBeLessThanOrEqual(CHIP_MAX_CHARS);
@@ -293,7 +293,7 @@ describe('the removed chips are gone from their surfaces', () => {
     // §1: the zero is a claim about the whole thread, so it is printed over a complete page.
     const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />);
     expect(html).toContain('замечаний нет');
-    expect(html).toContain('в очереди пусто');
+    expect(html).toContain('правок в работе нет');
     expect(html).not.toContain('0 замечаний');
   });
 
