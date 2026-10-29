@@ -314,6 +314,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
     queueSoftCap: env.QUEUE_SOFT_CAP,
     feedbackDir: env.FEEDBACK_DIR ?? (env.EXCHANGE_DIR === undefined ? undefined : resolve(env.EXCHANGE_DIR, 'feedback')),
+    // BOOK-205: the pair is OPTIONAL — compose always declares both mounts, so a host that carries
+    // neither file mounts an empty directory, which loadConfig reads as "sign-in off" (one warning,
+    // `''` here) instead of failing the boot. Either half missing leaves `yandexConfigured` false.
     yandexClientId: readMountedSecret(env, 'YANDEX_CLIENT_ID', production),
     yandexClientSecret: readMountedSecret(env, 'YANDEX_CLIENT_SECRET', production),
     yandexRedirectUri: env.YANDEX_REDIRECT_URI ?? env.OAUTH_REDIRECT_URI,

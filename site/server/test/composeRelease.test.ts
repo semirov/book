@@ -7,6 +7,8 @@
  *   · exit 3 when another deploy holds the lock — and nothing is built, started or rolled back;
  *   · exit 2 on a bad argument;
  *   · exit 0 only when `/healthz` names the commit the image carries, plus the five smokes;
+ *   · the sign-in read (BOOK-205) speaks only when the host carries the OAuth client id, and never
+ *     refuses a rollback — an image swap exists to get the book serving again;
  *   · a red gate rolls back to the image that served before (`previous-image`) with ONE `up`, and
  *     the run stays exit 1 (a rollback is not a green deploy);
  *   · `--dry-run` builds nothing and starts nothing.
@@ -15,213 +17,29 @@
  * `/locks` bind source itself, and that must never be the box's real one.
  */
 
-import { execFileSync, spawn } from 'node:child_process';
-import { createServer } from 'node:http';
-import type { Server } from 'node:http';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const SITE = resolve(import.meta.dirname, '..', '..');
-const RELEASE = join(SITE, 'deploy', 'compose-release.sh');
-const COMPOSE = join(SITE, 'docker-compose.yml');
+import {
+  closeAll,
+  envFor,
+  fakeDocker,
+  gitRoot,
+  release,
+  secretsWithClientId,
+  serveSite,
+  sha,
+  temp,
+} from './composeReleaseHarness.ts';
 
 // A real build here is a fake that answers at once; the gate is a real server and a real curl. The
 // timeout is about a wedged child, not about the work.
 vi.setConfig({ testTimeout: 90_000 });
 
-const dirs: string[] = [];
-const servers: Server[] = [];
-
-function temp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  await Promise.all(
-    servers.splice(0).map(
-      (server) =>
-        new Promise<void>((done) => {
-          server.close(() => {
-            done();
-          });
-        }),
-    ),
-  );
-});
-
-/** A git clone fixture: one commit and an `origin` pointing at itself, so `git fetch` works. */
-function gitRoot(): string {
-  const dir = temp('book-172-root-');
-  execFileSync('git', ['-C', dir, 'init', '-q']);
-  execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
-  mkdirSync(join(dir, 'site'), { recursive: true });
-  execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', dir]);
-  return dir;
-}
-
-const sha = (root: string) => execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-
-/**
- * A fake `docker` that answers the calls the release script makes and records every argv. `up`
- * writes the image tag it was given into `$STATE_DIR/current` — that file is what the test server
- * answers `/healthz` with, so "the stack moved" and "the gate noticed" are one causal chain
- * instead of two independent mocks.
- *
- * It is template-aware: `inspect -f '{{.Config.Image}}'` answers the image, while
- * `inspect -f '{{.State.Status}} …'` answers the container state per service (`FAKE_STATE_SITE`,
- * `FAKE_STATE_ENGINE`, `FAKE_STATE_WRITER`; a value prefixed `once:` is read once and then falls back
- * to the healthy default). The defaults are the healthy stack — site and engine `running healthy`,
- * the writer `running` (it has no healthcheck by design).
- */
-function fakeDocker(stateDir: string): string {
-  const dir = temp('book-172-bin-');
-  const body = `#!/bin/bash
-printf '%s BOOK_IMAGE_TAG=%s\\n' "$*" "\${BOOK_IMAGE_TAG:-}" >> "${stateDir}/docker.log"
-if [ "$1" = "version" ]; then echo "Docker version 29.8.2"; exit 0; fi
-if [ "$1" = "inspect" ] && [ "$2" = "-f" ]; then
-  case "$3" in
-    *'.State.Status'*)
-      name="\${4#id-}"
-      upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
-      var="FAKE_STATE_$upper"
-      raw="\${!var-}"
-      marker="${stateDir}/state-$name-consumed"
-      if [ -e "$marker" ]; then raw=""; fi
-      case "$raw" in
-        once:*) printf '%s\\n' "\${raw#once:}"; : > "$marker"; exit 0 ;;
-      esac
-      if [ -z "$raw" ]; then
-        case "$name" in writer) raw="running" ;; *) raw="running healthy" ;; esac
-      fi
-      printf '%s\\n' "$raw"
-      exit 0 ;;
-  esac
-  printf '%s\\n' "\${FAKE_RUNNING_IMAGE:-}"
-  exit 0
-fi
-if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_IMAGE_MISSING:-0}" = "1" ] && exit 1; exit 0; fi
-# BOOK-183: the data volume preflight. 'volume inspect' is the volume's existence; the one-shot
-# 'test -f /v/book.db' is its content. FAKE_VOLUME_MISSING/FAKE_VOLUME_EMPTY are the two refusals.
-if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_VOLUME_MISSING:-0}" = "1" ] && exit 1; exit 0; fi
-if [ "$1" = "run" ]; then [ "\${FAKE_VOLUME_EMPTY:-0}" = "1" ] && exit 1; exit 0; fi
-case "$*" in
-  *" compose version"*) echo "Docker Compose version v5.5.0"; exit 0 ;;
-  *" config -q"*) exit 0 ;;
-  *" ps -q "*) printf 'id-%s\\n' "\${!#}"; exit 0 ;;
-  *"image ls "*) [ "\${FAKE_IMAGE_LS_EMPTY:-0}" = "1" ] || printf '2026-10-28 18:00:00 +0300 MSK book:0000000\\n'; exit 0 ;;
-  *" build site"*) exit 0 ;;
-  *" up -d "*)
-    printf '%s\\n' "\${BOOK_IMAGE_TAG:-}" > "${stateDir}/current"
-    if [ "\${FAKE_UP_FAIL_ONCE:-0}" = "1" ] && [ ! -e "${stateDir}/up-failed" ]; then : > "${stateDir}/up-failed"; exit 1; fi
-    exit 0 ;;
-  *" restart site"*) exit 0 ;;
-esac
-exit 0
-`;
-  writeFileSync(join(dir, 'docker'), body, { encoding: 'utf8', mode: 0o755 });
-  chmodSync(join(dir, 'docker'), 0o755);
-  return dir;
-}
-
-type Answers = { healthz: (current: string) => { status: number; body: unknown } };
-
-/** The site the gate reads: `/healthz` plus the five smokes, answered from the fake's state. */
-async function serveSite(stateDir: string, answers: Answers): Promise<string> {
-  const server = createServer((request, response) => {
-    const url = request.url ?? '/';
-    const current = readFileSync(join(stateDir, 'current'), 'utf8').trim();
-    if (url === '/healthz') {
-      const reply = answers.healthz(current);
-      response.writeHead(reply.status, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(reply.body));
-      return;
-    }
-    if (url === '/api/chapters') {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end('[{"n":1}]');
-      return;
-    }
-    if (url.startsWith('/api/')) {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end('{}');
-      return;
-    }
-    if (url === '/manifest.webmanifest') {
-      response.writeHead(200, { 'content-type': 'application/manifest+json' });
-      response.end('{}');
-      return;
-    }
-    if (url === '/sw.js') {
-      response.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'no-cache' });
-      response.end('//');
-      return;
-    }
-    response.writeHead(404);
-    response.end();
-  });
-  servers.push(server);
-  await new Promise<void>((done) => {
-    server.listen(0, '127.0.0.1', () => {
-      done();
-    });
-  });
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('no port');
-  return `http://127.0.0.1:${address.port}`;
-}
-
-function release(args: string[], env: Record<string, string>): Promise<{ code: number | null; out: string }> {
-  const merged: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('BOOK_')) continue;
-    if (value !== undefined) merged[key] = value;
-  }
-  Object.assign(merged, env);
-  // Asynchronous: the site under test is this process's own server, and `spawnSync` would block the
-  // event loop that has to answer the `curl` inside the script (deployHarness.ts, same reason).
-  return new Promise((done) => {
-    const child = spawn('/bin/bash', [RELEASE, ...args], { env: merged });
-    let out = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      out += String(chunk);
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      out += String(chunk);
-    });
-    child.on('close', (code: number | null) => {
-      done({ code, out });
-    });
-  });
-}
-
-/** Everything a run needs, except the site URL and the fake's answers. */
-function envFor(root: string, stateDir: string, bin: string, siteUrl: string): Record<string, string> {
-  const log = join(stateDir, 'docker.log');
-  writeFileSync(log, '', 'utf8');
-  return {
-    PATH: `${bin}:${process.env.PATH ?? ''}`,
-    BOOK_DEPLOY_ROOT: root,
-    BOOK_STATE_DIR: stateDir,
-    // The script creates this bind source and checks its owner: it must never be the box's own.
-    BOOK_LOCKS_DIR: join(stateDir, 'locks'),
-    // BOOK-183: the /backups bind source the release creates. It must never be the box's real one.
-    BOOK_BACKUPS_DIR: join(stateDir, 'backups'),
-    BOOK_COMPOSE_FILE: COMPOSE,
-    BOOK_PROJECT: 'book-test',
-    BOOK_SITE_URL: siteUrl,
-    BOOK_HEALTH_TIMEOUT: '2',
-    BOOK_HEALTH_GRACE: '1',
-    BOOK_BUILD_TIMEOUT: '30',
-    BOOK_DOCKER: join(bin, 'docker'),
-    FAKE_RUNNING_IMAGE: '',
-  };
-}
+afterEach(closeAll);
 
 describe('the container release: lock, exit codes, rollback', () => {
   it('a) refuses with exit 2 on an unknown argument', async () => {
@@ -452,5 +270,157 @@ describe('the container release: lock, exit codes, rollback', () => {
     expect(sha(root), result.out).toBe(head);
     expect(readFileSync(join(stateDir, 'last-good-image'), 'utf8').trim()).toBe(previous);
     expect(existsSync(join(stateDir, 'previous-image'))).toBe(false);
+  });
+
+  it('j) BOOK-205: a host that carries the OAuth client id must see /auth/yandex/start redirect to Yandex', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+      signin: { status: 302 },
+    });
+    const result = await release(['--ref', 'HEAD'], {
+      ...envFor(root, stateDir, bin, siteUrl),
+      BOOK_SECRETS_DIR: secretsWithClientId(),
+    });
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain(`healthy: book:${sha(root)}`);
+    // The check passed, so it says nothing: a green deploy carries no sign-in line.
+    expect(result.out).not.toContain('sign-in');
+  });
+
+  it('k) BOOK-205: a 503 there is a red deploy — and the automatic rollback it triggers is not refused too', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const siteUrl = await serveSite(stateDir, {
+      // Each image answers its own commit, so both gates (new image, then the rollback) are green on
+      // `/healthz` and the only thing that can go red is the sign-in read.
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+      signin: { status: 503 },
+    });
+    const env = envFor(root, stateDir, bin, siteUrl);
+    // A recorded previous image: this is the shape in which `red()` really rolls back.
+    env.FAKE_RUNNING_IMAGE = previous;
+    env.BOOK_SECRETS_DIR = secretsWithClientId();
+    writeFileSync(join(stateDir, 'current'), previous, 'utf8');
+    writeFileSync(join(stateDir, 'last-good-image'), `${previous}\n`, 'utf8');
+
+    const result = await release(['--ref', 'HEAD'], env);
+    // The deploy is red (exit 1) — and it says why, with the image named in the reason.
+    expect(result.code, result.out).toBe(1);
+    expect(result.out).toContain('sign-in is off although the host carries the client id');
+    expect(result.out).toContain('answered 503, not 302');
+    // The rollback it triggered went through: the older image is serving again, its sign-in read was
+    // accepted instead of refusing the swap, and the audit records the rollback as ok.
+    expect(result.out).toContain('back on');
+    expect(result.out).toContain('accepted on a rollback');
+    expect(readFileSync(join(stateDir, 'deploy-audit.log'), 'utf8')).toContain('rollback ok');
+    expect(readFileSync(join(stateDir, 'last-good-image'), 'utf8').trim()).toBe(previous);
+    const ups = readFileSync(join(stateDir, 'docker.log'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('up -d'));
+    expect(ups).toHaveLength(2);
+    expect(ups[1]).toContain(`BOOK_IMAGE_TAG=${previous}`);
+  });
+
+  it('l) BOOK-205: no client id on the host means sign-in is off by design — the same 503 passes silently', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+      signin: { status: 503 },
+    });
+    // envFor's BOOK_SECRETS_DIR is a temp dir with no `yandex_client_id` in it.
+    const result = await release(['--ref', 'HEAD'], envFor(root, stateDir, bin, siteUrl));
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).not.toContain('sign-in');
+  });
+
+  it('n) BOOK-205: a touched 0-byte client id is not a configured sign-in — the same 503 passes silently', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+      signin: { status: 503 },
+    });
+    // The review's reproduction: `touch` left `-rw------- 0 bytes`, and mere existence made every
+    // release red. The predicate is the app's own ("a usable credential"), so this is silent.
+    const secrets = temp('book-205-secrets-');
+    writeFileSync(join(secrets, 'yandex_client_id'), '', { mode: 0o600 });
+    const result = await release(['--ref', 'HEAD'], { ...envFor(root, stateDir, bin, siteUrl), BOOK_SECRETS_DIR: secrets });
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).not.toContain('sign-in');
+    // The file is still there: the preflight only ever touches a directory at that path.
+    expect(readFileSync(join(secrets, 'yandex_client_id'), 'utf8')).toBe('');
+  });
+
+  it('o) BOOK-205: an empty directory Docker left at a mount source is removed before the build', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+    });
+    // The no-OAuth host after one `up`: Docker created both bind sources as empty directories.
+    const secrets = temp('book-205-secrets-');
+    mkdirSync(join(secrets, 'yandex_client_id'), { recursive: true });
+    mkdirSync(join(secrets, 'yandex_client_secret'), { recursive: true });
+
+    const result = await release(['--ref', 'HEAD'], { ...envFor(root, stateDir, bin, siteUrl), BOOK_SECRETS_DIR: secrets });
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain('removed the empty directory');
+    // The path is free, which is exactly what makes "drop the 0600 file in" a step an operator can take.
+    expect(existsSync(join(secrets, 'yandex_client_id'))).toBe(false);
+    expect(existsSync(join(secrets, 'yandex_client_secret'))).toBe(false);
+  });
+
+  it('p) BOOK-205: a NON-empty directory at a mount source is refused by name before anything is built', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    // A dangerous shape: whoever "put the file there" wrote it INSIDE the directory Docker made.
+    const secrets = temp('book-205-secrets-');
+    mkdirSync(join(secrets, 'yandex_client_id'), { recursive: true });
+    writeFileSync(join(secrets, 'yandex_client_id', 'client_id'), 'stray', 'utf8');
+
+    const result = await release(['--ref', 'HEAD'], {
+      ...envFor(root, stateDir, bin, 'http://127.0.0.1:9'),
+      BOOK_SECRETS_DIR: secrets,
+    });
+    expect(result.code, result.out).toBe(1);
+    expect(result.out).toContain('is a directory, not the 0600 file');
+    expect(result.out).toContain('sudo rm -rf');
+    expect(result.out).toContain('nothing was built and nothing was rolled back');
+    const log = readFileSync(join(stateDir, 'docker.log'), 'utf8');
+    expect(log).not.toContain('build site');
+    expect(log).not.toContain('up -d');
+  });
+
+  it('m) BOOK-205: --rollback is not refused because sign-in is off on the image it goes back to', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+      // The host carries the client id; the older image still answers `OAUTH_UNCONFIGURED`.
+      signin: { status: 503 },
+    });
+    const env = envFor(root, stateDir, bin, siteUrl);
+    env.FAKE_RUNNING_IMAGE = `book:${sha(root)}`;
+    env.BOOK_SECRETS_DIR = secretsWithClientId();
+    writeFileSync(join(stateDir, 'current'), `book:${sha(root)}`, 'utf8');
+    writeFileSync(join(stateDir, 'previous-image'), `${previous}\n`, 'utf8');
+
+    const result = await release(['--rollback'], env);
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain(`rollback healthy: ${previous}`);
+    // The one line it owes: the check saw it and did not refuse the rollback.
+    expect(result.out).toContain('accepted on a rollback');
   });
 });

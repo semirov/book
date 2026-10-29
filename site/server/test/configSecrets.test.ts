@@ -2,13 +2,17 @@
  * ARCHITECTURE.md invariant 30: a secret comes from its `*_FILE` mount, never from an
  * environment value. Production refuses a plain value at boot; development and tests keep
  * accepting it (there is no opt-out), and a declared file that is missing or empty is fatal
- * everywhere. Every message names the variable and never the value or the path.
+ * everywhere. BOOK-205: the two sign-in files are the exception — compose always declares those
+ * mounts, so an absent one means "sign-in off" with one warning, never a failed boot.
+ * Every message names the variable and never the value or the path.
  */
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { chmodSync } from 'node:fs';
+
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig, yandexConfigured } from '../src/config.ts';
-import { absentSecretFile, cleanupSecretFiles, production, secretFile } from './configFixture.ts';
+import { absentSecretFile, cleanupSecretFiles, production, secretDirectory, secretFile } from './configFixture.ts';
 
 afterAll(cleanupSecretFiles);
 
@@ -20,6 +24,20 @@ const secrets = [
   { name: 'YANDEX_CLIENT_SECRET', key: 'yandexClientSecret' },
   { name: 'CAPTCHA_SECRET', key: 'captchaSecret' },
 ] as const;
+
+// BOOK-205: the three whose absence is a boot failure. The sign-in pair is optional (ADR-021) and
+// has its own cases below.
+const requiredSecrets = secrets.filter((secret) => !secret.name.startsWith('YANDEX_'));
+
+/** `console.warn` collected around a boot, so "one warning, name only" is a real assertion. */
+function boot(run: () => ReturnType<typeof loadConfig>): { config: ReturnType<typeof loadConfig>; warnings: string[] } {
+  const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    return { config: run(), warnings: spy.mock.calls.map((call) => call.join(' ')) };
+  } finally {
+    spy.mockRestore();
+  }
+}
 
 describe('loadConfig — production takes a secret only from its file (invariant 30)', () => {
   it('refuses every plain value in production, naming the variable only', () => {
@@ -166,8 +184,8 @@ describe('loadConfig — production takes a secret only from its file (invariant
     }
   });
 
-  it('keeps a declared file that is missing or empty fatal in every environment', () => {
-    for (const { name } of secrets) {
+  it('keeps a declared required file that is missing or empty fatal in every environment', () => {
+    for (const { name } of requiredSecrets) {
       const absent = absentSecretFile(name);
       for (const NODE_ENV of [undefined, 'development', 'production']) {
         let unreadable = '';
@@ -187,6 +205,108 @@ describe('loadConfig — production takes a secret only from its file (invariant
           empty = error instanceof Error ? error.message : String(error);
         }
         expect(empty).toMatch(new RegExp(`${name}_FILE is empty`, 'u'));
+      }
+    }
+  });
+
+  it('reads a declared *missing* sign-in mount as sign-in off, with one warning that names the variable', () => {
+    // BOOK-205: compose cannot make a mount conditional, so the site always declares these two and a
+    // host without them mounts nothing usable. That is the shipped prod shape that answered 503 with
+    // a boot that never said why — the warning is the whole point.
+    const absent = absentSecretFile('YANDEX_CLIENT_ID');
+    const { config, warnings } = boot(() => loadConfig({ ...production, YANDEX_CLIENT_ID_FILE: absent }));
+    expect(config.yandexClientId).toBe('');
+    expect(config.yandexClientSecret).toBe('');
+    expect(yandexConfigured(config)).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/YANDEX_CLIENT_ID_FILE/u);
+    expect(warnings[0]).toMatch(/sign-in is off/u);
+    // The warning is a name and a consequence: no value, no path, no errno.
+    expect(warnings[0]).not.toContain(absent);
+  });
+
+  it('reads a *directory* at a declared sign-in mount as sign-in off (Docker mounts one when the host file is absent)', () => {
+    const dir = secretDirectory('YANDEX_CLIENT_ID');
+    const { config, warnings } = boot(() => loadConfig({ ...production, YANDEX_CLIENT_ID_FILE: dir }));
+    expect(config.yandexClientId).toBe('');
+    expect(yandexConfigured(config)).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/YANDEX_CLIENT_ID_FILE/u);
+    expect(warnings[0]).not.toContain(dir);
+
+    // The secret half is the same rule, and an empty file is the same "nothing there".
+    const both = boot(() =>
+      loadConfig({
+        ...production,
+        YANDEX_CLIENT_ID_FILE: secretFile('client-id'),
+        YANDEX_CLIENT_SECRET_FILE: secretFile('   '),
+      }),
+    );
+    expect(both.config.yandexClientId).toBe('client-id');
+    expect(both.config.yandexClientSecret).toBe('');
+    expect(yandexConfigured(both.config)).toBe(false);
+    expect(both.warnings).toHaveLength(1);
+    expect(both.warnings[0]).toMatch(/YANDEX_CLIENT_SECRET_FILE/u);
+    expect(both.warnings[0]).toMatch(/sign-in is off/u);
+  });
+
+  it('reads an *unreadable* sign-in file as sign-in off (a permissions accident must not keep the book down)', () => {
+    // A declared mount whose file the container's uid cannot open is the same "no credential" as an
+    // absent one; only a required name may fail a boot over it. Root reads everything, so the shape
+    // cannot be made under it.
+    if (process.getuid?.() === 0) return;
+    const path = secretFile('client-id-under-a-lock');
+    chmodSync(path, 0o000);
+    const { config, warnings } = boot(() => loadConfig({ ...production, YANDEX_CLIENT_ID_FILE: path }));
+    expect(config.yandexClientId).toBe('');
+    expect(yandexConfigured(config)).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/YANDEX_CLIENT_ID_FILE/u);
+  });
+
+  it('prints one warning per missing file: the shipped no-OAuth shape says two', () => {
+    // ADR-021's prod shape: both mounts are there, both are empty directories. One line per name, so
+    // the operator reading the boot log sees exactly which file is missing and what it costs.
+    const { config, warnings } = boot(() =>
+      loadConfig({
+        ...production,
+        YANDEX_CLIENT_ID_FILE: secretDirectory('YANDEX_CLIENT_ID'),
+        YANDEX_CLIENT_SECRET_FILE: secretDirectory('YANDEX_CLIENT_SECRET'),
+      }),
+    );
+    expect(config.yandexClientId).toBe('');
+    expect(config.yandexClientSecret).toBe('');
+    expect(yandexConfigured(config)).toBe(false);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.join('\n')).toMatch(/YANDEX_CLIENT_ID_FILE/u);
+    expect(warnings.join('\n')).toMatch(/YANDEX_CLIENT_SECRET_FILE/u);
+    expect(warnings.every((line) => /sign-in is off/u.test(line))).toBe(true);
+  });
+
+  it('keeps a REQUIRED name pointing at a directory fatal (the isFile() branch)', () => {
+    // The new "a directory is not a file" check must not soften a required secret: Docker would mount
+    // an empty directory for an absent session secret too, and the boot still has to refuse.
+    for (const name of ['SESSION_SECRET', 'IP_SALT', 'CAPTCHA_SECRET']) {
+      for (const NODE_ENV of [undefined, 'production']) {
+        expect(() => loadConfig({ ...production, NODE_ENV, [`${name}_FILE`]: secretDirectory(name) })).toThrow(
+          new RegExp(`cannot read ${name}_FILE`, 'u'),
+        );
+      }
+    }
+  });
+
+  it('keeps the optional rule inside production: a plain sign-in value is still refused, not warned away', () => {
+    // Invariant 30 has no optional half: whatever the deployment shape, a value in the environment
+    // is a boot failure for all five names, sign-in included.
+    for (const name of ['YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET']) {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        expect(() =>
+          loadConfig({ ...production, [`${name}_FILE`]: undefined, [name]: 'plain-value' }),
+        ).toThrow(new RegExp(`${name} must come from ${name}_FILE in production`, 'u'));
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
       }
     }
   });

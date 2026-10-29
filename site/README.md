@@ -123,14 +123,20 @@ the session secret and the IP salt — the engine boots through the same `loadCo
 production without them. In `NODE_ENV=production` a secret supplied as a plain environment value is
 refused at boot (invariant 30), with no opt-out.
 
-Sign-in is optional (ADR-021). To enable it, put the client id in `secrets/yandex_client_id` and the
-client secret in `secrets/yandex_client_secret` (both `0600`) and point `YANDEX_CLIENT_ID_FILE` /
-`YANDEX_CLIENT_SECRET_FILE` at them (`/run/secrets/…` for the compose services, `./secrets/…` in
-`.env` for the launchd fallback). To run without OAuth, mount neither: the site stays readable and
-sign-in answers `503 OAUTH_UNCONFIGURED`. A text rollback is a **revision**, not a file: it goes through
-`POST /internal/restore` (`npm run writer -- --revert --chapter N` from the host), then
-`bin/engine.mjs reconcile` marks it; `bin/restore.mjs` only lists and previews
-(BOOK-187 — the book's text lives in the database). The paragraphs below are about code.
+Sign-in is optional (ADR-021). `docker-compose.yml` mounts `secrets/yandex_client_id` and
+`secrets/yandex_client_secret` (both `0600`) into `site` as `/run/secrets/…` and names them in
+`YANDEX_CLIENT_ID_FILE` / `YANDEX_CLIENT_SECRET_FILE`, so putting the two files on the host is the whole
+switch (the launchd fallback points the same variables at `./secrets/…` in `.env`). Compose cannot make
+a mount conditional: a host without them mounts an empty directory, the boot prints one warning per
+missing file (`sign-in is off`), `/auth/yandex/start` answers `503 OAUTH_UNCONFIGURED` and the site stays
+readable — never a boot failure, and never a half-working flow when only one of the two files is there.
+Docker also *creates* an absent bind source as a directory, so after one `up` the switch is "remove that
+directory, drop the `0600` file in its place and redeploy": `deploy/compose-release.sh` removes an empty
+one before every build and refuses a non-empty one by name. The release's own smoke checks the redirect
+to `oauth.yandex.ru/authorize` whenever the host carries a usable client-id file. A text rollback is a
+**revision**, not a file: it goes through `POST /internal/restore` (`npm run writer -- --revert
+--chapter N` from the host), then `bin/engine.mjs reconcile` marks it; `bin/restore.mjs` only lists and
+previews (BOOK-187 — the book's text lives in the database). The paragraphs below are about code.
 
 | service | command | published | cpu / mem / pids | grace | healthcheck |
 | --- | --- | --- | --- | --- | --- |
