@@ -276,12 +276,13 @@ export function planPass(input: PassPlanInput): PassPlan {
     kind === 'deletion' ? words.reduce((latest, word) => Math.max(latest, word.fadeEndMs), splitMs) : splitMs;
   const persistMs = kind === 'deletion' ? swapMs : lastInkMs;
 
-  /** Blue is born at the block's bottom (deleting: the span's first line) and climbs it; 1 line
-   * at 4.0 lines/s from 560 arrives at 810. */
+  /** BOOK-DOC-84 §4 — the read caret is born at the new run's first line (a deletion: its
+   * span's), never below the paragraph, and climbs to line 0 keeping the run's own x. */
   const blueStartMs = splitMs;
-  const blueStartLine = kind === 'deletion' ? input.layout.spanStartLine : input.layout.blockLines;
+  const blueStartLine =
+    kind === 'deletion' ? input.layout.spanStartLine : (input.layout.runLines[0] ?? input.layout.spanStartLine);
   const blueDistance =
-    kind === 'deletion' ? Math.min(input.layout.spanLines, Math.max(0, blueStartLine)) : input.layout.blockLines;
+    kind === 'deletion' ? Math.min(input.layout.spanLines, Math.max(0, blueStartLine)) : blueStartLine;
   const blueClimbMs = (blueDistance / PASS.blue.linesPerSec) * 1_000;
   const blueFadeStartMs = Math.max(blueStartMs + blueClimbMs, persistMs);
   const blueFadeEndMs = blueFadeStartMs + PASS.blue.fadeMs;
@@ -378,10 +379,11 @@ function blueAt(plan: PassPlan, at: number): PassCaret | null {
   if (at < startMs || at >= fadeEndMs) return null;
   const progress = ramp(at, startMs, startMs + climbMs);
   const eased = cubicBezier(PASS.blue.easing, progress);
-  const startLine = plan.kind === 'deletion' ? plan.layout.spanStartLine : plan.layout.blockLines;
+  const startLine = plan.kind === 'deletion' ? plan.layout.spanStartLine : (plan.layout.runLines[0] ?? 0);
   const fading = at >= fadeStartMs;
   return {
     line: Math.max(0, startLine - distanceLines * eased),
+    // x is the run's first grapheme: the read caret never leaves the new text's own column.
     col: 0,
     resting: false,
     fading,

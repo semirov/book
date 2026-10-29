@@ -9,18 +9,11 @@ import { PASS_FIXTURES } from '../lib/passMotionFixtures.ts';
 import { LivePass } from './LivePass.tsx';
 
 /**
- * BOOK-121 — the renderer that paints one pass in place.
+ * BOOK-121 / BOOK-DOC-84 §4 — the renderer that paints one pass in place.
  *
  * jsdom lays nothing out, so the boxes are injected through `getBoundingClientRect` and the
  * frames are pulled by hand: `requestAnimationFrame` is a queue and `performance.now` is a knob,
  * which is what makes "what is true at 200 ms" an assertion instead of a race.
- *
- * What this proves: the layout handed to `planPass` is the fixture's own; the ink toggles only
- * the graphemes the engine reaches; the run is laid out once and its text never changes; both
- * carets are placed from the engine's lines and never stand in one place; every exit (settled,
- * reduced, late, unmounted) behaves. What it cannot prove: that the boxes in a real browser are
- * where the paragraph puts them, and that the ink forces no reflow there — that is the browser
- * recording.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -31,7 +24,7 @@ const LINE = 30.24;
 const rect = (top: number, left: number, width: number, height: number): DOMRect =>
   ({ top, left, width, height, bottom: top + height, right: left + width, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
 
-/** The block and its run, laid out as the fixture says: `per` graphemes a line from `firstLine`. */
+/** The block and its run, as the fixture says: `per` graphemes a line from `firstLine`. */
 function stubRects(options: { per: number; firstLine: number; blockLines: number }): ReturnType<typeof vi.spyOn> {
   const { per, firstLine, blockLines } = options;
   return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -63,8 +56,7 @@ beforeEach(() => {
   frames = [];
   clock = 1_000;
   vi.spyOn(performance, 'now').mockImplementation(() => clock);
-  // The sheet sets the leading; jsdom has no cascade, so the declared line box is injected the
-  // same way the boxes are. The fallback (gaps between line tops) is `passMeasure.test.ts`'s.
+  // The sheet sets the leading; jsdom has no cascade, so the line box is injected too.
   vi.spyOn(window, 'getComputedStyle').mockReturnValue({ lineHeight: `${LINE}px` } as CSSStyleDeclaration);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     frames.push(callback);
@@ -82,7 +74,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-/** Mount one pass. Each test gets its own tree: a pass is one mount. */
+/** Mount one pass. */
 async function draw(options: DrawOptions): Promise<HTMLParagraphElement> {
   if (container === null) {
     container = document.createElement('div');
@@ -124,7 +116,7 @@ const graphemes = (paragraph: Element): number => paragraph.querySelectorAll('.p
 const caret = (paragraph: Element, kind: 'read' | 'write'): HTMLElement | null =>
   paragraph.querySelector<HTMLElement>(`.caret-${kind}`);
 
-/** A caret's opacity: the CSSOM write, or the sheet's own 0 before the engine gives it a line. */
+/** A caret's opacity: the CSSOM write, or the sheet's 0 before the engine gives it a line. */
 const opacityOf = (element: HTMLElement | null): number =>
   element === null || element.style.opacity === '' ? 0 : Number(element.style.opacity);
 
@@ -132,6 +124,12 @@ const opacityOf = (element: HTMLElement | null): number =>
 const lineOf = (element: HTMLElement | null): number => {
   const match = /translate3d\((-?[\d.]+)px, (-?[\d.]+)px/u.exec(element?.style.transform ?? '');
   return match === null ? Number.NaN : Number(match[2]) / LINE;
+};
+
+/** The x the caret stands at, read back out of its transform. */
+const xOf = (element: HTMLElement | null): number => {
+  const match = /translate3d\((-?[\d.]+)px, (-?[\d.]+)px/u.exec(element?.style.transform ?? '');
+  return match === null ? Number.NaN : Number(match[1]);
 };
 
 const REPLACEMENT = PASS_FIXTURES.find((entry) => entry.name.startsWith('replacement'))?.input;
@@ -144,7 +142,7 @@ describe('the replacement fixture, frame by frame', () => {
   const fixtureRects = (): ReturnType<typeof vi.spyOn> =>
     stubRects({ per: 21, firstLine: 2, blockLines: 6 });
 
-  it('inks 0 / 0 / 20 / 23 graphemes at 0 / 200 / 800 / 1600 and settles at 1940', async () => {
+  it('inks 0 / 0 / 20 / 23 graphemes at 0 / 200 / 800 / 1600, then settles', async () => {
     fixtureRects();
     const settled = vi.fn();
     const measured: PassLayout[] = [];
@@ -155,7 +153,7 @@ describe('the replacement fixture, frame by frame', () => {
       onMeasure: (layout) => measured.push(layout),
     });
 
-    // The layout the plan was built from is the fixture's, line for line.
+    // The layout the plan was built from is the fixture's.
     expect(measured).toHaveLength(1);
     expect(measured[0]?.blockLines).toBe(6);
     expect(measured[0]?.spanStartLine).toBe(2);
@@ -163,16 +161,15 @@ describe('the replacement fixture, frame by frame', () => {
     expect(measured[0]?.linePx).toBeCloseTo(LINE, 5);
     expect(measured[0]?.runLines).toEqual(REPLACEMENT.layout.runLines);
 
-    // t = 0 — the box paints; nothing is inked, and no caret has been born yet.
+    // t = 0 — the box paints; nothing is inked, no caret born yet.
     expect(graphemes(paragraph)).toBe(23);
     expect(pending(paragraph)).toBe(23);
     expect(paragraph.getAttribute('data-pass')).toBe('paint');
     expect(opacityOf(caret(paragraph, 'read'))).toBe(0);
     expect(opacityOf(caret(paragraph, 'write'))).toBe(0);
 
-    // t = 200 — the hold: still nothing inked, still no caret standing anywhere. The elements
-    // are in the tree from the mount — the engine gives them a line at the split (260) — and
-    // until then their opacity is 0, so nothing is painted at the block's corner.
+    // t = 200 — the hold: nothing inked, no caret standing; both elements are in the tree
+    // from the mount and their opacity is 0 until the engine gives them a line at the split.
     await step(200);
     expect(pending(paragraph)).toBe(23);
     expect(paragraph.getAttribute('data-pass')).toBe('hold');
@@ -182,7 +179,7 @@ describe('the replacement fixture, frame by frame', () => {
     expect(opacityOf(caret(paragraph, 'write'))).toBe(0);
     expect(settled).not.toHaveBeenCalled();
 
-    // t = 800 — typing: 20 of 23 inked, both carets born at the span's ends.
+    // t = 800 — typing: 20 of 23 inked, both carets born.
     await step(600);
     expect(pending(paragraph)).toBe(3);
     expect(paragraph.getAttribute('data-pass')).toBe('type');
@@ -192,24 +189,24 @@ describe('the replacement fixture, frame by frame', () => {
     expect(write).not.toBeNull();
     expect(opacityOf(read)).toBeGreaterThan(0);
     expect(opacityOf(write)).toBeGreaterThan(0);
-    // Blue climbs, red descends with the ink: while the run is being written, the blue is always
-    // on a line below the red's — the two never share a line and never trade places.
-    expect(lineOf(read)).toBeCloseTo(2.85, 1);
+    // BOOK-DOC-84 §4: the blue is born at the run's first line and climbs to line 0; by 800 ms
+    // its 2-line climb (500 ms at 4.0 lines/s) is over. The red descends with the ink.
+    expect(lineOf(read)).toBeCloseTo(0, 1);
     expect(lineOf(write)).toBeCloseTo(2, 1);
-    expect(lineOf(read)).toBeGreaterThan(lineOf(write));
+    expect(lineOf(read)).toBeLessThan(lineOf(write));
+    // Its x is the run's own first grapheme, never a column edge or a gutter step.
+    expect(xOf(read)).toBeCloseTo(8, 1);
 
-    // t = 1600 — the tail: every grapheme inked, the carets on their last lines.
     await step(800);
+    // t = 1600 — the tail: every grapheme inked.
     expect(pending(paragraph)).toBe(0);
     expect(paragraph.getAttribute('data-pass')).toBe('tail');
     expect(lineOf(read)).toBeCloseTo(0.04, 1);
     expect(lineOf(write)).toBeCloseTo(4.75, 1);
-    // The blue has finished its climb and stands above the red, which is still walking the run
-    // down: the two crossed *in time*, never in place — see the crossing test below.
+    // The blue has finished its climb: they crossed in time.
     expect(lineOf(read)).toBeLessThan(lineOf(write));
     expect(settled).not.toHaveBeenCalled();
 
-    // t = 1940 — the settle frame: both carets leave with it, the caller hears it once.
     await step(340);
     expect(paragraph.getAttribute('data-pass')).toBe('settled');
     expect(caret(paragraph, 'read')).toBeNull();
@@ -217,18 +214,16 @@ describe('the replacement fixture, frame by frame', () => {
     expect(pending(paragraph)).toBe(0);
     expect(settled).toHaveBeenCalledTimes(1);
 
-    // No frame is scheduled past the settle: the loop is over.
     expect(frames).toHaveLength(0);
     await step(500);
     expect(settled).toHaveBeenCalledTimes(1);
   });
 
-  it('stands both carets from the split to the tail, and never puts them in one place', async () => {
+  it('stands both carets from the split to the tail', async () => {
     fixtureRects();
     const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN });
 
-    // From the split (260) to the last ink (870) both carets stand, and the blue climbs: its line
-    // never goes back down.
+    // From the split to the last ink both stand; the blue never goes back down.
     await step(260);
     let blue = Number.POSITIVE_INFINITY;
     for (let at = 260; at <= 860; at += 20) {
@@ -243,16 +238,30 @@ describe('the replacement fixture, frame by frame', () => {
       const line = lineOf(read);
       expect(line).toBeLessThanOrEqual(blue);
       blue = line;
-      // The engine's own numbers carry the two past each other (the blue climbs the block, the
-      // write caret walks the run down); what must never happen is one caret standing on the
-      // other, so no frame may put them in the same place.
+      // The red's x advances with the ink; the blue climbs while the red walks the run down,
+      // and no frame may put them in one place.
       const sameLine = Math.abs(line - lineOf(write)) < 0.01;
       const sameX = read?.style.transform.split(',')[0] === write?.style.transform.split(',')[0];
       expect(sameLine && sameX).toBe(false);
+      // The red's x is a grapheme column of the run (the fixture's 12 px grid), never a guess.
+      expect((xOf(write) - 8) % 12).toBeCloseTo(0, 5);
       await step(20);
     }
+    // t = 1600 — the tail: every grapheme inked.
     expect(pending(paragraph)).toBe(0);
     expect(paragraph.getAttribute('data-pass')).toBe('tail');
+  });
+  it('is born at the run’s first line and its first grapheme, not below the paragraph', async () => {
+    fixtureRects();
+    const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN });
+    await step(260); // the split: both carets are born here
+    const read = caret(paragraph, 'read');
+    // The fixture's run starts on line 2 (the paragraph has six); the old frame was line 6.
+    expect(lineOf(read)).toBeCloseTo(2, 1);
+    expect(xOf(read)).toBeCloseTo(8, 1);
+    await step(260); // +260 ms of a 500 ms climb: halfway up
+    expect(lineOf(read)).toBeLessThan(2);
+    expect(lineOf(read)).toBeGreaterThan(0);
   });
 
   it('never re-reads the boxes after the first frame', async () => {
@@ -264,7 +273,7 @@ describe('the replacement fixture, frame by frame', () => {
       onMeasure: (layout) => measured.push(layout),
     });
 
-    // One read of the block and one of each grapheme, and no more, ever.
+    // One read of the block and one of each grapheme.
     const read = rects.mock.calls.length;
     expect(read).toBe(24);
     expect(measured).toHaveLength(1);
@@ -288,14 +297,13 @@ describe('the replacement fixture, frame by frame', () => {
     observer.observe(paragraph, { childList: true, subtree: true, characterData: true });
 
     const atZero = paragraph.textContent;
-    // The whole final text is there before the first character is visible…
     expect(atZero?.startsWith(REPLACEMENT.after)).toBe(true);
     await step(400);
     const midInk = paragraph.textContent;
     for (let index = 0; index < 7; index += 1) await step(200); // t = 1700: ink and tail done
     observer.disconnect();
 
-    // …and it is the same text at 400 ms and after the ink: only colour moved.
+    // …and the same text after the ink.
     expect(midInk).toBe(atZero);
     expect(paragraph.textContent).toBe(atZero);
     expect(paragraph.querySelectorAll('.pg')).toHaveLength(23);
@@ -303,19 +311,18 @@ describe('the replacement fixture, frame by frame', () => {
     expect(childList).toHaveLength(0);
     expect(records.filter((record) => record.type === 'characterData')).toHaveLength(0);
 
-    // The settle frame takes the carets with it and leaves the same text behind.
+    // The settle frame takes the carets with it.
     await step(340);
     expect(paragraph.getAttribute('data-pass')).toBe('settled');
     expect(paragraph.textContent).toBe(atZero);
     expect(caret(paragraph, 'read')).toBeNull();
     expect(settled).toHaveBeenCalledTimes(1);
 
-    // A screen reader gets one sentence: the whole final block, once, and never a character.
+    // A screen reader gets one sentence: the final block, once.
     expect(paragraph.querySelector('.pass-visual')?.getAttribute('aria-hidden')).toBe('true');
     expect(paragraph.querySelector('.visually-hidden')?.textContent).toBe(REPLACEMENT.after);
     expect(paragraph.querySelector('.pass-span')?.getAttribute('aria-hidden')).toBe('true');
   });
-
   it('settles at once on a late mount, with no caret and no frame', async () => {
     fixtureRects();
     const settled = vi.fn();
@@ -337,7 +344,8 @@ describe('the replacement fixture, frame by frame', () => {
     expect(frames).toHaveLength(0);
   });
 
-  it('renders settled at t = 0 under reduced motion, with no caret element at all', async () => {
+  it('shows the static mark for the window under reduced motion — no carets, no loop', async () => {
+    vi.useFakeTimers();
     fixtureRects();
     const settled = vi.fn();
     const paragraph = await draw({
@@ -347,14 +355,28 @@ describe('the replacement fixture, frame by frame', () => {
       onSettled: settled,
     });
 
-    expect(paragraph.getAttribute('data-pass')).toBe('settled');
+    // D7: the rule and two ticks, `data-pass="static"` — never "nothing".
+    expect(paragraph.getAttribute('data-pass')).toBe('static');
     expect(pending(paragraph)).toBe(0);
-    expect(opacityOf(caret(paragraph, 'read'))).toBe(0);
+    expect(paragraph.querySelector('.pass-span')).not.toBeNull();
+    expect(paragraph.querySelector('.pass-tick-first')).not.toBeNull();
+    expect(paragraph.querySelector('.pass-tick-last')).not.toBeNull();
     expect(paragraph.querySelector('.caret-read')).toBeNull();
     expect(paragraph.querySelector('.caret-write')).toBeNull();
-    expect(settled).toHaveBeenCalledTimes(1);
-    // Reduced motion is not a fast loop: nothing was ever scheduled.
+    // The ticks stand at the run's first and last glyph.
+    expect(xOf(paragraph.querySelector<HTMLElement>('.pass-tick-first'))).toBeCloseTo(8, 1);
+    expect(xOf(paragraph.querySelector<HTMLElement>('.pass-tick-last'))).toBeGreaterThan(8);
+    expect(settled).not.toHaveBeenCalled();
+    // Reduced motion is not a loop: no animation frame was ever scheduled.
     expect(frames).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(paragraph.getAttribute('data-pass')).toBe('settled');
+    expect(paragraph.querySelector('.pass-tick-first')).toBeNull();
+    expect(settled).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
 
@@ -369,20 +391,15 @@ describe('a deletion paints its ghost and swaps once', () => {
 
     expect(span).toEqual({ before: 'реки ', after: '', kind: 'deletion', offset: 4 });
     expect(paragraph.querySelector('.pass-span-gone')?.textContent).toBe('реки ');
-    expect(paragraph.querySelector('.pass-visual')?.textContent).toBe('шум реки затих');
 
-    // 600: the words are fading, the ghost is still set.
     await step(600);
     expect(paragraph.getAttribute('data-pass')).toBe('fade');
     expect(paragraph.querySelector('.pass-span-gone')).not.toBeNull();
-
-    // 800: the swap — the one reflow this path allows, and the final text is the block's own.
+    // 800: the swap — the one reflow this path allows.
     await step(200);
     expect(paragraph.getAttribute('data-pass')).toBe('tail');
     expect(paragraph.querySelector('.pass-span-gone')).toBeNull();
     expect(paragraph.querySelector('.pass-visual')?.textContent).toBe('шум затих');
-
-    // Settled at 1033.33: nothing of the pass is left but the prose.
     await step(400);
     expect(paragraph.getAttribute('data-pass')).toBe('settled');
     expect(settled).toHaveBeenCalledTimes(1);
@@ -402,7 +419,7 @@ describe('the third exit: unmounted', () => {
     await act(async () => root?.unmount());
     root = null;
 
-    // The frame that was already scheduled when the tree left runs against nothing.
+    // The already-scheduled frame runs against nothing.
     await act(async () => {
       clock += 10_000;
       queued?.(clock);
@@ -413,42 +430,40 @@ describe('the third exit: unmounted', () => {
 });
 
 describe('the provenance door', () => {
-  /** Everything that is the prose: the painted copy, the announcement, the run's graphemes. */
   const expectProse = (paragraph: Element, text: string, runGraphemes: number): void => {
     expect(paragraph.querySelector('.pass-visual')?.textContent).toBe(text);
     expect(paragraph.querySelector('.visually-hidden')?.textContent).toBe(text);
     expect(paragraph.querySelectorAll('.pg')).toHaveLength(runGraphemes);
   };
 
-  it('paints the ordinary paragraph’s door when the page has one, adding nothing to the prose', async () => {
+  it('paints the ordinary paragraph’s door, adding nothing to the prose', async () => {
     stubRects({ per: 21, firstLine: 2, blockLines: 6 });
     const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN, prov: true });
 
     const door = paragraph.querySelector('.prov');
     expect(door).not.toBeNull();
-    // The same box the ordinary paragraph gives it (`.prov`), and the same place: last in flow.
+    // The same box the ordinary paragraph gives it, and the same place: last in flow.
     expect(door?.tagName).toBe('BUTTON');
     expect(door?.getAttribute('type')).toBe('button');
     expect(door?.getAttribute('aria-hidden')).toBe('true');
     expect((door as HTMLButtonElement).tabIndex).toBe(-1);
     expect(door?.textContent).toBe('⋯');
     expect(paragraph.lastElementChild).toBe(door);
-
     expectProse(paragraph, REPLACEMENT.after, REPLACEMENT_SPAN.after.length);
   });
 
-  it('leaves it out when the page has none, and the prose is the same word for word', async () => {
+  it('leaves it out when the page has none', async () => {
     stubRects({ per: 21, firstLine: 2, blockLines: 6 });
     const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN, prov: false });
 
     expect(paragraph.querySelector('.prov')).toBeNull();
-    // Not one character of the door's glyph leaks into the paragraph's own text.
     expect(paragraph.textContent?.includes('⋯')).toBe(false);
     expectProse(paragraph, REPLACEMENT.after, REPLACEMENT_SPAN.after.length);
   });
 });
 
-describe('the split it renders', () => {  it('leaves the settled prefix and suffix as plain text on either side of the run', async () => {
+describe('the split it renders', () => {
+  it('leaves the settled prefix and suffix as plain text on either side of the run', async () => {
     const span = passSpanOf('Он шёл по берегу', 'Он бежал по берегу');
     if (span === null) throw new Error('no span');
     stubRects({ per: 4, firstLine: 0, blockLines: 2 });
@@ -461,7 +476,7 @@ describe('the split it renders', () => {  it('leaves the settled prefix and suff
     expect(pending(paragraph)).toBe(4);
   });
 
-  it('settles when the span does not describe this text, instead of painting a guess', async () => {
+  it('settles when the span does not describe this text', async () => {
     const span = passSpanOf('Он шёл по берегу', 'Он бежал по берегу');
     if (span === null) throw new Error('no span');
     stubRects({ per: 4, firstLine: 0, blockLines: 2 });

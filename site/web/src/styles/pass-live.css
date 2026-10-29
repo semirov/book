@@ -112,19 +112,32 @@
   background: var(--write);
 }
 
-/* 390: the read caret steps out of the text into the left gutter as a 1 × 12 tick, so the
-   paragraph's own line keeps every pixel of the measure. The write caret stays in the text. */
-@media (max-width: 599px) {
-  .caret-read::before {
-    top: 4px;
-    left: -12px;
-    width: 1px;
-    height: 12px;
-    border: 0;
-    background: var(--live);
-  }
+/* BOOK-DOC-84 §4 — the read caret keeps the new run's own column on every width. The old
+   390 px gutter step (a 1 × 12 tick at `left: -12px`, outside the text) is gone: it moved
+   the caret off the run's first grapheme, which is the one place the caret contract names. */
 
-  .caret-read::after {
-    content: none;
-  }
+/* ---------- D7: the reduced-motion mark — two static ticks, no motion ---------- */
+/* The run's own `.pass-span` rule stands; the two ticks sit at its first glyph (hollow) and
+   after its last one (solid), written by the renderer as a transform in the paragraph's own
+   geometry. They exist for the static window only, then the block is plain. */
+.pass-tick {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  height: 1.06em;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.pass-tick-first {
+  box-sizing: border-box;
+  width: 4px;
+  border: 1px solid var(--live);
+  background: transparent;
+}
+
+.pass-tick-last {
+  width: 2px;
+  background: var(--live);
 }

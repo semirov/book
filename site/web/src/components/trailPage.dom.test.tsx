@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { AUTHOR_COLORS, type CommentDto, type MyFilingsDto, type MyTraceDto } from '@book/shared';
+import {
+  AUTHOR_COLORS,
+  type CommentDto,
+  type FilingUpdatePayload,
+  type MyFilingsDto,
+  type MyTraceDto,
+} from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +22,10 @@ import { TrailPage } from './TrailPage.tsx';
  * BOOK-221 — the page begins with the one exit (`к оглавлению`), the trace line says what it
  * measures, and a row is a number, a chapter, a moment and one sentence in the reader's own
  * words — never a record code («№A7K») and never a state of our machinery.
+ *
+ * BOOK-DOC-84 #17/D6 — the trail also moves by frame: `filing:update` carries the state and the
+ * tries left, so a row changes in place with no second read, and nothing polls while the page
+ * sits still (the 10 s `/api/queue` poll is gone, and no interval took its place).
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -339,6 +349,53 @@ describe('«ваш след»', () => {
     });
     expect(onFollow).toHaveBeenCalledTimes(1);
     await act(async () => plain.unmount());
+  });
+
+  it('moves a row by its frame, with no second read', async () => {
+    answerFilings([
+      filing('cmt_1', 4, 0, 'цитата из текста', {
+        status: 'new',
+        applied: null,
+        interventionKind: null,
+        changeSeq: null,
+        report: null,
+      }),
+    ]);
+    await mount(true);
+    expect(row()?.textContent ?? '').toContain('ждёт');
+    const before = fetchMock.mock.calls.length;
+
+    const update: FilingUpdatePayload = {
+      commentId: 'cmt_1',
+      chapter: 4,
+      state: 'refused',
+      attempts: 1,
+      attemptsLeft: 2,
+      changeId: 'chg_2',
+      at: 1_764_000_000_000,
+    };
+    await act(async () => {
+      root?.render(
+        <TrailPage viewer={{ signedIn: true, displayName: 'Аня' }} updates={{ cmt_1: update }} />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(row()?.textContent ?? '').toContain('отклонено');
+    expect(fetchMock.mock.calls.length).toBe(before);
+  });
+
+  it('polls nothing while the page sits still', async () => {
+    await mount(true);
+    const before = fetchMock.mock.calls.length;
+    vi.useFakeTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    vi.useRealTimers();
+    expect(fetchMock.mock.calls.length).toBe(before);
   });
 
   it('says «след не прочитался» and offers «повторить» when the read fails', async () => {

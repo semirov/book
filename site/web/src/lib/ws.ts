@@ -109,6 +109,16 @@ export class BookSocket {
     this.socket.send(JSON.stringify({ type: 'ping', data: { t } }));
   }
 
+  /**
+   * BOOK-DOC-84 §3.3 — `resync{since}`: the hub answers one `state:snapshot` with the same
+   * `live` block `hello` carries, which heals every domain the page shows. It never replays
+   * missed frames (the hub keeps no buffer), so the snapshot is the whole of the repair.
+   */
+  sendResync(since: number): void {
+    if (this.socket === null || this.socket.readyState !== 1) return;
+    this.socket.send(JSON.stringify({ type: 'resync', data: { since } }));
+  }
+
   private open(): void {
     if (this.stopped) return;
     // A capacity attempt must not flicker the plate back to the connection-lost status: the

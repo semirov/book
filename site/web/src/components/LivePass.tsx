@@ -1,6 +1,13 @@
 /**
  * BOOK-121 — one paragraph's live pass, painted where it was written.
  *
+ * BOOK-DOC-84 §4/D7 — the caret contract is the engine's (`passMotion.ts`): the blue caret is
+ * born at the first line of the new run, at the run's first grapheme, and climbs to line 0; the
+ * red one descends from the last written glyph, its x advancing with the ink. Both stand in the
+ * paragraph's own geometry (`passMeasure.ts`). Under reduced motion the block keeps the
+ * `.pass-span` rule and shows two static ticks (at the run's first and last glyph) for
+ * `min(settleMs, 2 000)` ms — `data-pass="static"`, no caret element, no rAF loop.
+ *
  * IFACE — the rAF driver has exactly three exits:
  *   • `settled` — the plan's own end (`frameAt` answers `settled` at `plan.settleMs`), or a mount
  *     that is already past it. The last frame is applied, `onSettled` fires **once**, the carets
@@ -39,6 +46,9 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
 /** A caret inks in over this long at birth. JS owns it: a CSS transition would replay on every
  * opacity write the fade makes, and under reduced motion there is no caret to transition. */
 const CARET_INK_MS = 120;
+
+/** D7: the static mark's own window — never longer than this, never "nothing". */
+const STATIC_MARK_MS = 2_000;
 
 const clamp01 = (value: number): number => (value <= 0 ? 0 : value >= 1 ? 1 : value);
 
@@ -82,6 +92,9 @@ export function LivePass({
   const washRef = useRef<HTMLSpanElement | null>(null);
   const readRef = useRef<HTMLSpanElement | null>(null);
   const writeRef = useRef<HTMLSpanElement | null>(null);
+  /** D7's two static ticks: the run's first glyph (hollow) and its last (solid). */
+  const firstTickRef = useRef<HTMLSpanElement | null>(null);
+  const lastTickRef = useRef<HTMLSpanElement | null>(null);
   const doneRef = useRef(false);
 
   const run = useMemo(() => passRunOf(text, span), [text, span]);
@@ -90,6 +103,7 @@ export function LivePass({
 
   const [carets, setCarets] = useState(!reduced && !broken);
   const [ghost, setGhost] = useState(true);
+  const [staticMark, setStaticMark] = useState(reduced && !broken);
   const [beat, setBeat] = useState(reduced || broken ? 'static' : 'paint');
 
   // One pass per mount: the caller keys the block by the pass it belongs to. The effect reads the
@@ -101,6 +115,7 @@ export function LivePass({
       doneRef.current = true;
       setCarets(false);
       setGhost(false);
+      setStaticMark(false);
       setBeat('settled');
       onSettled?.();
     };
@@ -153,13 +168,38 @@ export function LivePass({
       return;
     }
 
+    const { lefts, widths, linePx } = geometry;
     const elapsed = Math.max(0, readNow() - startAt);
-    if (reduced || elapsed >= plan.settleMs) {
+
+    /**
+     * D7 — reduced motion is a **static mark**, never nothing: the span's rule stands, two
+     * ticks mark the run's first and last glyph, and the block is plain after the window. No
+     * caret element is ever created and no frame is ever scheduled.
+     */
+    if (reduced) {
+      const remaining = Math.min(plan.settleMs, STATIC_MARK_MS) - elapsed;
+      if (remaining <= 0) {
+        settleNow();
+        return;
+      }
+      const last = lefts.length - 1;
+      const firstLine = plan.layout.runLines[0] ?? plan.layout.spanStartLine;
+      const lastLine = plan.layout.runLines[last] ?? plan.layout.spanStartLine;
+      const place = (element: HTMLSpanElement | null, line: number, x: number): void => {
+        if (element === null) return;
+        element.style.transform = `translate3d(${x.toFixed(2)}px, ${(line * linePx).toFixed(2)}px, 0)`;
+      };
+      place(firstTickRef.current, firstLine, lefts[0] ?? 0);
+      place(lastTickRef.current, lastLine, (lefts[last] ?? 0) + (widths[last] ?? 0));
+      const timer = window.setTimeout(finish, remaining);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (elapsed >= plan.settleMs) {
       settleNow();
       return;
     }
 
-    const { lefts, widths, linePx } = geometry;
     const redBirthMs = plan.kind === 'insertion' ? 0 : plan.splitMs;
     const origin = performance.now();
     let inked = 0;
@@ -287,6 +327,12 @@ export function LivePass({
         )}
         {run === null ? null : run.suffix}
       </span>
+      {staticMark ? (
+        <>
+          <span className="pass-tick pass-tick-first" aria-hidden="true" ref={firstTickRef} />
+          <span className="pass-tick pass-tick-last" aria-hidden="true" ref={lastTickRef} />
+        </>
+      ) : null}
       {/* One announcement: the whole final block, at once, never character by character. */}
       <span className="visually-hidden">{text}</span>
       {carets ? (

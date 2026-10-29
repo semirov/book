@@ -6,7 +6,6 @@ import {
   type CatalogEntry,
   type ChapterDto,
   type CommentDto,
-  type PassStageEvent,
   type StateSnapshot,
 } from '@book/shared';
 import { act, type ReactElement } from 'react';
@@ -15,11 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { STATE_WORDS } from '../lib/marginalia.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { spineMarkers } from '../lib/spine.ts';
 import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
-import { inFlightOf, type Stages, type StagesLog } from '../lib/useStages.ts';
+import { STAGE_DEADLINE_MS, type LivePass } from '@book/shared';
 import { ChapterList } from './ChapterList.tsx';
 import { Header } from './Header.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
@@ -154,7 +152,7 @@ const WAITING_RIBBON: Ribbon = {
 
 const PREMISE: CommentDto = {
   attempt: null,
-  id: 'cmt_premise', number: 1,
+  id: 'cmt_premise',
   chapter: 3,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -245,16 +243,16 @@ let root: Root | null = null;
 let container: HTMLDivElement;
 
 /** `App` resolves `useReading` and hands it down (BOOK-207); this page does the same. */
-function ReadingHead({ stages, nowMs }: { stages?: Stages; nowMs?: number }): ReactElement {
+function ReadingHead({ passes, nowMs }: { passes?: readonly LivePass[]; nowMs?: number }): ReactElement {
   const reading = useReading(CATALOG);
-  return <Header state={STATE} ribbon={WAITING_RIBBON} catalog={CATALOG} markers={[]} onOpenChange={() => undefined} live stages={stages} nowMs={nowMs} reading={reading} />;
+  return <Header state={STATE} ribbon={WAITING_RIBBON} catalog={CATALOG} markers={[]} onOpenChange={() => undefined} live passes={passes} nowMs={nowMs} reading={reading} />;
 }
 
 /** One reading page: the head, the contents and the flow, exactly as `App` stacks them. */
-function page(stages?: Stages, nowMs?: number): ReactElement {
+function page(passes?: readonly LivePass[], nowMs?: number): ReactElement {
   return (
     <>
-      <ReadingHead stages={stages} nowMs={nowMs} />
+      <ReadingHead passes={passes} nowMs={nowMs} />
       <TableOfContents catalog={CATALOG} state={STATE} currentChapter={null} />
       <ChapterList
         catalog={CATALOG}
@@ -284,10 +282,10 @@ function stackSlots(): void {
   }
 }
 
-async function mount(stages?: Stages, nowMs?: number): Promise<void> {
+async function mount(passes?: readonly LivePass[], nowMs?: number): Promise<void> {
   container = document.body.appendChild(document.createElement('div'));
   root = createRoot(container);
-  await act(async () => root?.render(page(stages, nowMs)));
+  await act(async () => root?.render(page(passes, nowMs)));
   await act(async () => {
     await Promise.resolve();
   });
@@ -362,26 +360,19 @@ const LIVE_NOW = LIVE_AT + 20_000;
  * A pass in flight, built the way the page builds it: the frames folded by `inFlightOf`. The
  * head's own line is the one thing a fixture must never invent, so the log is the real shape.
  */
-function liveStages(): Stages {
-  const log: Record<number, PassStageEvent[]> = {
-    1: [
-      {
-        passId: 'stp_01J9Z8K4Q7',
-        chapter: 1,
-        stageSeq: 1,
-        stage: 'drafting',
-        at: LIVE_AT,
-        actor: { process: 'writer', model: 'deepseek/deepseek-flash' },
-        changeId: null,
-        summary: 'глава пишется',
-        span: null,
-        tokens: null,
-        costUsd: null,
-      },
-    ],
-  };
-  const typed: StagesLog = log;
-  return { log: typed, passes: inFlightOf(typed), note: () => undefined, reset: () => undefined };
+function liveStages(): LivePass[] {
+  return [
+    {
+      chapter: 1,
+      passId: 'stp_01J9Z8K4Q7',
+      changeId: null,
+      lane: 'forward',
+      stage: 'drafting',
+      stageSeq: 1,
+      since: LIVE_AT,
+      deadlineAt: LIVE_AT + STAGE_DEADLINE_MS,
+    },
+  ];
 }
 
 const SENTENCE_MODE: ParagraphChainMode = {
@@ -397,21 +388,21 @@ const SENTENCE_MODE: ParagraphChainMode = {
 };
 
 describe('the reading surface prints the book, not the product', () => {
-  it('prints the book’s own one-word state in the running head, and no count', async () => {
+  it('prints no status, count or explanation in the running head', async () => {
     await mount();
     expectNoInterfaceCopy('.top');
-    // BOOK-218 — with nothing in flight the head says `тихо`, and it says nothing else.
-    expect(container.querySelector('.head-status')?.textContent).toBe('тихо');
-    expect(container.querySelectorAll('.head-status')).toHaveLength(1);
+    // No pass in flight, so no status line at all: the foot's grip carries that fact.
+    expect(container.querySelector('.head-status')).toBeNull();
   });
 
-  it('prints the one permitted status — the chapter is being written — and nothing else', async () => {
+  it('prints the one permitted status — the book is being written — and nothing else', async () => {
     await mount(liveStages(), LIVE_NOW);
-    // The exception, literally: the owner's word, one line, and no chapter and no clock beside
-    // it. It is a state line, not a chip.
-    expect(surface('.top')).toContain('главу пишут');
+    // The exception, literally: the owner's words, the chapter the pass is writing and the
+    // stage's own time in Moscow. It is a state line, not a chip: it exists only while a pass
+    // runs, and the idle case above proves it is not a permanent row.
+    expect(surface('.top')).toContain('сейчас пишется');
     expect(surface('.top')).not.toContain('глава 1 · 14:21');
-    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('drafting');
+    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('writing');
     // The rest of the rule stands under the exception: no count, no row's state word, none of
     // the chips the audits removed — the book, the chapter and the folio are still the head.
     expectNoInterfaceCopy('.top');
@@ -442,7 +433,7 @@ describe('the reading surface prints the book, not the product', () => {
     // reader who already filed reads the slot as empty and is refused as a duplicate.
     const labels = [...container.querySelectorAll('.premise-label')];
     expect(labels).toHaveLength(1);
-    expect(labels[0]?.textContent).toBe(STATE_WORDS.accepted);
+    expect(labels[0]?.textContent).toBe('ждёт');
     // A row of the flow never prints the state word `замысел`. A premise's quote is the
     // reader's own words, though, and the rule allows them — so quotes are stripped here.
     const flow = (container.querySelector('main')?.cloneNode(true) as Element | null) ?? null;

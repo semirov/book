@@ -73,7 +73,7 @@ function expectFrame(plan: PassPlan, expected: ExpectedFrame): void {
 }
 
 describe('the three plans', () => {
-  it('times a replacement: split 260, last ink 870, settled 1940', () => {
+  it('times a replacement: split 260, last ink 870, settled 1843.33', () => {
     const plan = planOf('replacement');
     expect(plan.kind).toBe('replacement');
     expect(plan.cps).toBe(40);
@@ -84,10 +84,13 @@ describe('the three plans', () => {
     expect(plan.inkTimes[11] ?? 0).toBe(535); // the comma is grapheme 12
     expect(plan.inkTimes[12] ?? 0).toBe(620); // +60 ms after it
     expect(plan.persistMs).toBeCloseTo(870, 5);
-    expect(plan.blue.fadeStartMs).toBeCloseTo(1760, 5);
-    expect(plan.blue.fadeEndMs).toBeCloseTo(1940, 5);
+    // BOOK-DOC-84 §4: the blue is born at the run's first line (2), so its climb is 2 lines /
+    // 500 ms and its fade starts at the persist, not 1500 ms later at the paragraph's bottom.
+    expect(plan.blue.distanceLines).toBe(2);
+    expect(plan.blue.fadeStartMs).toBeCloseTo(870, 5);
+    expect(plan.blue.fadeEndMs).toBeCloseTo(1050, 5);
     expect(plan.red.fadeEndMs).toBeCloseTo(1843.333, 2);
-    expect(plan.settleMs).toBeCloseTo(1940, 5);
+    expect(plan.settleMs).toBeCloseTo(1843.333, 2);
   });
 
   it('takes the desktop 40 cps when the fixture names no rate', () => {
@@ -104,8 +107,8 @@ describe('the three plans', () => {
 
   it('ramps both carets linearly over their own fades', () => {
     const plan = planOf('replacement');
-    expect(plan.blue.fadeStartMs).toBeCloseTo(1760, 5);
-    expect(frameAt(plan, 1850).blue?.opacity).toBeCloseTo(0.5, 2);
+    expect(plan.blue.fadeStartMs).toBeCloseTo(870, 5);
+    expect(frameAt(plan, 960).blue?.opacity).toBeCloseTo(0.5, 2);
     expect(plan.red.fadeStartMs).toBeCloseTo(1703.333, 2);
     expect(frameAt(plan, 1773.333).red?.opacity).toBeCloseTo(0.5, 2);
   });
@@ -128,7 +131,8 @@ describe('the three plans', () => {
     expect(plan.swapMs).toBe(220);
     expect(plan.inkTimes[0]).toBe(220);
     expect(plan.persistMs).toBeCloseTo(1427.0588, 3);
-    expect(plan.blue.fadeStartMs).toBeCloseTo(2220, 5);
+    expect(plan.blue.distanceLines).toBe(3);
+    expect(plan.blue.fadeStartMs).toBeCloseTo(1427.0588, 3);
     expect(plan.red.fadeStartMs).toBeCloseTo(2677.0588, 3);
     expect(plan.settleMs).toBeCloseTo(2817.0588, 3);
   });
@@ -256,15 +260,19 @@ describe('the twelve reference frames', () => {
       { at: 200, beat: 'hold', revealed: 0, selected: true, selectionOpacity: 1, swapped: false,
         persist: false, settled: false, blue: null, red: null },
       { at: 800, beat: 'type', revealed: 20, selected: true, selectionOpacity: 0.4, swapped: true,
-        persist: false, settled: false, blue: { line: 2.85, fading: false },
+        persist: false, settled: false, blue: { line: 0, fading: false },
         red: { line: 2, col: 20, resting: false, fading: false } },
+      // The blue's climb is over at 760 and its fade ends at 1050: the read caret is gone
+      // while the red is still walking the run down (they crossed in time, never in place).
       { at: 1600, beat: 'tail', revealed: 23, selected: false, selectionOpacity: 0, swapped: true,
-        persist: true, settled: false, blue: { line: 0.04, fading: false },
+        persist: true, settled: false, blue: null,
         red: { line: 4.75, col: 23, resting: false, fading: false } },
     ];
     for (const expected of frames) expectFrame(plan, expected);
-    // The top-arrival is a real 0, not 1 of 6: pin it beyond the coarse table precision.
-    expect(frameAt(plan, 1600).blue?.line).toBeLessThan(0.1);
+    expect(frameAt(plan, 1600).blue).toBeNull();
+    // Born at the run's first line and at its first grapheme, never below the paragraph.
+    expect(frameAt(plan, 260).blue?.line).toBeCloseTo(2, 1);
+    expect(frameAt(plan, 260).blue?.col).toBe(0);
   });
 
   it('insertion · 390: the point holds, then type, then tail', () => {
@@ -275,13 +283,18 @@ describe('the twelve reference frames', () => {
       { at: 200, beat: 'point', revealed: 0, selected: false, selectionOpacity: 0, swapped: false,
         persist: false, settled: false, blue: null, red: { line: 3, col: 0, resting: true, fading: false } },
       { at: 800, beat: 'type', revealed: 18, selected: false, selectionOpacity: 0, swapped: true,
-        persist: false, settled: false, blue: { line: 5.28, fading: false },
+        persist: false, settled: false, blue: { line: 0.1, fading: false },
         red: { line: 3, col: 18, resting: false, fading: false } },
-      { at: 1600, beat: 'tail', revealed: 40, selected: false, selectionOpacity: 0, swapped: true,
-        persist: true, settled: false, blue: { line: 0.53, fading: false },
-        red: { line: 4.42, col: 40, resting: false, fading: false } },
+      { at: 1700, beat: 'tail', revealed: 40, selected: false, selectionOpacity: 0, swapped: true,
+        persist: true, settled: false, blue: null,
+        red: { line: 4.65, col: 40, resting: false, fading: false } },
     ];
     for (const expected of frames) expectFrame(plan, expected);
+    // The blue is at the top and fading at 1500 (its 750 ms climb ends at 970; the fade runs
+    // to 1607), and it is gone by 1700: a read caret that left is not a mark.
+    const fading = frameAt(plan, 1500).blue;
+    expect(fading?.line).toBeCloseTo(0, 1);
+    expect(fading?.fading).toBe(true);
   });
 
   it('deletion · 390: paint, a long hold, the fades, then settled', () => {

@@ -1,61 +1,66 @@
+import type { LivePass } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  HEAD_SILENCE_MS,
-  headStatusOf,
-  type HeadKind,
-  type HeadSocket,
-  type HeadState,
-} from '../lib/headStatus.ts';
-import type { Stages } from '../lib/useStages.ts';
+import { headStatusOf, type HeadEngine, type HeadKind } from '../lib/headStatus.ts';
 
 /**
- * BOOK-207 / BOOK-218 — the head's one word, drawn from the same facts the pass surfaces read.
+ * BOOK-207 / BOOK-DOC-84 D3 — the head's one word, drawn from the facts the frames carry.
  *
  * It is the running head's free space and nothing more: one 12 px mono word in the row that
- * already exists, so `.top-in`'s height and the folio's y do not move by a pixel. The seven words
- * are `HEAD_WORDS` in `@book/shared`; a word with a longer sentence behind it (`главу пишут —
- * начали в 12:10`, `написанное читает редактор`, the no-line sentence) carries it as the line's
- * `title`, so a reader can ask without the head growing a second line.
+ * already exists, so `.top-in`'s height and the folio's y do not move by a pixel (the box is
+ * shorter than the brand's own 16.2 px label line, and `flex: none` keeps it from growing).
+ * The phone prints the word 12 px after the brand and keeps the folio on its right end.
  *
- * The clock is the page's, but the *end of a silence* needs a moment to happen in: while a pass
- * is live one timeout is armed for `atMs + 90 s`, and it is cleared with the state or the page.
- * No interval, no poll.
+ * The word is the stage's own (`lib/headStatus.ts`): «сейчас читает» / «сейчас пишется» /
+ * «сейчас проверяют» / «сейчас записывает» / «сейчас тихо». No open pass prints nothing at all.
+ *
+ * The clock is the page's; only the *end* of a word needs a moment to happen in, so one timeout
+ * is armed at `status.untilMs` (a pass's deadline, or the two-second write word) and cleared
+ * with the state or the page. No interval, no poll, and nothing ticks while the head is idle.
  */
 export function HeadStatus({
-  state,
-  stages,
-  socket,
+  passes,
+  engine,
+  appliedAt,
+  closedAt,
   nowMs,
 }: {
-  state: HeadState;
-  /** The page's stage log; absent for a caller that holds none — then nothing is live. */
-  stages?: Stages;
-  /** The page's socket status (BOOK-218); absent for a caller that holds no line. */
-  socket?: HeadSocket;
+  /** BOOK-DOC-84 §2.2 — the open passes, newest first. */
+  passes?: readonly LivePass[];
+  /** The engine's own line; `down`/`absent` makes the head quiet whatever a stage says. */
+  engine?: HeadEngine;
+  /** The write's own clock (`chapter:applied` / `live.applied`). */
+  appliedAt?: number | null;
+  /** The newest `pass:closed`. */
+  closedAt?: number | null;
   /** A fixed clock for a test; a page hands none in and the component reads its own. */
   nowMs?: number;
 }) {
   const fixed = nowMs !== undefined;
   const [clock, setClock] = useState(() => nowMs ?? Date.now());
 
-  // A new stage is a new observation: re-read the clock once per frame. `appendStage` returns the
-  // same log object when a frame says nothing new, so a repeated frame costs no render.
+  // A new frame is a new observation: re-read the clock once per frame. The reducer returns the
+  // same list object for a duplicate, so a repeated frame costs no render.
   useEffect(() => {
     if (fixed) return;
     setClock(Date.now());
-  }, [fixed, stages?.log]);
+  }, [fixed, passes, engine, appliedAt, closedAt]);
 
-  const status = headStatusOf({ stages, state, socket, nowMs: fixed ? nowMs : clock });
+  const status = headStatusOf({
+    passes,
+    engine,
+    appliedAt,
+    closedAt,
+    nowMs: fixed ? nowMs : clock,
+  });
 
-  // The silence has an end, and it is one moment: the head turns `тихо` without waiting for
-  // another frame, and one timer is armed at a time.
+  // Every word has an end, and it is one moment: the deadline, or the write's two seconds.
   useEffect(() => {
-    if (fixed || status.atMs === null) return;
-    const due = status.atMs + HEAD_SILENCE_MS + 1 - Date.now();
+    if (fixed || status.untilMs === null) return;
+    const due = status.untilMs + 1 - Date.now();
     const timer = window.setTimeout(() => setClock(Date.now()), Math.max(0, due));
     return () => window.clearTimeout(timer);
-  }, [fixed, status.kind, status.atMs]);
+  }, [fixed, status.kind, status.untilMs]);
 
   // Announced on a state change, never on every render: a status region that spoke every time
   // would read the word out loud again and again.
@@ -65,18 +70,18 @@ export function HeadStatus({
     spoken.current = status.kind;
   }, [status.kind]);
 
+  if (status.kind === 'idle' || status.full === null) return null;
+
   return (
     <span
       className="head-status"
       data-kind={status.kind}
       role="status"
       aria-live={announce ? 'polite' : 'off'}
-      {...(status.detail === null ? {} : { title: status.detail })}
     >
-      {/* The nib is the pass's own mark, --live: five pixels on the baseline, no motion. */}
-      {status.kind === 'reading' || status.kind === 'drafting' || status.kind === 'gates' ? (
-        <span className="head-nib" aria-hidden="true" />
-      ) : null}
+      {/* The nib is the pass's own mark, --live: five pixels on the baseline, no motion. The
+          quiet word carries no nib: nothing is being written. */}
+      {status.kind === 'quiet' ? null : <span className="head-nib" aria-hidden="true" />}
       <span className="head-status-full">{status.full}</span>
     </span>
   );

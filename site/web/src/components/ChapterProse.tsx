@@ -5,10 +5,9 @@
  *
  *   - `ProseParagraph` — the ordinary paragraph, as it has always been: the printing reveal,
  *     the seam's rails, the marks;
- *   - `LivePass` — the pass renderer, mounted for the block a `typing`/`landed` stage names,
- *     from the event's own `at`. Its spec is `passRail.ts`'s (`livePassOf` / `liveRunOf`), and
- *     it is mounted once per pass: a later stage of the same pass never re-keys it, and a
- *     settled one is never re-keyed into a replay.
+ *   - `LivePass` — the pass renderer, mounted from an **applied print plan** (§4/D2): the plans
+ *     come from `lib/appliedPrint.ts`, clocked by `chapter:applied.appliedAt`, and each plan is
+ *     mounted once. A settled plan is never re-keyed: the prose never replays (D5).
  *
  * BOOK-207 — nothing sits after the paragraph: the live paragraph is the whole process, and
  * a settled pass leaves the ordinary paragraph and the record's `правка` section.
@@ -21,14 +20,13 @@ import type {
   ChapterDto,
   CommentDto,
   ComposerInfo,
-  PassStageEvent,
   ViewerDto,
 } from '@book/shared';
 import { Fragment, useMemo, useState } from 'react';
 
 import { reducedMotion } from '../dom.ts';
+import type { PrintPlan } from '../lib/appliedPrint.ts';
 import type { SeamDraft } from '../lib/draft.ts';
-import { livePassOf, liveRunOf } from '../lib/passRail.ts';
 import { activeBlockId, blockText, type RevealState } from '../lib/reveal.ts';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { LivePass } from './LivePass.tsx';
@@ -56,13 +54,13 @@ export type ChapterProseProps = {
   composer: ComposerInfo;
   viewer: ViewerDto;
   history: boolean;
-  /** The page's stage log for this chapter: what a running pass has written so far. */
-  stages?: readonly PassStageEvent[];
+  /** The write's print plans (§4/D2): the blocks of an applied record, already bounded. */
+  prints?: readonly PrintPlan[];
+  /** A plan settled: the block is an ordinary paragraph again, and that plan never replays. */
+  onPrintSettled?: (key: string) => void;
   onPosted?: (comment: CommentDto) => void;
   onReanchor: (draft: SeamDraft) => void;
 };
-
-const NO_EVENTS: readonly PassStageEvent[] = [];
 
 export function ChapterProse({
   entry,
@@ -79,33 +77,41 @@ export function ChapterProse({
   composer,
   viewer,
   history,
-  stages,
+  prints = [],
+  onPrintSettled,
   onPosted,
   onReanchor,
 }: ChapterProseProps) {
-  /** The pass whose renderer has already settled: its block is an ordinary paragraph again. */
-  const [settled, setSettled] = useState<string | null>(null);
+  /** The plans whose renderer has already settled: those blocks are ordinary paragraphs again. */
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
   const reduced = reducedMotion();
-  const spec = useMemo(() => livePassOf(stages ?? NO_EVENTS), [stages]);
+  const live = useMemo(() => prints.filter((plan) => !settled.has(plan.key)), [prints, settled]);
 
   const showCaret = caret?.show === true && entry.written;
   const caretBlockId =
     reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter.blocks.at(-1)?.id ?? null : null)) : null;
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
-  /** One paint per pass: a second paragraph with the same words is not the one being written. */
-  let painted = false;
+  /** One paint per plan: a second paragraph with the same words is not the one being written. */
+  const claimed = new Set<string>();
 
   return (
     <>
       {chapter.blocks.map((block, index) => {
         const text = reveal === null ? block.text : blockText(reveal, block.id, block.text);
         const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
-        // The pass's own renderer, for this block only, and only while it is unsettled.
-        const run = spec === null || spec.key === settled || painted ? null : liveRunOf(spec, block);
-        if (run !== null) painted = true;
+        // The applied print's own renderer, for this block only, and only while it is unsettled.
+        // A plan names the pre-revision block id; after the patch the block may carry the new
+        // text under a new id, so the final text is the second key (never a second paint).
+        const plan =
+          live.find(
+            (item) =>
+              !claimed.has(item.key) &&
+              (item.blockId === block.id || block.text === item.after),
+          ) ?? null;
+        if (plan !== null) claimed.add(plan.key);
         return (
           <Fragment key={block.id}>
-            {run === null || spec === null ? (
+            {plan === null ? (
               <ProseParagraph
                 entry={entry}
                 blockId={block.id}
@@ -128,16 +134,23 @@ export function ChapterProse({
               />
             ) : (
               <LivePass
-                key={spec.key}
+                key={plan.key}
                 blockId={block.id}
-                text={run.text}
-                span={run.span}
-                startAt={spec.startAt}
+                text={plan.after}
+                span={plan.span}
+                startAt={plan.startAt}
                 reduced={reduced}
                 // The pass paints the same `⋯` door the ordinary paragraph paints — hidden and
                 // unreachable, so handing the block back moves no line (the door is inline).
                 prov={history && sentence !== undefined}
-                onSettled={() => setSettled(spec.key)}
+                onSettled={() => {
+                  setSettled((current) => {
+                    const next = new Set(current);
+                    next.add(plan.key);
+                    return next;
+                  });
+                  onPrintSettled?.(plan.key);
+                }}
               />
             )}
           </Fragment>

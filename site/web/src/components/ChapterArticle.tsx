@@ -1,5 +1,4 @@
 import {
-  type BlockDto,
   type BlockRevisingPayload,
   type CatalogEntry,
   type ChangeSummaryDto,
@@ -7,7 +6,6 @@ import {
   type ChapterRevisionPayload,
   type CommentDto,
   type ComposerInfo,
-  type PassStageEvent,
   type ViewerDto,
 } from '@book/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,7 +16,8 @@ import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
 import { reserveHeight } from '../lib/cssom.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
-import { applyPatch, refetchPrints, revisedBlockIds } from '../lib/patch.ts';
+import { appliedPrintPlans, type AppliedRecord, type PrintPlan } from '../lib/appliedPrint.ts';
+import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
@@ -78,16 +77,11 @@ export type ChapterArticleProps = {
   /** The first empty chapter in the flow carries the page's one explanation sentence. */
   firstEmpty?: boolean;
   /**
-   * BOOK-117: a writer pass is in flight for this chapter (the stage stream says so). The
-   * engine publishes the revision in its own process, so the site's watcher sends no frame; the
-   * refetch this page does anyway is then *printed* — the reader watches the change land.
+   * BOOK-DOC-84 §4/D2 — the write this chapter just received (`chapter:applied`, or
+   * `live.applied` on a fresh page). It is the print's only clock: the article plans the ink
+   * from its `appliedAt`, for the blocks inside 1.5 viewports, and mounts `LivePass` for them.
    */
-  passActive?: boolean;
-  /**
-   * BOOK-167: the page's stage log for this chapter (`useStages`). The prose prints the block a
-   * `typing`/`landed` stage names, and the strip under it reads the same events.
-   */
-  stages?: readonly PassStageEvent[];
+  applied?: AppliedRecord | null;
 };
 
 export function ChapterArticle({
@@ -106,8 +100,7 @@ export function ChapterArticle({
   viewer,
   history,
   firstEmpty = false,
-  passActive = false,
-  stages,
+  applied = null,
 }: ChapterArticleProps) {
   const seam = useOpenSeam();
   /**
@@ -124,11 +117,8 @@ export function ChapterArticle({
   const { article, reveal, setReveal, printing, line, startReveal } = printingReveal;
   /** BOOK-117: the change behind a revision, held across the refetch it forces. */
   const changeIds = useRef<ReadonlySet<string> | null>(null);
-  /** The blocks this article last rendered: what a refetch compares against to find the change. */
-  const shownBlocks = useRef<readonly BlockDto[] | null>(null);
-  /** The pass flag as `load` sees it without taking `passActive` into its dependency list. */
-  const passInFlight = useRef(false);
-  passInFlight.current = passActive;
+  /** The print plans of the write this chapter just received (§4/D2). */
+  const [prints, setPrints] = useState<readonly PrintPlan[]>([]);
 
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
   const showsText = entry.written || entry.basis;
@@ -151,16 +141,10 @@ export function ChapterArticle({
       }
       setFailed(false);
       setChapter(result);
-      // BOOK-117: what prints on a refetch — the change it carries, or, while a pass is in
-      // flight, the blocks that differ from the ones already on screen.
-      const changed = refetchPrints({
-        change: changeIds.current,
-        passInFlight: passInFlight.current,
-        before: shownBlocks.current,
-        after: result.blocks,
-      });
+      // BOOK-117 / D2: the refetch prints the reader's own change that travelled with the
+      // request, and never a pass landing — a write is printed only by an applied record.
+      const changed = changeIds.current;
       changeIds.current = null;
-      shownBlocks.current = result.blocks;
       startReveal(result, changed);
     } catch {
       setFailed(true);
@@ -205,6 +189,29 @@ export function ChapterArticle({
     return () => observer.disconnect();
   }, [entry.n, showsText]);
 
+  /**
+   * BOOK-DOC-84 §4/D2 — the write's print, planned once per applied record.
+   *
+   * The clock is `appliedAt` (never `landed.at`): every changed block inside 1.5 viewports is
+   * planned in document order, at most four, each with its own offset from that one moment.
+   * Off-screen blocks are set, not planned. A record older than the print window, a truncated
+   * patch or an unreadable pre-image gives no plan — the prose is refetched, never guessed.
+   * The boxes are read once here, never per animation frame.
+   */
+  useEffect(() => {
+    if (applied === null || applied.n !== entry.n) return;
+    const node = article.current;
+    const height = typeof window === 'undefined' ? 800 : window.innerHeight || 800;
+    const visible = (blockId: string | null): boolean => {
+      if (node === null || blockId === null) return true;
+      const element = node.querySelector<HTMLElement>(`[data-block-id="${blockId}"]`);
+      if (element === null) return true;
+      const rect = element.getBoundingClientRect();
+      return rect.bottom > -1.5 * height && rect.top < 2.5 * height;
+    };
+    setPrints(appliedPrintPlans(applied, { nowMs: Date.now(), visible }));
+  }, [applied, entry.n, article]);
+
   // Apply or refetch on a revision. `rev` is the only ordering authority (§10.4).
   useEffect(() => {
     if (!showsText || !inView) return;
@@ -232,7 +239,6 @@ export function ChapterArticle({
           updatedAt: revision.updatedAt,
           blocks: patched,
         });
-        shownBlocks.current = patched;
         if (!printsChange(revision)) {
           setRevisedIds(new Set(revisedBlockIds(revision.patch)));
           // A machine rewrite cross-fades; it never re-types. If text was printing, stop.
@@ -387,7 +393,7 @@ export function ChapterArticle({
           composer={composer}
           viewer={viewer}
           history={history}
-          stages={stages}
+          prints={prints}
           onPosted={onPosted}
           onReanchor={(draft) => {
             setReanchor({ draft, blockGone: false });

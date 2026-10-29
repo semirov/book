@@ -128,6 +128,27 @@ describe('the register’s counters', () => {
     expect(text(html)).toContain('в работе 3 правки');
   });
 
+  it('prints the reader’s own place from the snapshot’s pending list, not from a poll', () => {
+    const mine = comment({ id: 'cmt_1', changeId: 'chg_2', status: 'accepted' });
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={3}
+        complete
+        comments={[mine]}
+        pending={[
+          { id: 'chg_2', chapter: 4, seq: 2, ahead: 2, kind: 'edit', enqueuedAt: '2026-10-29T10:00:00Z' },
+        ]}
+        live
+      />,
+    );
+    expect(text(html)).toContain('впереди 2');
+    // Nothing waiting of the reader's own: the queue's own line stands.
+    const other = renderToStaticMarkup(
+      <Discussion depth={1} comments={[]} pending={[{ id: 'chg_9', chapter: 4, seq: 1, ahead: 0, kind: 'edit', enqueuedAt: '2026-10-29T10:00:00Z' }]} live />,
+    );
+    expect(text(other)).toContain('правки идут по одной');
+  });
+
   it('uses the singular and the plural count forms', () => {
     expect(
       text(renderToStaticMarkup(<Discussion depth={1} complete comments={[comment({ id: 'cmt_1' })]} live />)),

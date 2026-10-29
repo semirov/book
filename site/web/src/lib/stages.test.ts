@@ -2,7 +2,7 @@ import type { PassStage, PassStageEvent } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { applyStage } from './passes.ts';
-import { MAX_STAGE_EVENTS, appendStage, inFlightOf, type StagesLog } from './useStages.ts';
+import { MAX_STAGE_EVENTS, appendStage, inFlightOf, type StagesLog } from './stages.ts';
 
 /**
  * The page's stage log: bounded, deduped, and the one source of the in-flight flags the

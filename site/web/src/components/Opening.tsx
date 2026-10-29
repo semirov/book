@@ -1,11 +1,10 @@
-import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
+import type { CatalogEntry, FrontDto, LivePass, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
-import type { HeadSocket } from '../lib/headStatus.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
-import type { Stages } from '../lib/useStages.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
+import type { HeadEngine } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { HowTheBookIsMade } from './HowTheBookIsMade.tsx';
 import { TitleSheet } from './TitleSheet.tsx';
@@ -44,10 +43,11 @@ export function Opening({
   motion,
   live,
   chronicle,
-  stages,
-  socket,
+  passes,
+  engine,
+  appliedAt,
+  closedAt,
   reading,
-  gated,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -66,18 +66,13 @@ export function Opening({
    * the chronicle too.
    */
   chronicle?: boolean;
-  /** BOOK-156 #3814: the page's stage log — the running head says the book is being written. */
-  stages?: Stages;
-  /** BOOK-218: the page's socket status — with no live line the head says `связи нет`. */
-  socket?: HeadSocket;
+  /** BOOK-DOC-84 §2.2/D3: the open passes, the engine's line, and the write's clock. */
+  passes?: readonly LivePass[];
+  engine?: HeadEngine;
+  appliedAt?: number | null;
+  closedAt?: number | null;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
-  /**
-   * BOOK-225: the age gate stands where the chapters would. The way into the chronicle is a
-   * way into the book's record, and its past chapters are text — so the switch waits for the
-   * same answer the chapters wait for, and the opening is one screen of book matter.
-   */
-  gated?: boolean;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -99,12 +94,13 @@ export function Opening({
         markers={escalation}
         onOpenChange={onOpenChange}
         live={live}
-        stages={stages}
-        socket={socket}
+        passes={passes}
+        engine={engine}
+        appliedAt={appliedAt}
+        closedAt={closedAt}
         reading={reading}
       />
-      {/* BOOK-225 — a gated page has no second mode: the record's past chapters are prose. */}
-      {gated === true ? null : <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />}
+      <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
     </>
   );
 }

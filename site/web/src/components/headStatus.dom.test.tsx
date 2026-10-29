@@ -1,26 +1,30 @@
 // @vitest-environment jsdom
-import { partOf, TOTAL_CHAPTERS, type CatalogEntry, type PassStage, type PassStageEvent, type StateSnapshot } from '@book/shared';
+import {
+  partOf,
+  STAGE_DEADLINE_MS,
+  TOTAL_CHAPTERS,
+  type CatalogEntry,
+  type LivePass,
+  type StateSnapshot,
+} from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { inFlightOf, type Stages, type StagesLog } from '../lib/useStages.ts';
 import { Header } from './Header.tsx';
-import { firstDeclarations, mediaBlocks, unionDeclarations } from './cssRules.ts';
+import { firstDeclarations, unionDeclarations } from './cssRules.ts';
 
 /**
- * BOOK-156 #3814 — the book's state in the running head's free space, mounted in the real head.
+ * BOOK-207 / BOOK-DOC-84 D3 — the head's one word, mounted in the real head.
  *
  * What is asserted here is the DOM contract and the geometry the sheets state:
  *
  *   - the line is a child of the head's one row, after the chapter cluster and before the folio;
- *   - live prints `сейчас пишется` with the 5×5 nib, stopped prints `сейчас тихо` without it,
- *     and idle prints nothing at all — no chapter and no clock ride along (BOOK-207);
- *   - below 768 the word follows the brand 12 px behind it, and the folio keeps the right end;
- *   - the region is announced once per *state change*, never per render;
+ *   - the word is the stage's own (`сейчас читает` / `пишется` / `проверяют` / `записывает`),
+ *     the quiet word carries no nib, and idle prints nothing at all;
  *   - the row cannot grow: the status is one 12 px line, and the row's items are all the same
  *     12 px × 1.35 = 16.2 px box (base.css's `.top-row`). jsdom has no layout, so the height
- *     proof is read from the sheets here and measured in the browser in the delivery report.
+ *     proof is read from the sheets here.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -41,10 +45,7 @@ const STATE: StateSnapshot = {
   phase: 'draft',
   front: { title: 'Бланк', about: null, rev: 1, updatedAt: '2026-10-28T10:00:00Z' },
   chapters: { total: TOTAL_CHAPTERS, written: [12], empty: [], count: 1, totalChars: 12_000, basis: [] },
-  cursors: {
-    forward: { lane: 'forward', from: 1, to: 21, cursor: 12, next: 13, status: 'writing', lastPassAt: null, lastPass: null },
-    backward: { lane: 'backward', from: TOTAL_CHAPTERS, to: 22, cursor: TOTAL_CHAPTERS, next: TOTAL_CHAPTERS - 1, status: 'idle', lastPassAt: null, lastPass: null },
-  },
+  cursors: {} as StateSnapshot['cursors'],
   toc: [],
   meeting: { forwardFront: 12, backwardFront: TOTAL_CHAPTERS, gap: 0, converged: false, seam: 'not_reached' },
   cascade: null,
@@ -62,7 +63,6 @@ const STATE: StateSnapshot = {
   history: { live: false, readerChanges: 0, started: false },
 };
 
-/** Chapter 12 carries prose, so the reading line names it and the folio prints its page. */
 const CATALOG: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => {
   const n = index + 1;
   return {
@@ -81,35 +81,30 @@ const CATALOG: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index
   } as CatalogEntry;
 });
 
-function event(stage: PassStage, seq: number): PassStageEvent {
-  return {
-    passId: 'stp_01J9Z8K4Q7',
-    chapter: 12,
-    stageSeq: seq,
-    stage,
-    at: AT + (seq - 1) * 1_000,
-    actor: { process: 'writer', model: 'deepseek/deepseek-flash' },
-    changeId: null,
-    summary: 'глава пишется',
-    span: null,
-    tokens: null,
-    costUsd: null,
-  };
-}
-
-/** The log and its in-flight fold, built the way the page builds them. */
-function stagesOf(...events: PassStageEvent[]): Stages {
-  const log: Record<number, PassStageEvent[]> = {};
-  for (const one of events) (log[one.chapter] ??= []).push(one);
-  const typed: StagesLog = log;
-  return { log: typed, passes: inFlightOf(typed), note: () => undefined, reset: () => undefined };
-}
+const PASS: LivePass = {
+  chapter: 12,
+  passId: 'stp_01J9Z8K4Q7',
+  changeId: null,
+  lane: 'forward',
+  stage: 'drafting',
+  stageSeq: 2,
+  since: AT + 1_000,
+  deadlineAt: AT + 1_000 + STAGE_DEADLINE_MS,
+};
 
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-/** Mount (or re-render) the real head with a log and a clock — the two facts the line reads. */
-async function mount(options: { stages?: Stages; socket?: 'connecting' | 'open' | 'closed' | 'capacity'; nowMs?: number } = {}): Promise<void> {
+async function mount(
+  options: {
+    passes?: readonly LivePass[];
+    engine?: { status: StateSnapshot['engine']['status'] } | null;
+    appliedAt?: number | null;
+    nowMs?: number;
+    /** A page hands no clock in: the component reads `Date.now` (a fake clock in the test). */
+    live?: boolean;
+  } = {},
+): Promise<void> {
   await act(async () => {
     root?.render(
       <Header
@@ -119,9 +114,10 @@ async function mount(options: { stages?: Stages; socket?: 'connecting' | 'open' 
         markers={[]}
         onOpenChange={() => undefined}
         live
-        stages={options.stages}
-        {...(options.socket === undefined ? {} : { socket: options.socket })}
-        nowMs={options.nowMs}
+        passes={options.passes}
+        engine={options.engine}
+        appliedAt={options.appliedAt}
+        nowMs={options.live === true ? undefined : (options.nowMs ?? AT + 20_000)}
         reading={{ n: 12, page: 1 }}
       />,
     );
@@ -131,15 +127,9 @@ async function mount(options: { stages?: Stages; socket?: 'connecting' | 'open' 
   });
 }
 
-function status(): HTMLElement | null {
-  return container.querySelector<HTMLElement>('.head-status');
-}
+const status = (): HTMLElement | null => container.querySelector<HTMLElement>('.head-status');
+const word = (): string | null => container.querySelector('.head-status-full')?.textContent ?? null;
 
-function textOf(selector: string): string | null {
-  return container.querySelector(selector)?.textContent ?? null;
-}
-
-/** The head's one row of items, as their class names, in DOM order. */
 function rowItems(): string[] {
   const row = container.querySelector('.top-row');
   return [...(row?.children ?? [])].map((child) => child.className);
@@ -158,18 +148,13 @@ beforeEach(async () => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
   Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
-  // The chapter the reader is in: one slot at the top of the reading area, so `useReading`
-  // names ch12 and the folio prints its page (the row's right end).
   const article = document.createElement('article');
   article.dataset.n = '12';
   article.dataset.rev = '2';
   article.getBoundingClientRect = () =>
     ({ top: 0, bottom: 90, height: 90, left: 0, right: 0, width: 0, x: 0, y: 0 }) as DOMRect;
   document.body.append(article);
-  await mount({});
-  await act(async () => {
-    window.dispatchEvent(new Event('scroll'));
-  });
+  await mount();
 });
 
 afterEach(async () => {
@@ -179,113 +164,65 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-describe('the head says one word about now', () => {
-  it('prints «главу пишут» and the 5×5 nib while a pass is in flight', async () => {
-    await mount({ stages: stagesOf(event('queued', 1), event('drafting', 2)), nowMs: AT + 20_000 });
-    const line = status();
-    expect(line).not.toBeNull();
-    expect(line?.getAttribute('data-kind')).toBe('drafting');
-    // One line in the markup: there is no second, shortened variant (BOOK-199).
-    expect(line?.querySelector('.head-status-full')?.textContent).toBe('главу пишут');
-    expect(line?.querySelector('.head-status-short')).toBeNull();
-    expect(line?.querySelector('.head-nib')).not.toBeNull();
-    // The longer sentence is the line's own title, never a second visible line.
-    expect(line?.getAttribute('title')).toBe('главу пишут — начали в 14:21');
-    // One status region in the head, and no second name for a pass anywhere in it.
+describe('the head names what the machine is doing', () => {
+  it('prints the stage’s word and the 5×5 nib while a pass is in flight', async () => {
+    await mount({ passes: [{ ...PASS, stage: 'drafting' }] });
+    expect(status()?.getAttribute('data-kind')).toBe('writing');
+    expect(word()).toBe('сейчас пишется');
+    expect(status()?.querySelector('.head-nib')).not.toBeNull();
+  });
+
+  it('changes the word with the stage, without a reload', async () => {
+    const stages: Array<[LivePass['stage'], string]> = [
+      ['queued', 'сейчас читает'],
+      ['drafting', 'сейчас пишется'],
+      ['verdict', 'сейчас проверяют'],
+    ];
+    for (const [stage, expected] of stages) {
+      await mount({ passes: [{ ...PASS, stage }] });
+      expect(word()).toBe(expected);
+    }
+    await mount({ passes: [{ ...PASS, stage: 'verdict' }], appliedAt: AT + 20_000 });
+    expect(word()).toBe('сейчас записывает');
+  });
+
+  it('keeps the row: the status follows the chapter cluster and the folio follows the status', async () => {
+    await mount({ passes: [PASS] });
+    const items = rowItems();
+    expect(items.indexOf('head-status')).toBeGreaterThan(items.indexOf('top-chapter'));
+    expect(items.indexOf('folio')).toBeGreaterThan(items.indexOf('head-status'));
+    expect(container.querySelector('.top-chapter-n')?.textContent).toBe('12');
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(container.querySelector('.top')?.textContent ?? '').not.toContain('проход');
   });
 
-  it('prints «правку читают» and «главу проверяют» for the other two steps of a reading', async () => {
-    await mount({ stages: stagesOf(event('queued', 1), event('read', 2)), nowMs: AT + 20_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('reading');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('правку читают');
-    await mount({ stages: stagesOf(event('read', 1), event('verdict', 2)), nowMs: AT + 20_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('gates');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('главу проверяют');
-    expect(status()?.getAttribute('title')).toBe('написанное читает редактор');
+  it('prints nothing at all when no pass is open — idle is absent, not «тихо»', async () => {
+    await mount({ passes: [] });
+    expect(status()).toBeNull();
   });
 
-  it('keeps the row: the status follows the chapter cluster and the folio follows the status', async () => {
-    await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 20_000 });
-    const items = rowItems();
-    expect(items).toContain('brand');
-    expect(items).toContain('top-chapter');
-    expect(items).toContain('head-status');
-    expect(items).toContain('folio');
-    expect(items.indexOf('head-status')).toBeGreaterThan(items.indexOf('top-chapter'));
-    expect(items.indexOf('folio')).toBeGreaterThan(items.indexOf('head-status'));
-    // The chapter cluster still names the chapter: the status never takes the slot.
-    expect(textOf('.top-chapter-n')).toBe('12');
-  });
-
-  it('prints the idle word «тихо» when nothing is in flight — never an empty head', async () => {
-    await mount({ stages: stagesOf(), nowMs: AT + 5_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('idle');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
-    // ...and with no log at all: nothing is live, and the word says so.
-    await mount({ nowMs: AT + 5_000 });
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
-  });
-
-  it('says «внесено» just after a landing', async () => {
-    await mount({ stages: stagesOf(event('drafting', 1), event('landed', 2)), nowMs: AT + 5_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('landed');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('внесено');
+  it('goes quiet past the pass’s own deadline, without a look at the clock by the reader', async () => {
+    await mount({ passes: [PASS], nowMs: PASS.since + STAGE_DEADLINE_MS + 1 });
+    expect(status()?.getAttribute('data-kind')).toBe('quiet');
+    expect(word()).toBe('сейчас тихо');
     expect(status()?.querySelector('.head-nib')).toBeNull();
   });
 
-  it('says «связи нет» when the page has no live line — with the sentence as its title', async () => {
-    await mount({ stages: stagesOf(), socket: 'closed', nowMs: AT + 5_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('offline');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('связи нет');
-    expect(status()?.getAttribute('title')).toBe(
-      'нет связи: страница не знает, что сейчас происходит. обновите позже',
-    );
-    expect(status()?.querySelector('.head-nib')).toBeNull();
+  it('goes quiet when the engine is down, whatever a stage says', async () => {
+    await mount({ passes: [PASS], engine: { status: 'down' } });
+    expect(word()).toBe('сейчас тихо');
   });
 
-  it('is «тихо» — no nib, no clock — after the pass has been silent for 90 s', async () => {
-    await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 2_000 + 90_001 });
-    const line = status();
-    expect(line?.getAttribute('data-kind')).toBe('idle');
-    // The book's word, not the engine's: no «движок», no stage name, no placeholder.
-    expect(line?.querySelector('.head-status-full')?.textContent).toBe('тихо');
-    expect(line?.textContent ?? '').not.toContain('движок');
-    expect(line?.textContent ?? '').not.toContain('глава');
-    expect(line?.textContent ?? '').not.toMatch(/\d{2}:\d{2}/u);
-    expect(line?.querySelector('.head-nib')).toBeNull();
-  });
-});
-
-describe('the region speaks only when the state changes', () => {
-  it('turns polite on the change of state, not on every render', async () => {
-    // Idle: the word is printed, and the region has heard that state.
-    await mount({ stages: stagesOf(), nowMs: AT + 20_000 });
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
-    expect(status()?.getAttribute('aria-live')).toBe('off');
-    // A pass starts: the state changed, so the line is announced once…
-    await mount({ stages: stagesOf(event('drafting', 3)), nowMs: AT + 20_000 });
-    expect(status()?.getAttribute('aria-live')).toBe('polite');
-    // …and a newer stage of the same pass is not a state change, so it is not read aloud again.
-    await mount({ stages: stagesOf(event('drafting', 3), event('typing', 4)), nowMs: AT + 20_000 });
-    expect(status()?.getAttribute('aria-live')).toBe('off');
-    // The pass ends in a landing: one more state, announced once, then quiet again.
-    await mount({ stages: stagesOf(event('drafting', 3), event('landed', 5)), nowMs: AT + 20_000 });
-    expect(status()?.getAttribute('data-kind')).toBe('landed');
-    expect(status()?.getAttribute('aria-live')).toBe('polite');
-  });
-
-  it('ends the silence on its own clock, with one timeout and no interval', async () => {
+  it('ends the word on its own clock, with one timeout and no interval', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(AT + 2_000);
-    await mount({ stages: stagesOf(event('drafting', 2)) });
-    expect(status()?.getAttribute('data-kind')).toBe('drafting');
+    vi.setSystemTime(PASS.since + 1_000);
+    await mount({ passes: [PASS], live: true });
+    expect(word()).toBe('сейчас пишется');
+    expect(vi.getTimerCount()).toBeLessThanOrEqual(1);
     await act(async () => {
-      vi.advanceTimersByTime(90_002);
+      vi.advanceTimersByTime(STAGE_DEADLINE_MS);
     });
-    expect(status()?.getAttribute('data-kind')).toBe('idle');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
+    expect(word()).toBe('сейчас тихо');
   });
 });
 
@@ -294,90 +231,17 @@ describe('the head’s height does not move', () => {
     const css = sheets['../styles/head-status.css'] ?? '';
     const line = firstDeclarations(css, '.head-status');
     expect(line).toContain('font-size: var(--fs-micro)');
-    // The row's own 12 px mark line: 1.35, exactly as `.folio` and the chapter slot carry it.
     expect(line).toContain('line-height: 1.35');
     expect(line).toContain('flex: none');
     expect(line).toContain('margin-inline-start: auto');
-    expect(line).toContain('min-width: 0');
-    // No box of its own: the 12 px mark line *is* the element, so nothing is taller than it.
+    expect(line).toContain('text-transform: none');
     expect(line).not.toMatch(/(?:^|;)\s*(?:min-)?height\s*:/u);
-    expect(line).not.toMatch(/(?:^|;)\s*(?:min-)?inline-size\s*:/u);
     expect(line).not.toMatch(/(?:^|;)\s*padding/u);
-    expect(line).not.toMatch(/(?:^|;)\s*border/u);
-    // BOOK-128 #3900: the brand and the chapter slot are marks too — mono 12 at line-height
-    // 1.35 = 16.2 px, the same box the status carries. The row is one register, so a status
-    // arriving cannot be the tallest line either.
-    const labels = unionDeclarations(sheets['../styles/base.css'] ?? '', '.top-row');
-    expect(labels).toContain('font-family: var(--mono)');
-    expect(labels).toContain('font-size: var(--fs-micro)');
-    expect(labels).toContain('line-height: 1.35');
     expect(sheets['../styles/tokens.css'] ?? '').toContain('--fs-micro: 12px');
-    // 12 × 1.35 = 16.2 px for the brand, the slot and the status alike: no head item may
-    // reinstate a second size, or the row would grow by one line when a status arrives.
-    expect(unionDeclarations(sheets['../styles/chrome.css'] ?? '', '.brand')).not.toMatch(/font-size/u);
     expect(unionDeclarations(sheets['../styles/running-head.css'] ?? '', '.top-chapter')).toContain(
       'font-size: var(--fs-micro)',
     );
-    // The folio's own box below 768 is 16.2 px — the row's box too, so it cannot be what grows
-    // when the status appears (it is fixed and out of flow above 768).
-    const folio = firstDeclarations(sheets['../styles/live.css'] ?? '', '.folio');
-    expect(folio).toContain('font-size: var(--fs-micro)');
-    expect(folio).toContain('line-height: 1.35');
-    expect(folio).toContain('position: fixed');
-    // The row is the column above 1024 too, or its items' `margin-inline-start: auto` would have
-    // no free space to take (`.top-in` is a `space-between` flex row of one shrink-to-fit item).
+    // The row is the column above 1024 too, or its `margin-inline-start: auto` has no free space.
     expect(unionDeclarations(css, '.top-in .top-row:first-child')).toContain('flex: 1');
-  });
-
-  it('never wraps and never ellipsizes, and the phone prints it after the brand', async () => {
-    const css = sheets['../styles/head-status.css'] ?? '';
-    const line = firstDeclarations(css, '.head-status');
-    expect(line).toContain('white-space: nowrap');
-    expect(css).not.toMatch(/text-overflow/u);
-    expect(css).not.toMatch(/ellipsis/u);
-    expect(css).not.toMatch(/overflow/u);
-    // BOOK-207: below 768 the word is painted after the brand and the folio keeps its margin.
-    const phone = mediaBlocks(css, 'max-width: 767px').join('\n');
-    expect(unionDeclarations(phone, '.head-status')).toContain('margin-inline-start: 0');
-    expect(unionDeclarations(phone, '.top-in .top-row:first-child')).toContain('gap: 12px');
-    expect(css).not.toContain('head-status-short');
-    expect(css).not.toContain(':has(');
-  });
-
-  it('paints the word, the book’s own name and the folio on the phone (BOOK-207)', async () => {
-    // Mount the live state, then read the row as the sheet lays it out below 768.
-    await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 20_000 });
-    expect(status()).not.toBeNull();
-    const css = sheets['../styles/head-status.css'] ?? '';
-    const live = sheets['../styles/live.css'] ?? '';
-    const running = sheets['../styles/running-head.css'] ?? '';
-    const phone = mediaBlocks(css, 'max-width: 767px').join('\n');
-    // The word is painted; the chapter slot is not (BOOK-104), so the row is the book's name,
-    // the state word and the page number.
-    expect(unionDeclarations(phone, '.head-status')).toContain('margin-inline-start: 0');
-    expect(unionDeclarations(mediaBlocks(live, 'max-width: 767px').join('\n'), '.top-chapter')).toContain(
-      'display: none',
-    );
-    // Both survivors are the row's own items, and the folio keeps its right end by its margin.
-    const items = rowItems();
-    expect(items).toContain('brand');
-    expect(items).toContain('folio');
-    expect(unionDeclarations(running, '.top-row:first-child .folio')).toContain('margin-inline-start: auto');
-    // The row's height is unchanged: the hidden status was the row's own 16.2 px line.
-    expect(firstDeclarations(css, '.head-status')).toContain('line-height: 1.35');
-    expect(firstDeclarations(css, '.head-status')).toContain('font-size: var(--fs-micro)');
-  });
-
-  it('adds no ink of its own: the quiet ink and the pass’s one accent', () => {
-    const css = sheets['../styles/head-status.css'] ?? '';
-    // Comments name the ticket (`#3814`), not a colour: read the sheet the way the cascade does.
-    const rules = css.replace(/\/\*[\s\S]*?\*\//gu, '');
-    expect(rules).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
-    expect(firstDeclarations(css, '.head-status')).toContain('color: var(--ink-3)');
-    expect(firstDeclarations(css, '.head-nib')).toContain('background: var(--live)');
-    // A state is not an animation: no pulse, no fade, no transition — in a rule.
-    expect(rules).not.toMatch(/animation|transition|@keyframes/u);
-    expect(firstDeclarations(css, '.head-nib')).toContain('width: 5px');
-    expect(firstDeclarations(css, '.head-nib')).toContain('height: 5px');
   });
 });

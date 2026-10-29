@@ -1,10 +1,9 @@
-import type { CatalogEntry, StateSnapshot, ViewerDto } from '@book/shared';
+import type { CatalogEntry, LiveFiling, LivePass, StateSnapshot, FilingUpdatePayload, ViewerDto } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
-import type { HeadSocket } from '../lib/headStatus.ts';
 import type { ChapterLoader } from '../lib/place.ts';
-import type { Stages } from '../lib/useStages.ts';
 import { Colophon } from './Colophon.tsx';
+import type { HeadEngine } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { TrailPage } from './TrailPage.tsx';
 
@@ -22,10 +21,14 @@ export function TrailView({
   markers,
   onOpenChange,
   live,
-  stages,
-  socket,
+  passes,
+  engine,
+  appliedAt,
+  closedAt,
   reading,
   viewer,
+  filings,
+  filingUpdates,
   imprint,
   donateUrl,
   exportBytes,
@@ -37,8 +40,13 @@ export function TrailView({
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
   live: boolean;
-  stages: Stages;
-  socket?: HeadSocket;
+  passes?: readonly LivePass[];
+  engine?: HeadEngine;
+  appliedAt?: number | null;
+  closedAt?: number | null;
+  /** The viewer's own filings from `hello.live.filings` / `filing:update` (no mount-only fetch). */
+  filings?: readonly LiveFiling[];
+  filingUpdates?: Readonly<Record<string, FilingUpdatePayload>>;
   reading: { n: number | null; page: number | null };
   viewer: ViewerDto;
   imprint: { author: string; copyright: string };
@@ -55,11 +63,18 @@ export function TrailView({
         markers={markers}
         onOpenChange={onOpenChange}
         live={live}
-        stages={stages}
-        socket={socket}
+        passes={passes}
+        engine={engine}
+        appliedAt={appliedAt}
+        closedAt={closedAt}
         reading={reading}
       />
-      <TrailPage viewer={viewer} {...(loadChapter === undefined ? {} : { onLoadChapter: loadChapter })} />
+      <TrailPage
+        viewer={viewer}
+        filings={filings}
+        updates={filingUpdates}
+        {...(loadChapter === undefined ? {} : { onLoadChapter: loadChapter })}
+      />
       <Colophon state={state} imprint={imprint} viewer={viewer} donateUrl={donateUrl} exportBytes={exportBytes} />
     </>
   );

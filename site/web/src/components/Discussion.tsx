@@ -1,9 +1,10 @@
-import { changeHref, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import { changeHref, type ChangeSummaryDto, type CommentDto, type QueuePendingDto } from '@book/shared';
 import { useState } from 'react';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
+import { queuePlaceOf } from '../lib/queue.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { plainChangeClick } from '../lib/changeDoor.ts';
 import { keepPlace } from '../lib/keepPlace.ts';
@@ -48,6 +49,7 @@ export function Discussion({
   failed = false,
   changes = [],
   comments = [],
+  pending,
   nowMs,
   live,
   onLoadChapter,
@@ -74,6 +76,11 @@ export function Discussion({
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
   /**
+   * BOOK-DOC-84 #3/#36 — the lane's waiting filings from the snapshot (`queue.pending`). The
+   * reader's own place («впереди N») is printed from this list, never from a poll.
+   */
+  pending?: readonly QueuePendingDto[];
+  /**
    * BOOK-158: the page's revise clock (`useReviseTick`). The register's cooldown line is read
    * against it, so the countdown moves while the page is open; absent means this render.
    */
@@ -88,7 +95,7 @@ export function Discussion({
   if (!live) return null;
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
   const status = statusLine('register', stage);
-  const pending = busy ?? stage !== 'quiet';
+  const waiting = busy ?? stage !== 'quiet';
   // BOOK-137: a premise's home is the chapter's row; the thread lists every other filing.
   const filings = threadFilings(comments);
   // The API promises an ascending thread (§9); the discussion prints the **last five**, so the
@@ -113,6 +120,12 @@ export function Discussion({
   // The queue line and the list come from one fact, so «в очереди пусто» can never stand
   // above an entry the page presents as waiting.
   const queue = queueView(depth, filings);
+  // The reader's own place in the lane, from the snapshot's pending list: the count above is
+  // the lane's own (a change is not a row), and the place is the one fact a waiting reader asks.
+  const ownChanges = new Set(
+    filings.map((comment) => comment.changeId).filter((id): id is string => id !== null),
+  );
+  const place = queuePlaceOf(pending, ownChanges);
   const attempted = filings.some((comment) => filingAttempt(comment, changes) !== null);
   // BOOK-156 (#3802 §3) — the owner's brief names this anchor `#discussion`; the class stays
   // `talks` (the measure guard and every sheet key on it) and the zero-height `#talks` span
@@ -121,7 +134,7 @@ export function Discussion({
     <section
       className="page talks ym-hide-content"
       id="discussion"
-      aria-busy={pending ? 'true' : undefined}
+      aria-busy={waiting ? 'true' : undefined}
     >
       <span id="talks" aria-hidden="true" />
       <header className="sec-h">
@@ -145,7 +158,7 @@ export function Discussion({
       </header>
       <div className="qline">
         <span>{queueLabel(queue.count)}</span>
-        <span>правки идут по одной, в порядке записи</span>
+        <span>{place === null ? 'правки идут по одной, в порядке записи' : `впереди ${place.ahead}`}</span>
       </div>
 
       <p className="fine teach">
