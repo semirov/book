@@ -14,7 +14,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App.tsx';
-import { AGE_GATE_FORWARD, AGE_GATE_LEAVE, AGE_GATE_LINE, AGE_LABEL } from '../lib/age.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 
 /**
  * BOOK-225 — the rating is asked before any chapter text, and it is a page.
@@ -244,13 +244,13 @@ describe('the age gate (BOOK-225)', () => {
     expect(page).not.toBeNull();
     // The rating, the book's own title, one honest sentence and the two doors: the words are
     // the requirement, so they are read here literally.
-    expect(page?.querySelector('.kicker')?.textContent).toBe(AGE_LABEL);
+    expect(page?.querySelector('.kicker')?.textContent).toBe(AGE_WORDS.label);
     expect(page?.querySelector('.gate-title')?.textContent).toBe(TITLE);
-    expect(page?.querySelector('.gate-line')?.textContent).toBe(AGE_GATE_LINE);
-    expect(button(AGE_GATE_FORWARD)).toBeDefined();
+    expect(page?.querySelector('.gate-line')?.textContent).toBe(AGE_WORDS.gateLine);
+    expect(button(AGE_WORDS.forward)).toBeDefined();
     expect(page?.querySelector('a.gate-leave')?.getAttribute('href')).toBe('about:blank');
     expect(page?.querySelector('a.gate-leave')?.getAttribute('rel')).toBe('nofollow');
-    expect(page?.querySelector('a.gate-leave')?.textContent).toBe(AGE_GATE_LEAVE);
+    expect(page?.querySelector('a.gate-leave')?.textContent).toBe(AGE_WORDS.leave);
     // A page, not a layer: nothing here is painted or floating, and no prose was asked for.
     expect(page?.tagName).toBe('MAIN');
     expect(page?.className).toBe('page gate');
@@ -266,7 +266,7 @@ describe('the age gate (BOOK-225)', () => {
   it('answers with POST /api/age, then mounts the chapters and prints the prose', async () => {
     await mount();
     await act(async () => {
-      button(AGE_GATE_FORWARD)?.click();
+      button(AGE_WORDS.forward)?.click();
     });
     await settle();
 
@@ -282,7 +282,7 @@ describe('the age gate (BOOK-225)', () => {
     ageFails = true;
     await mount();
     await act(async () => {
-      button(AGE_GATE_FORWARD)?.click();
+      button(AGE_WORDS.forward)?.click();
     });
     await settle();
 
@@ -290,7 +290,7 @@ describe('the age gate (BOOK-225)', () => {
     // The gate is still the page, the prose is still unasked for, and the door can be tried again.
     expect(gate()).not.toBeNull();
     expect(proseRequests()).toEqual([]);
-    expect(button(AGE_GATE_FORWARD)?.disabled).toBe(false);
+    expect(button(AGE_WORDS.forward)?.disabled).toBe(false);
   });
 
   it('keeps a reader who already answered past the gate, from the cookie alone', async () => {
@@ -318,9 +318,9 @@ describe('the age gate (BOOK-225)', () => {
     await mount();
 
     // The rating and the sentence still ask; a book with no name prints none.
-    expect(gate()?.querySelector('.kicker')?.textContent).toBe(AGE_LABEL);
+    expect(gate()?.querySelector('.kicker')?.textContent).toBe(AGE_WORDS.label);
     expect(document.querySelector('.gate-title')).toBeNull();
-    expect(document.querySelector('.gate-line')?.textContent).toBe(AGE_GATE_LINE);
+    expect(document.querySelector('.gate-line')?.textContent).toBe(AGE_WORDS.gateLine);
   });
 
   it('keeps a first visit’s deep link until the answer, then lands on the chapter', async () => {
@@ -338,7 +338,7 @@ describe('the age gate (BOOK-225)', () => {
     expect(scrolled).toEqual([]);
 
     await act(async () => {
-      button(AGE_GATE_FORWARD)?.click();
+      button(AGE_WORDS.forward)?.click();
     });
     await settle();
 

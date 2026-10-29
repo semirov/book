@@ -1,4 +1,4 @@
-import { ageDayIn } from '@book/shared';
+import { AGE_WORDS, ageDayIn } from '@book/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
@@ -7,8 +7,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
  * The gate is a property of the text, not of one route: `/api/chapters/:n` sends a chapter,
  * `/api/history/chapters/:n` sends a chapter as it was, and `/book.fb2` sends the whole book.
  * Each of them asks this function **first**, before any row, snapshot, tag or export build, so
- * no second public door can hand out what the first one refuses — and there is one message
- * string, not three that drift.
+ * no second public door can hand out what the first one refuses — and there is one sentence,
+ * `AGE_WORDS.refusal` (BOOK-218's vocabulary), not three that drift.
  *
  * What it does *not* cover is on purpose: the catalogue, the front, the state and the comments
  * carry no prose (the book must stay discoverable and discussable while gated), and the
@@ -17,7 +17,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
  * `now` is the app's one clock seam (`deps.now()`), so a test pins the day and the bound is the
  * same one `shared/src/age.ts` reads.
  */
-export const AGE_GATE_MESSAGE = 'книга 18+ — сначала подтвердите, что вам есть 18';
+export const AGE_GATE_MESSAGE = AGE_WORDS.refusal;
 
 /** `403 AGE_GATE` when the reader has not answered the rating; `null` when they have. */
 export function ageGateRefusal(

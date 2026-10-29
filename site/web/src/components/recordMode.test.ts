@@ -1,11 +1,13 @@
-import type { CatalogEntry } from '@book/shared';
+import type { CatalogEntry, StateSnapshot } from '@book/shared';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { state } from './colophon.fixture.ts';
-import { RecordMode, recordModeOf } from './RecordMode.tsx';
+import { HEAD_WORDS } from '../lib/marginalia.ts';
 import type { Stages } from '../lib/useStages.ts';
+import type { SocketStatus } from '../lib/ws.ts';
+import { state, stubDocument } from './colophon.fixture.ts';
+import { RecordMode, recordModeOf } from './RecordMode.tsx';
 
 /**
  * BOOK-225 — the gate outranks the record's two modes, and the chronicle keeps its way back.
@@ -18,8 +20,8 @@ import type { Stages } from '../lib/useStages.ts';
  *
  * The mode's own switch is **not** the page's `live` fact: `recordModeOf` grants «хроника» only
  * once the record has started, so the switch in that mode is the way back and is always there —
- * even on a page whose readings are no longer live. The render below pins that, so the shorthand
- * can never be read as «this page is live» again.
+ * even on a page whose readings are no longer live. And the record's head takes the page's
+ * `socket` (BOOK-218): without it a trail would claim a live line it cannot know.
  */
 describe('which record page a request is (BOOK-225)', () => {
   const gated = { acknowledged: false, trail: false, view: 'book' as const, chronicle: true };
@@ -40,34 +42,44 @@ describe('which record page a request is (BOOK-225)', () => {
   });
 });
 
-describe('the chronicle mode keeps its way back (BOOK-225)', () => {
-  /** The trail's stage log is not what this file asserts; the chronicle branch never reads it. */
+describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
+  /** The stage log is not what this file asserts; neither record branch reads it. */
   const stages = { log: {}, passes: {}, note: () => undefined, reset: () => undefined } as unknown as Stages;
 
-  const mode = (live: boolean): string =>
+  /**
+   * The colophon's fixture is the empty book; the head reads the book's own title, so this page
+   * gets one. Nothing else in a record page reads the position.
+   */
+  const filled = { ...(state as unknown as Record<string, unknown>), front: { title: 'Бланк' } } as unknown as StateSnapshot;
+
+  const front = {
+    title: 'Бланк',
+    about: null,
+    rev: 1,
+    toc: [],
+    imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
+    authors: { count: 1, measuredAt: '2026-10-29T12:00:00Z' },
+    revision: 1,
+  };
+
+  /** One record page; only the head reads the position, so an empty book is enough here. */
+  const render = (mode: 'trail' | 'chronicle', socket: SocketStatus, live = true): string =>
     renderToStaticMarkup(
       createElement(RecordMode, {
-        mode: 'chronicle',
-        view: 'chronicle',
+        mode,
+        view: mode === 'trail' ? 'book' : 'chronicle',
         onViewChange: () => undefined,
-        state,
+        state: filled,
         ribbon: null,
         catalog: [] as CatalogEntry[],
         markers: [],
         onOpenChange: () => undefined,
         live,
+        socket,
         stages,
         reading: { n: null, page: null },
         viewer: { signedIn: false, displayName: null },
-        front: {
-          title: 'Бланк',
-          about: null,
-          rev: 1,
-          toc: [],
-          imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
-          authors: { count: 1, measuredAt: '2026-10-29T12:00:00Z' },
-          revision: 1,
-        },
+        front,
         historyTick: 0,
         doorLine: null,
         plate: false,
@@ -76,13 +88,21 @@ describe('the chronicle mode keeps its way back (BOOK-225)', () => {
     );
 
   it('renders «книга · хроника» even when the page’s own live fact is off', () => {
-    const html = mode(false);
+    const html = render('chronicle', 'open', false);
     expect(html).toContain('aria-label="как читать"');
     expect(html).toContain('книга');
     expect(html).toContain('хроника');
   });
 
   it('and the switch is the same one when the page is live', () => {
-    expect(mode(true)).toBe(mode(false));
+    expect(render('chronicle', 'open')).toBe(render('chronicle', 'open', false));
+  });
+
+  it('hands the page’s connection to the record’s head (BOOK-218)', () => {
+    stubDocument();
+    // The head says `связи нет` from the fact the page holds, so the record must receive it —
+    // the trail has no socket of its own to fall back on.
+    expect(render('trail', 'closed')).toContain(HEAD_WORDS.offline);
+    expect(render('trail', 'open')).not.toContain(HEAD_WORDS.offline);
   });
 });

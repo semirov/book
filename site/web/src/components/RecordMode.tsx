@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import type { Stages } from '../lib/useStages.ts';
+import type { SocketStatus } from '../lib/ws.ts';
 import type { BookView } from './ViewSwitch.tsx';
 import { CapacityPlate } from './CapacityPlate.tsx';
 import { Chronicle } from './Chronicle.tsx';
@@ -52,6 +53,7 @@ export function RecordMode({
   markers,
   onOpenChange,
   live,
+  socket,
   stages,
   reading,
   viewer,
@@ -70,6 +72,8 @@ export function RecordMode({
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
   live: boolean;
+  /** BOOK-218: the page's connection, so a record page's head says `связи нет` too. */
+  socket: SocketStatus;
   stages: Stages;
   reading: { n: number | null; page: number | null };
   viewer: ViewerDto;
@@ -86,7 +90,7 @@ export function RecordMode({
         <TrailView
           state={state} ribbon={ribbon} catalog={catalog}
           markers={markers} onOpenChange={onOpenChange}
-          live={live} stages={stages} reading={reading} viewer={viewer}
+          live={live} socket={socket} stages={stages} reading={reading} viewer={viewer}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
           exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
         />

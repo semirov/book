@@ -1,11 +1,6 @@
 import { useState } from 'react';
 
-import {
-  AGE_GATE_FORWARD,
-  AGE_GATE_LEAVE,
-  AGE_GATE_LINE,
-  AGE_LABEL,
-} from '../lib/age.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 
 /**
  * The gate before the prose (BOOK-225).
@@ -24,7 +19,7 @@ import {
  *
  * The sentence is deliberately short: harm inside the story is the genre, so the gate names
  * what is there (violence, blood, adult themes) and stops. It is the same fact the footer's row
- * and `/rules` print, from one module (`lib/age.ts`).
+ * and `/rules` print, from one vocabulary (`AGE_WORDS`, BOOK-218/BOOK-225).
  *
  * While the answer is in flight the button is disabled — a second click cannot post twice — and
  * a refusal leaves the gate exactly as it was: the words claim nothing, and the reader may try
@@ -55,16 +50,16 @@ export function AgeGate({
 
   return (
     <main className="page gate">
-      <p className="kicker gate-kicker">{AGE_LABEL}</p>
+      <p className="kicker gate-kicker">{AGE_WORDS.label}</p>
       {/* A book without a name prints none — no empty heading, no invented title. */}
       {title === null ? null : <p className="title gate-title">{title}</p>}
-      <p className="gate-line">{AGE_GATE_LINE}</p>
+      <p className="gate-line">{AGE_WORDS.gateLine}</p>
       <p className="gate-doors">
         <button type="button" className="gate-go" onClick={accept} disabled={busy}>
-          {AGE_GATE_FORWARD}
+          {AGE_WORDS.forward}
         </button>
         <a className="gate-leave" href="about:blank" rel="nofollow">
-          {AGE_GATE_LEAVE}
+          {AGE_WORDS.leave}
         </a>
       </p>
     </main>

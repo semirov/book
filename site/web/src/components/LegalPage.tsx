@@ -1,10 +1,10 @@
 import { EDIT_MAX_CHARS, INTERVENTION_KIND_LIST, TOTAL_CHAPTERS } from '@book/shared';
 import { useEffect } from 'react';
 
-import { AGE_RULES_BODY, AGE_RULES_HEADING } from '../lib/age.ts';
 import { track } from '../lib/analytics.ts';
 import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 import type { StaticPage } from '../lib/route.ts';
 import { ScreenExit } from './ScreenExit.tsx';
 import {
@@ -138,10 +138,10 @@ function Rules() {
 
       {/* BOOK-225 — the rating, one short section before the rules of the intervention: a reader
           who came here to learn what the site asks of them also learns what the book is. The
-          words are the footer's fact in a sentence (`lib/age.ts`), said once and not moralised. */}
+          words are the footer's fact in a sentence (`AGE_WORDS`, BOOK-218), said once, not moralised. */}
       <section>
-        <h2>{AGE_RULES_HEADING}</h2>
-        <p>{AGE_RULES_BODY}</p>
+        <h2>{AGE_WORDS.rulesHeading}</h2>
+        <p>{AGE_WORDS.rulesBody}</p>
       </section>
 
       <section>

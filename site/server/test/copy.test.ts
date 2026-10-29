@@ -23,8 +23,6 @@ const BANNED = ['шов', 'противоречие исправлено', 'би
 const COPY_MODULES = [
   // BOOK-16: the labels a reader sees for the four kinds, and the draft's own line.
   'shared/src/intervention.ts',
-  // BOOK-225: the rating, the gate's sentence and its two doors.
-  'web/src/lib/age.ts',
   'web/src/lib/composer.ts',
   'web/src/lib/commentView.ts',
   // BOOK-DOC-34: the seam's own copy — the strip, the form, the panels, the empty slot.

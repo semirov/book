@@ -1,8 +1,8 @@
 import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot, type ViewerDto } from '@book/shared';
 import { useState } from 'react';
 
-import { AGE_COLOPHON_LINE } from '../lib/age.ts';
 import { useCounterConfigured } from '../lib/analytics.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
@@ -105,10 +105,10 @@ export function Colophon({
         </div>
         {/* BOOK-225 — the rating, a fact of the book in its own row: what is inside, said once,
             in the same quiet mark as the imprint. It is not a badge, not a colour and not a
-            warning about the reader; the copy lives in `lib/age.ts` so it cannot drift from the
+            warning about the reader; the words live in `AGE_WORDS` (BOOK-218) so they cannot drift from the
             gate and `/rules`. */}
         <div className="row">
-          <span className="age-line">{AGE_COLOPHON_LINE}</span>
+          <span className="age-line">{AGE_WORDS.colophon}</span>
         </div>
         {analyticsConfigured ? (
           // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader

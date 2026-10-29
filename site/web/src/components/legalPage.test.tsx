@@ -130,9 +130,8 @@ describe('/rules', () => {
   it('states the rating in one short section, in the same words as the footer', () => {
     const section = /<section><h2>кому это читать<\/h2><p>([\s\S]*?)<\/p><\/section>/u.exec(html);
     expect(section?.[1]).toBe('Книге 18+. Внутри — насилие, кровь и взрослые темы: это жанр, и текст не смягчается.');
-    // One print of the rating on the document, and nothing about the reader's age in law.
-    expect(html.split('18+')).toHaveLength(2);
-    expect(html).not.toMatch(/возрастн|несовершеннолетн|cookie/iu);
+    // One print of the rating, and nothing about the reader's age in law.
+    expect([html.split('18+').length, /возрастн|несовершеннолетн|cookie/iu.test(html)]).toEqual([2, false]);
   });
 
   it('defines the intervention once and puts it before the note', () => {

@@ -1,14 +1,10 @@
 /**
- * BOOK-218 — the reader's vocabulary, in one place (BOOK-DOC-82).
- *
- * Every surface that prints what happened to a reader's edit reads from here: the state word,
- * the line under it, the thread's line, a change's turn, the attempt lines, the full hall, the
- * "too many filings" refusal, and the reasons a stopped pass leaves in `changes.reason`. None of
- * them spells its own copy, so the same row cannot be told two ways on two pages. The words are
- * the book's nouns, never the machinery's: no queue, no lane, no pass, no triage, no verdict,
- * no gate.
- *
- * The reasoning lives on the page (BOOK-DOC-82); this file is its only implementation.
+ * BOOK-218 — the reader's vocabulary, in one place (BOOK-DOC-82), and its only implementation.
+ * Every surface that prints what happened to a reader's edit reads from here: the state word and its
+ * line, the thread, a change's turn, the attempts, the hall, the too-many refusal, a stopped pass's
+ * `changes.reason` — and, since BOOK-225, the rating and the gate. None spells its own copy, so one
+ * row cannot be told two ways; the words are the book's nouns, never the machinery's: no queue, lane,
+ * pass, triage, verdict or gate.
  */
 
 import type { RetroMode } from './change.ts';
@@ -489,3 +485,15 @@ export function pushAccepted(chapter: number): string {
 export function pushRefused(chapter: number): string {
   return `правка по главе ${String(chapter)} отклонена`;
 }
+
+/** BOOK-225 — the rating, the one question before the prose, and the refusal without it. */
+export const AGE_WORDS = {
+  label: '18+',
+  colophon: '18+ · насилие, кровь и взрослые темы',
+  rulesHeading: 'кому это читать',
+  rulesBody: 'Книге 18+. Внутри — насилие, кровь и взрослые темы: это жанр, и текст не смягчается.',
+  gateLine: 'В книге есть насилие, кровь и взрослые темы.',
+  forward: 'мне есть 18 — читать',
+  leave: 'мне нет 18 — уйти',
+  refusal: 'книга 18+ — сначала подтвердите, что вам есть 18',
+} as const;

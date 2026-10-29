@@ -423,7 +423,7 @@ export function App() {
       <RecordMode
         mode={recordMode} view={view} onViewChange={setView} state={state} ribbon={ribbon}
         catalog={catalog} markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-        live={history} stages={stages} reading={reading} viewer={viewer} front={front}
+        live={history} socket={connection} stages={stages} reading={reading} viewer={viewer} front={front}
         historyTick={historyTick} doorLine={doorLine} plate={connection === 'capacity'}
         loadChapter={loadChapter}
       />
