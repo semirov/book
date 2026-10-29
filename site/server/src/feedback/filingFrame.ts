@@ -13,7 +13,7 @@
 import type { FilingState, FilingUpdatePayload } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { attemptCounts } from '../comments/attempts.ts';
+import { attemptCounts } from '../comments/attemptToday.ts';
 
 export type FilingEmit = (type: 'filing:update', data: FilingUpdatePayload) => void;
 

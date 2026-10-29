@@ -153,6 +153,8 @@ async function mount(signedIn: boolean): Promise<void> {
   });
 }
 
+const row = (): HTMLElement | null => container.querySelector('.sled-row');
+
 describe('«ваш след»', () => {
   it('asks a signed-out reader to sign in, and reads nothing', async () => {
     await mount(false);

@@ -298,7 +298,18 @@ describe('the live record (BOOK-206 B1)', () => {
       type: 'change:processing',
       seq: 13,
       ts: NOW,
-      data: { id: 'chg_1', chapter: 8, startedAt: NOW, attempt: 1, relevance: null },
+      // BOOK-DOC-84 #10 — the claim carries its place in line; the frame is no longer the
+      // three facts of BOOK-206 alone.
+      data: {
+        id: 'chg_1',
+        chapter: 8,
+        startedAt: NOW,
+        attempt: 1,
+        relevance: null,
+        queue: { ahead: 0 },
+        at: Date.parse(NOW),
+        eventSeq: 7,
+      },
     });
 
     expect(callsTo('/api/comments?limit=20')).toBe(thread + 1);

@@ -14,9 +14,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  holdsInternalCode,
   normalizeRetroMode,
-  readerReason,
   validateIntent,
   validateInterventionKind,
   type CommentDecisionPayload,
@@ -28,7 +26,8 @@ import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { filingStateOf } from '../comments/filingState.ts';
-import { attemptCounts } from '../comments/attempts.ts';
+import { attemptCounts } from '../comments/attemptToday.ts';
+import { publicDecisionReason } from './decisionText.ts';
 import { emitFilingUpdate } from './filingFrame.ts';
 import { readQueue } from '../engineState/reader.ts';
 import { readAuthor, publicIntent } from '../engineState/changes.ts';
@@ -37,6 +36,8 @@ import { acceptComment } from './accept.ts';
 import { parseDispositionProposal, type DispositionProposal } from './disposition.ts';
 import { lineOfDecision, disposeRejection, storedDecision } from './dispositionStore.ts';
 import { chapterVocabulary } from './vocabulary.ts';
+
+export { DECISION_FALLBACK, publicDecisionReason } from './decisionText.ts';
 
 export type DecisionEmit = (
   type: 'comment:decision' | 'change:queued' | 'feedback:batch' | 'filing:update',
@@ -473,19 +474,6 @@ export class DecisionsTailer {
       .get() as { id: string; created_at: string } | undefined;
     return row === undefined ? null : `${row.created_at}|${row.id}`;
   }
-}
-
-/** The sentence a reader is owed when a decision line carries a handle instead of words. */
-export const DECISION_FALLBACK = 'вне рамок: замечание не про текст этой главы';
-
-/**
- * BOOK-158: the refusal the reader reads is a sentence, never an engine's handle. A line whose
- * reason is `PROVIDER_SHAPE`/`INTENT_SHAPE`, or nothing readable at all, is refused with the
- * book's own line — the code stays in the log, where an operator can look it up.
- */
-export function publicDecisionReason(reason: string): string {
-  if (holdsInternalCode(reason)) return DECISION_FALLBACK;
-  return readerReason(reason)?.slice(0, 200) ?? DECISION_FALLBACK;
 }
 
 /** A line is a decision only when it names a comment, a status and a reason. */

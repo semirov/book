@@ -22,24 +22,15 @@ import {
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { aheadOf, decidedPayload, queuedPayload, type ChangeEventRow } from './bridgePayloads.ts';
 import { ChapterNarrator } from './chapterFrames.ts';
 import { filingCloseFrame, filingFailureFrame } from './filingFrame.ts';
 import { PassNarrator } from './passFrames.ts';
 
-import {
-  chaptersOfChange,
-  decisionOutcome,
-  publicIntent,
-  readAuthor,
-  readCascadeRow,
-  readChange,
-  readChangeRow,
-  readRelevance,
-  readStepRow,
-} from './changes.ts';
+import { publicIntent, readCascadeRow, readChangeRow, readRelevance, readStepRow } from './changes.ts';
 import { toHistoryFrame } from '../history/events.ts';
 import { readEngineHealth, readLaneDay, readQueue, stepsOfCascade } from './reader.ts';
-import { boundaryOf, chapterOfStep, countRows, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
+import { boundaryOf, chapterOfStep, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
 import { wingsOf, wingSteps } from './wings.ts';
 
 export type BridgeEmit = (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => void;
@@ -63,14 +54,6 @@ export type EngineBridgeOptions = {
   dataDir?: string;
   /** The lane's day bound, announced by `engine:state` (§5); the writer's own default is 4. */
   maxPasses?: number;
-};
-
-type ChangeEventRow = {
-  id: number;
-  change_id: string;
-  at: string;
-  type: string;
-  meta: string | null;
 };
 
 type CommentEventRow = {
@@ -237,7 +220,7 @@ export class EngineBridge {
         continue;
       }
       if (row.type === 'queued') {
-        this.emit('change:queued', this.queuedPayload(change, row, nowMs));
+        this.emit('change:queued', queuedPayload(this.db, change, row, nowMs));
         emitted += 1;
       } else if (row.type === 'processing') {
         this.emit('change:processing', {
@@ -247,7 +230,7 @@ export class EngineBridge {
           attempt: change.attempts + 1,
           relevance: readRelevance(change.relevance),
           // BOOK-DOC-84 #10: the place in line at the claim, so the page does not refetch.
-          queue: { ahead: this.aheadOf(change) },
+          queue: { ahead: aheadOf(this.db, change) },
           at: Date.parse(row.at),
           eventSeq: row.id,
         });
@@ -279,7 +262,7 @@ export class EngineBridge {
         this.emit('change:adapted', payload);
         emitted += 1;
       } else if (row.type === 'decided' || row.type === 'escalated' || row.type === 'cancelled') {
-        this.emit('change:decided', this.decidedPayload(change, row, nowMs));
+        this.emit('change:decided', decidedPayload(this.db, change, row, nowMs));
         emitted += 1;
         // BOOK-219/BOOK-206 B2 — the change's own word is not the filing's: the open page moves a
         // filing row only on `comment:decision`, so a close that decided the filing speaks here
@@ -294,66 +277,6 @@ export class EngineBridge {
       }
     }
     return emitted;
-  }
-
-  /** Pending filings older than this change: its place in the lane's line. */
-  private aheadOf(change: ChangeRow): number {
-    if (change.premise === 1) return 0;
-    return countRows(
-      this.db,
-      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
-      change.seq,
-    );
-  }
-
-  private queuedPayload(change: ChangeRow, row: ChangeEventRow, nowMs: number) {
-    const ahead = this.aheadOf(change);
-    return {
-      id: change.id,
-      seq: change.seq,
-      kind: change.kind,
-      chapter: change.chapter,
-      intent: publicIntent(change.intent),
-      source: { commentId: change.source_comment, author: readAuthor(this.db, change.source_comment) },
-      queue: { depth: readQueue(this.db, nowMs).depth, ahead },
-      base: { rev: change.base_rev },
-      scopeHint: change.scope_hint,
-      at: Date.parse(row.at),
-      eventSeq: row.id,
-    };
-  }
-
-  private decidedPayload(change: ChangeRow, row: ChangeEventRow, nowMs: number) {
-    const dto = readChange(this.db, change.id, nowMs);
-    const cascade = dto?.cascade ?? null;
-    return {
-      id: change.id,
-      commentId: change.source_comment,
-      outcome: decisionOutcome(change),
-      // The frame is a public surface — a reason is a sentence, never a code.
-      reason: readerReason(change.reason),
-      chapters: chaptersOfChange(this.db, change),
-      cascade:
-        cascade === null
-          ? null
-          : {
-              id: cascade.id,
-              outcome: cascade.outcome,
-              waves: cascade.wave,
-              touched: [...new Set([...cascade.chaptersRewritten, ...cascade.chaptersChecked])].sort(
-                (left, right) => left - right,
-              ),
-              rewritten: cascade.chaptersRewritten,
-              wings: cascade.wings,
-              seams: cascade.seams.map((seam) => ({ boundary: seam.boundary, resolved: seam.resolved })),
-              finding: cascade.gates.findingSurvived,
-            },
-      relevance: dto?.relevance === null || dto?.relevance === undefined ? null : { grade: dto.relevance.grade },
-      tokens: { total: change.tokens_in + change.tokens_out },
-      decidedAt: change.finished_at ?? row.at,
-      at: Date.parse(row.at),
-      eventSeq: row.id,
-    };
   }
 
   // ── comment:decision from the filing's own audit log ────────────────────

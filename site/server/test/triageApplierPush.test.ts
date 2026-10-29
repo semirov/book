@@ -40,7 +40,9 @@ describe('a placement pushes only where nothing else speaks (BOOK-206 M9)', () =
     expect(placeFiling(options, id)).toBe(true);
     expect(readCommentRow(db, id)).toMatchObject({ status: 'accepted' });
     // The frame still moves the live page; only the push (and its claim) is the change's.
-    expect(frames).toEqual(['comment:decision']);
+    // BOOK-DOC-84 #17 — the filing's own row also moves on `filing:update`; a frame is not a
+    // push, and the push log below is the fact this test is about.
+    expect(frames).toEqual(['comment:decision', 'filing:update']);
     expect(pushes).toEqual([]);
   });
 

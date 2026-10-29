@@ -83,7 +83,9 @@ describe('the running app names the book from /api/front', () => {
     const api = readFileSync(join(SITE, 'web', 'src', 'api.ts'), 'utf8');
     expect(api).toContain("readJson<FrontDto>('/api/front')");
     const app = readFileSync(join(SITE, 'web', 'src', 'App.tsx'), 'utf8');
-    expect(app).toContain('usePageTitle(data === null ? undefined : data.front.title)');
+    // BOOK-DOC-84 — the page's state is one reducer (`lib/frames.ts`), so the front DTO lives on
+    // `book`; the wiring the test names is unchanged: the app hands its title to the hook.
+    expect(app).toContain('usePageTitle(book === null ? undefined : book.front.title)');
   });
 });
 

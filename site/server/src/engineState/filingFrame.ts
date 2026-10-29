@@ -19,6 +19,7 @@
 
 import type { CommentDecisionPayload, CommentStatus } from '@book/shared';
 
+import { attemptCounts } from '../comments/attemptToday.ts';
 import { readCommentRow, toCommentDto, type CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 
@@ -61,6 +62,10 @@ export function filingFrameOf(
     // chapter's revision. `null` for anything that did not land — present, never omitted, so a
     // consumer can tell «nothing landed» from «this frame forgot to say» (BOOK-206 B2).
     applied: dto.applied ?? null,
+    // BOOK-DOC-84 #19 — the tries left, from the same ledger the record reads, and the decision's
+    // own moment in ms. A frame without them leaves the row printing a count it no longer has.
+    attemptsLeft: attemptCounts(db, comment.id, nowMs).attemptsLeft,
+    at: Date.parse(at),
     ...(attempt === undefined ? {} : { attempt }),
   };
 }
