@@ -93,7 +93,7 @@ const CHANGE: ChangeDto = {
   decidedAt: '2026-10-25T12:05:00Z',
 };
 
-function filing(): CommentDto {
+function filing(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     attempt: null,
     id: 'cmt_1',
@@ -114,6 +114,7 @@ function filing(): CommentDto {
     changeId: 'chg_1',
     applied: { chapter: 8, rev: 4 },
     refusal: null,
+    ...overrides,
   };
 }
 
@@ -235,7 +236,8 @@ describe('the record’s `правка` section (a change, not a surface)', () =
 
   it('has no `правка` section on an ordinary tap, and `замечания` stays the open one', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
-    await mount(null);
+    // Two filings: one is the record's own (it lives in the head), the other keeps `замечания`.
+    await mount(null, { filings: [filing(), filing({ id: 'cmt_02', createdAt: '2026-10-20T09:14:00Z' })] });
     expect(section('правка')).toBeNull();
     expect(document.querySelector('.rec-change')).toBeNull();
     expect(section('замечания')?.getAttribute('aria-expanded')).toBe('true');

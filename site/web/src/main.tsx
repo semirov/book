@@ -41,6 +41,8 @@ import './styles/record.css';
 import './styles/record-notice.css';
 // BOOK-128 — the record's `правка` section (a change in the record's register, no sheet).
 import './styles/record-change.css';
+// BOOK-220 §11.3 — `повторить`: a word in the record's register (`record.css` is at the gate).
+import './styles/record-retry.css';
 // BOOK-207 — the follow control, its notice and «ваш след», after the registers they sit in.
 import './styles/follow.css';
 import './styles/trail.css';

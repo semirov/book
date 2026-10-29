@@ -401,12 +401,10 @@ export function ProseParagraph({
     />
   ) : null;
 
-  // BOOK-90 §4: the phone strip is the paragraph's last child, after every sentence. A row
-  // whose sentence has its seam open is skipped — the seam's own rows already show it.
-  const phone =
-    alive.length === 0 ? null : (
-      <PhoneStrip comments={alive} skipQuote={anchor?.quote ?? null} onOpen={openFilingRow} />
-    );
+  // BOOK-90 §4: the phone strip is the paragraph's last child; a row whose seam is open is skipped.
+  // §11.3 — the record speaks for the sentence it is open on: its strip row stands down too.
+  const skip = recordHere && record !== null ? (record.anchor?.quote ?? null) : (anchor?.quote ?? null);
+  const phone = alive.length === 0 ? null : <PhoneStrip comments={alive} skipQuote={skip} onOpen={openFilingRow} />;
 
   return (
     <>
@@ -433,7 +431,8 @@ export function ProseParagraph({
         onPointerEnter={hint}
       >
         {revising === null ? null : <span className="revising-label">{revising}</span>}
-        {frameOnly ? null : (
+        {/* §11.3 — one action per screen: an open record owns `вмешаться`; no margin rail. */}
+        {frameOnly || recordHere ? null : (
           <button
             type="button"
             className="seam-rail"

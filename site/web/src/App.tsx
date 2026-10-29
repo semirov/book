@@ -25,6 +25,7 @@ import { escalationMarkers } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { publishLiveChange } from './lib/liveChange.ts';
+import { publishFilingLive } from './lib/filingLive.ts';
 import { applyFrame, initialClientState, type ClientState, type FrameEffect } from './lib/frames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
@@ -85,6 +86,12 @@ export function App() {
     // BOOK-220 B2 — the record's `правка` section is a leaf: the change's live line and its
     // closed pass reach it through the facts store, and identity is the whole diff.
     publishLiveChange({ lines: next.lines, passes: next.passes });
+    // §11.3 — the record's «повторить» reads the filing's frames, not a fetch.
+    publishFilingLive({
+      reading: next.reading,
+      filingUpdates: next.filingUpdates,
+      decisions: next.decisions,
+    });
     setPage(next);
   }, []);
   const update = useCallback(

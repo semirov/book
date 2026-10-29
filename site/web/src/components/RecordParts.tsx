@@ -1,8 +1,8 @@
 import type { CommentDto } from '@book/shared';
+import { filingWord } from '@book/shared';
 import type { ReactNode } from 'react';
 
-import { filingNumber } from '../lib/filings.ts';
-import { filingConsequence, STATE_WORDS } from '../lib/marginalia.ts';
+import { filingConsequence } from '../lib/marginalia.ts';
 import { RECORD_CUT, type InterventionRow, type RowWindow } from '../lib/recState.ts';
 
 /**
@@ -67,7 +67,8 @@ export function RowsList({
           return (
             <div className="rec-row" key={row.id} data-kind="history">
               <p className="rec-row-facts">{row.facts}</p>
-              <p className="rec-row-specimen">{row.specimen}</p>
+              {/* A row with no honest pair says only what it knows: no empty line. */}
+              {row.specimen === '' ? null : <p className="rec-row-specimen">{row.specimen}</p>}
             </div>
           );
         }
@@ -80,10 +81,8 @@ export function RowsList({
             key={row.id}
             onClick={() => onOpen?.(row as InterventionRow)}
           >
-            {/* BOOK-218 — the row is number · moment · whose; the head owns the state, so a
-                filing the head already states has no second line here. */}
             <span className="rec-row-facts">{row.facts}</span>
-            {row.specimen === '' ? null : <span className="rec-row-specimen">{row.specimen}</span>}
+            <span className="rec-row-specimen">{row.specimen}</span>
           </button>
         );
       })}
@@ -154,35 +153,15 @@ export function ExistingFilingNotice({ onOpen, onNew }: { onOpen: () => void; on
 }
 
 /**
- * The receipt after posting: the module's word for the act and the filing's own number —
- * `принято · замечание 12` — then the module's one line. Never a code token, and never a second
- * telling of the state: while this body is open the head prints no word and no line (BOOK-218).
- */
-export function ReceiptBody({ comment, line }: { comment: CommentDto; line: string | null }) {
-  return (
-    <div className="rec-receipt-body">
-      <p className="rec-receipt" role="status">
-        {`${STATE_WORDS.accepted} · ${filingNumber(comment)}`}
-      </p>
-      {line === null ? null : <p className="rec-line rec-quiet">{line}</p>}
-    </div>
-  );
-}
-
-/**
  * A filing read in full — the same body, not a card: back row, its facts, the sentence it was
  * filed on and the sentence that stands there now, then the reader's words. The record opens
  * with this body when a numeral, a margin note or a place door names the filing.
- *
- * BOOK-218 — `headId` is the filing the block's head already states: its facts line keeps the
- * number and the author and drops the state's line, because the block says it once above.
  */
 export function FilingBody({
   comment,
   onBack,
   before = null,
   after = null,
-  headId = null,
 }: {
   comment: CommentDto;
   onBack: () => void;
@@ -190,19 +169,14 @@ export function FilingBody({
   before?: string | null;
   /** The sentence as it stands now (`стало`). */
   after?: string | null;
-  /** The filing the record's head already states, whose line it therefore does not repeat. */
-  headId?: string | null;
 }) {
-  const consequence = comment.id === headId ? null : filingConsequence(comment);
   return (
     <div className="rec-filing ym-hide-content" data-kind="filing">
       <button type="button" className="rec-back" onClick={onBack}>
         ← замечания
       </button>
       <p className="rec-filing-facts">
-        {[filingNumber(comment), comment.author, consequence]
-          .filter((part): part is string => part !== null && part.length > 0)
-          .join(' · ')}
+        {`${filingWord(comment.changeSeq)} · ${comment.author} · ${filingConsequence(comment)}`}
       </p>
       {before === null ? null : (
         <p className="rec-change-row">

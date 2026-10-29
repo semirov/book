@@ -151,7 +151,7 @@ describe('a filing in the paragraph', () => {
     // Both anchors resolve to the same rewritten sentence; the alive filing wins the slot (the
     // same rule `FilingMark` uses), so a pending note is never displaced by a landed tick.
     const CHANGED = 'Я вошёл в пустую комнату. Свет был включён до меня и горел всю ночь.';
-    const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
+    const pending = comment({ changeSeq: 12, anchor: { ...comment().anchor, quote: 'Свет был включён' } });
     const landed = comment({
       id: 'cmt_01J9Z8K4Q8',
       number: 2,

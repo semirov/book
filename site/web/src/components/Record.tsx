@@ -1,5 +1,5 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
-import { FRAME_WARNING } from '@book/shared';
+import { FRAME_WARNING, filingWord } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { track } from '../lib/analytics.ts';
@@ -8,31 +8,34 @@ import { useChangeRead } from '../lib/changeCache.ts';
 import { changeBefore } from '../lib/changeView.ts';
 import { emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { isAlive, sortFilings } from '../lib/filings.ts';
+import { RETRY_STARTED } from '../lib/retry.ts';
 import { offsetTopOfPage } from '../lib/headerOffset.ts';
 import { keepPlace } from '../lib/keepPlace.ts';
+import { filingConsequence, STATE_WORDS } from '../lib/marginalia.ts';
 import { useChainRead } from '../lib/paragraphChainCache.ts';
+import { useRetry } from '../lib/useRetry.ts';
 import {
-  countOf,
-  handOf,
+  headLineOf,
   historyRows,
   interventionRows,
   isOwn,
-  recordHeadOf,
   recordStateOf,
-  receiptLineOf,
   rowWindow,
   type RecordState,
 } from '../lib/recState.ts';
 import { seamKey, type SeamAnchor } from '../lib/seam.ts';
-import { RecordChangeSection } from './ChangeSection.tsx';
 import { InterventionForm } from './InterventionForm.tsx';
-import { ExistingFilingNotice, FilingBody, QuoteBody, ReceiptBody, RowsList, SectionHeader } from './RecordParts.tsx';
+import { ExistingFilingNotice, FilingBody, QuoteBody } from './RecordParts.tsx';
+import { RecordSections, type RecordSection } from './RecordSections.tsx';
+import { RecordRetry } from './RecordRetry.tsx';
 
 /**
  * BOOK-128 comments #3863 / #3862 — **the sentence's record**: one block, in the flow, after
- * the paragraph. Order: the sentence quoted → its hand and moment → the head row (state word ·
- * `вмешаться` · one ✕) → `замечания N` → `правка 014` → `история N`. One section body is open
- * at a time; the form, the receipt and a filing read in full are states of that body.
+ * the paragraph. Order: the sentence quoted → the reader's act → the head row (the filing's
+ * number · its state · `вмешаться` · one ✕) → `замечания N` → `правка 014` → `история N`.
+ * BOOK-220 §11.3 — the record's own filing is never repeated in `замечания`, and `повторить`
+ * stands only for a failure of ours. One section body is open at a time; the form, the receipt
+ * and a filing read in full are states of that body.
  */
 
 export type RecordProps = {
@@ -76,7 +79,7 @@ function reduceMotion(): boolean {
 }
 
 type Body = 'list' | 'form' | 'notice' | 'receipt' | 'filing';
-type Section = 'interventions' | 'change' | 'history';
+type Section = RecordSection;
 
 export function Record({
   entry,
@@ -252,6 +255,12 @@ export function Record({
   const sorted = (filings === null ? [] : sortFilings(filings)).filter(
     (comment) => anchor === null || comment.anchor.quote === anchor.quote,
   );
+  /**
+   * §11.3 — the filing this record is open for. The head speaks about it (its number once,
+   * its state once), and `замечания` lists the sentence's *other* filings — never the same
+   * filing twice on one screen.
+   */
+  const subject: CommentDto | null = filing ?? sorted.find(own) ?? sorted[0] ?? null;
   /** The sentence already has a live filing: `вмешаться` must say so, never silently nothing. */
   const aliveFiling = sorted.find(isAlive) ?? null;
   const state: RecordState = recordStateOf({
@@ -260,14 +269,29 @@ export function Record({
     chain,
     writing,
     frozen,
+    subject: subject?.id ?? null,
   });
-  const hand = handOf({ chain, frozen });
-  const head = recordHeadOf({ filings: sorted, own });
-  const rows = interventionRows({ filings: sorted, own, headId: head.filing?.id ?? null });
+  const head = headLineOf({ filing: subject, viewer: viewer.displayName, chain, frozen });
+  /** The reader's word and the printer's act, and the filing's number in the head once. */
+  const numbered = receipt ?? subject;
+  const headNumber =
+    numbered === null || numbered.changeSeq === null || numbered.changeSeq === undefined
+      ? null
+      : filingWord(numbered.changeSeq);
+  const others = sorted.filter((comment) => comment.id !== subject?.id);
+  const rows = interventionRows({ filings: others, own });
   const windowed = rowWindow(rows, lifted);
-  const historyList = historyRows(chain);
-  const historyWindowed = rowWindow(historyList, lifted);
+  /** §11.3 — «повторить» exists only for our failure, and one tap re-queues the same filing. */
+  const retry = useRetry(subject);
   const quote = anchor?.quote ?? '';
+  const historyList = historyRows({
+    chain,
+    filing: subject,
+    viewer: viewer.displayName,
+    quote,
+    failed: retry.offer.kind !== 'none',
+  });
+  const historyWindowed = rowWindow(historyList, lifted);
 
   /** `QuoteBody` underlines the word inside the quote; never a second node. */
   const quoteStart = anchor?.sentence.start ?? null;
@@ -281,11 +305,11 @@ export function Record({
     setMarker(false);
   };
 
-  /** BOOK-218 — one state, once: the open receipt states its filing; the head repeats no line. */
-  const receiptHere = body === 'receipt' && receipt !== null;
-  const [headState, headLine] = receiptHere ? [null, null] : [state.word, state.line];
-  const receiptLine = receipt === null ? null : receiptLineOf(state, receipt);
-  /** #3862 — `вмешаться` is one act: the form, or the live filing said out loud first. */
+  /** §11.3 — after a repeat the record reads the live state again, and the failure stays below. */
+  const headState = retry.phase === 'started' || receipt !== null ? STATE_WORDS.waiting : state.word;
+  /**
+   * #3862 — `вмешаться` is one act: the form, or the live filing said out loud first.
+   */
   const openIntervention = (): void => {
     keepPlace(headRef.current, () => setBody(aliveFiling === null ? 'form' : 'notice'));
   };
@@ -312,7 +336,7 @@ export function Record({
       className="rec ym-hide-content"
       data-acc={phase === 'open' ? 'open' : 'closed'}
       data-body={body}
-      data-situation={state.situation}
+      data-situation={retry.phase === 'started' ? 'waiting' : state.situation}
       role="region"
       id={`rec-${String(entry.n)}-${blockId}`}
       aria-label={quote === '' ? 'запись о фразе' : `запись о фразе · ${quote}`}
@@ -336,12 +360,16 @@ export function Record({
                 «<QuoteBody quote={quote} word={word} sentenceStart={quoteStart} />»
               </blockquote>
             )}
-            <p className="rec-what">{head.line}</p>
+            {/* §11.3 — the head carries the reader's act, and the printer's only where it is
+                the point: the printer's own timestamp is not the reader's question. */}
+            {head === null ? null : <p className="rec-hand">{head}</p>}
 
             <div className="rec-head" ref={headRef}>
-              <span className="rec-state" data-ink={state.ink}>
+              <span className="rec-state" data-ink={retry.phase === 'started' ? 'live' : state.ink}>
                 {state.situation === 'writing' ? <span className="rec-caret" aria-hidden="true" /> : null}
-                {headState === null ? null : <span>{headState}</span>}
+                {headState === null ? null : (
+                  <span>{headNumber === null ? headState : `${headNumber} · ${headState}`}</span>
+                )}
               </span>
               {body === 'form' || (body === 'notice' && aliveFiling !== null) ? (
                 <span className="rec-act-word">вмешаться</span>
@@ -359,7 +387,12 @@ export function Record({
                 ✕
               </button>
             </div>
-            {headLine === null ? null : <p className="rec-state-line">{headLine}</p>}
+            {retry.phase === 'started' ? (
+              <p className="rec-state-line">{RETRY_STARTED}</p>
+            ) : state.line === null ? null : (
+              <p className="rec-state-line">{state.line}</p>
+            )}
+            <RecordRetry retry={retry} />
             {/* BOOK-137 — the frozen frame says before typing what will not move. */}
             {frozen !== null ? (
               <p className="rec-frame-note">
@@ -394,11 +427,16 @@ export function Record({
                 }}
               />
             ) : body === 'receipt' && receipt !== null ? (
-              <ReceiptBody comment={receipt} line={receiptLine} />
+              <div className="rec-receipt-body">
+                <p className="rec-receipt" role="status">
+                  принято
+                </p>
+                <p className="rec-line rec-quiet">{filingConsequence(receipt)}</p>
+                {state.line === null ? null : <p className="rec-line rec-quiet">{state.line}</p>}
+              </div>
             ) : body === 'filing' && openFiling !== null ? (
               <FilingBody
                 comment={openFiling}
-                headId={head.filing?.id ?? null}
                 before={
                   openFiling.anchor.quote === null || openFiling.anchor.quote === quote
                     ? null
@@ -417,78 +455,32 @@ export function Record({
             ) : state.empty && changeId === null ? (
               <p className="rec-empty">{state.line}</p>
             ) : (
-              <div className="rec-sections">
-                {/* A section with nothing is not a section: `замечания` prints no header when
-                    the sentence holds no filing (no count of zero, no empty list). */}
-                {rows.length > 0 ? (
-                  <>
-                    <SectionHeader
-                      label="замечания"
-                      count={countOf(rows)}
-                      open={section === 'interventions'}
-                      onPress={(control) => toggleSection('interventions', control)}
-                    />
-                    {section === 'interventions' ? (
-                      <RowsList
-                        rows={windowed}
-                        lifted={lifted}
-                        onLift={() => {
-                          keepPlace(sheetRef.current, () => setLifted(true));
-                        }}
-                        onFold={() => {
-                          keepPlace(sheetRef.current, () => setLifted(false));
-                        }}
-                        onOpen={(row) => {
-                          keepPlace(sheetRef.current, () => {
-                            setOpenFiling(row.comment);
-                            setBody('filing');
-                          });
-                        }}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
-                {/* The change the record was opened for: the numeral is the header's value,
-                    and the section is the change's whole content — there is no sheet behind it. */}
-                {changeId === null ? null : (
-                  <RecordChangeSection
-                    open={section === 'change'}
-                    read={changeRead}
-                    before={change === null ? null : (changeBefore(change, sorted) ?? changeQuote)}
-                    after={quote === '' ? null : quote}
-                    onPress={(control) => toggleSection('change', control)}
-                  />
-                )}
-                {history && historyList.length > 0 ? (
-                  <>
-                    <SectionHeader
-                      label="история"
-                      count={countOf(historyList)}
-                      open={section === 'history'}
-                      onPress={(control) => toggleSection('history', control)}
-                    />
-                    {section === 'history' ? (
-                      <>
-                        {/* BOOK-218 — the hand is `история`'s subject, so its line lives here and
-                            nowhere else: `машина · 28.10.2026, 00:24` is a fact about the text,
-                            not about the reader's filing. */}
-                        <p className="rec-hand">{hand.line}</p>
-                        <RowsList
-                          rows={historyWindowed}
-                          lifted={lifted}
-                          onLift={() => {
-                            keepPlace(sheetRef.current, () => setLifted(true));
-                          }}
-                          onFold={() => {
-                            keepPlace(sheetRef.current, () => setLifted(false));
-                          }}
-                          history
-                        />
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+              <RecordSections
+                rows={rows}
+                windowed={windowed}
+                historyList={historyList}
+                historyWindowed={historyWindowed}
+                lifted={lifted}
+                section={section}
+                history={history}
+                changeId={changeId}
+                changeRead={changeRead}
+                before={change === null ? null : (changeBefore(change, sorted) ?? changeQuote)}
+                after={quote === '' ? null : quote}
+                onToggle={toggleSection}
+                onLift={() => {
+                  keepPlace(sheetRef.current, () => setLifted(true));
+                }}
+                onFold={() => {
+                  keepPlace(sheetRef.current, () => setLifted(false));
+                }}
+                onOpenFiling={(row) => {
+                  keepPlace(sheetRef.current, () => {
+                    setOpenFiling(row.comment);
+                    setBody('filing');
+                  });
+                }}
+              />
             )}
           </div>
         </div>

@@ -270,6 +270,21 @@ export async function reviseComment(id: string, input: ReviseCommentInput): Prom
   return (await response.json()) as ReviseCommentResponse;
 }
 
+/**
+ * BOOK-220 §11.3 — «повторить»: re-queue the **same** filing, once.
+ *
+ * The endpoint belongs to another branch; this client only calls it. A 404 is not a failure to
+ * hide: it is the honest answer that the repeat is unavailable, and the record says so without
+ * claiming the filing was re-queued.
+ */
+export async function retryComment(id: string): Promise<void> {
+  const response = await requestJson(`/api/comments/${encodeURIComponent(id)}/retry`, {
+    method: 'POST',
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) throw await toApiError(response);
+}
+
 // ── the history (§6F.2, §11.10) ─────────────────────────────────────────────
 /** The record's spine: newest first, one change per entry. */
 export function getHistoryTimeline(

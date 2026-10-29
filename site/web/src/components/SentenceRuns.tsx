@@ -1,7 +1,7 @@
 import type { CommentDto } from '@book/shared';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
-import { isAlive, unshownFilings } from '../lib/filings.ts';
+import { isAlive } from '../lib/filings.ts';
 import type { ProseMarks } from '../lib/proseMarks.ts';
 import type { Sentence } from '../lib/seam.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
@@ -57,19 +57,16 @@ export function SentenceRuns({
 }): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = from;
-  /** BOOK-218 — the filings this block has already given a mark and a note. */
-  const shown = new Set<string>();
   sentences.forEach((sentence, index) => {
     if (sentence.start < from || sentence.end > to) return;
     // The gap the splitter did not claim — double spaces, a stray quote, an indent.
     if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
     const filings = marks.get(sentence.start);
-    // BOOK-218 — one filing, one mark: the block draws each filing once, however many runs its
-    // quote is reached from. A stale group shows nothing at all, as it always has.
-    const fresh =
-      filings === undefined || filings.stale ? [] : unshownFilings(filings, shown);
-    for (const comment of fresh) shown.add(comment.id);
     const cited = citedClass(filings);
+    /** §11.3 — the group's alive filings decide the note: its newest row and the count. */
+    const aliveFilings = filings === undefined || filings.stale ? [] : filings.all.filter(isAlive);
+    const newestAlive = aliveFilings[0] ?? null;
+    const aliveCount = aliveFilings.length;
     // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the cited
     // rule's underline — text decoration sets no box, so no line moves.
     const marked = [cited, sentence.start === anchoredStart ? 'is-anchored' : null]
@@ -125,19 +122,22 @@ export function SentenceRuns({
         >
           {text.slice(sentence.start, sentence.end)}
         </span>
-        {filings === undefined || filings.stale || fresh.length === 0 ? null : (
+        {filings === undefined || filings.stale ? null : (
           <>
-            <FilingMark
-              filings={{ ...filings, all: fresh }}
-              onOpen={(comment, origin) => onOpenFiling(comment, origin, { start: sentence.start, end: sentence.end })}
-            />
-            {fresh.filter(isAlive).map((comment) => (
+            <FilingMark filings={filings} onOpen={(comment, origin) => onOpenFiling(comment, origin, { start: sentence.start, end: sentence.end })} />
+            {/* §11.3 — one mark and one note per sentence group: the number is the mark's,
+                the count belongs to the note only when there really are several filings, and
+                the group's other filings are reached through the record's `замечания`. While
+                the record is open for this sentence it speaks for the filing: the note stands
+                down (one filing once per screen), and the mark keeps its place. */}
+            {newestAlive === null || recordHere ? null : (
               <MarginNote
-                key={comment.id}
-                comment={comment}
+                key={newestAlive.id}
+                comment={newestAlive}
+                extra={aliveCount - 1}
                 onOpen={(item, origin) => onOpenFiling(item, origin, { start: sentence.start, end: sentence.end })}
               />
-            ))}
+            )}
           </>
         )}
       </span>,

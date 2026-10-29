@@ -17,6 +17,9 @@ import '../src/styles/marginalia.css';
 import '../src/styles/reader.css';
 import '../src/styles/record.css';
 import '../src/styles/record-notice.css';
+import '../src/styles/record-change.css';
+import '../src/styles/record-retry.css';
+import '../src/styles/follow.css';
 import '../src/styles/foot-jumps.css';
 
 /**
@@ -61,6 +64,13 @@ const TEXT = paragraphOf(Number.isFinite(WANTED) ? WANTED : null);
 const ROWS = Math.max(0, Math.min(8, Number(params.get('rows') ?? '0') || 0));
 /** The signed-out viewer: the record's `вмешаться` prints the product's own sign-in copy. */
 const SIGNED_OUT = params.get('out') === '1';
+/**
+ * `?state=refused` — the owner's own screen: one filing of ours that did not reach the text,
+ * with its change's number and the pass's roll-back sentence. It is what the §11.3 shots show:
+ * one mark, one `вмешаться`, one mention of the filing.
+ */
+const REFUSED = params.get('state') === 'refused';
+const REFUSED_LINE = 'проверка не ответила — текст возвращён к прежней редакции, правка остановлена';
 
 /** The filings of sentence 1 — the reader's own first, then older others, for the fold. */
 const COMMENTS = Array.from({ length: ROWS }, (_, index) => ({
@@ -72,16 +82,17 @@ const COMMENTS = Array.from({ length: ROWS }, (_, index) => ({
   body: 'в комнате должен быть свет, но не от лампы',
   proposedText: null,
   interventionKind: null,
-  status: index === 0 ? 'new' : index === 1 ? 'applied' : 'new',
+  status: REFUSED ? (index === 0 ? 'rejected' : 'new') : index === 0 ? 'new' : index === 1 ? 'applied' : 'new',
   refusal: null,
   attempt: null,
   frame: null,
   premise: false,
-  reason: null,
+  reason: REFUSED && index === 0 ? REFUSED_LINE : null,
   createdAt: `2026-10-2${String(Math.max(0, 9 - index))}T12:0${String(index)}:00Z`,
-  decidedAt: null,
-  changeId: null,
-  applied: index === 1 ? { chapter: 1, rev: 2 } : null,
+  decidedAt: REFUSED && index === 0 ? '2026-10-29T13:46:00Z' : null,
+  changeId: REFUSED && index === 0 ? 'chg_4' : null,
+  changeSeq: 4 + index,
+  applied: index === 1 && !REFUSED ? { chapter: 1, rev: 2 } : null,
 }));
 
 const ENTRY: CatalogEntry = {

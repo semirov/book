@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { filingsForBlock } from '../lib/filings.ts';
-import { STATE_WORDS } from '../lib/marginalia.ts';
 import { premiseRow } from '../lib/premise.ts';
 import { anchorFor } from '../lib/seam.ts';
 import { FilingMark } from './FilingMark.tsx';
@@ -36,7 +35,6 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
-    number: 1,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 1, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -134,13 +132,12 @@ describe('the strip at the seam', () => {
 
   it('lists a filing in the strip as a row whose state word is printed and kept in the label (BOOK-70, BOOK-111)', () => {
     const html = strip({ withFilings: true });
-    // BOOK-218 — the row is the filing's own number, never a cut id.
-    expect(html).toContain('<span class="seam-filing-n">замечание 1</span>');
+    expect(html).toContain('№4Q7');
     expect(html).toContain('Аня');
     // BOOK-111 (owner, 2026-10-27): a filing that exists must say it waits — the word is
     // visible on the row; the button's label still names the whole row for a screen reader.
     expect(html).toContain('<span class="seam-filing-word">ждёт</span>');
-    expect(html).toContain('aria-label="замечание 1 · ждёт · «Её освещал яркий свет.»"');
+    expect(html).toContain('aria-label="замечание №4Q7 · ждёт · «Её освещал яркий свет.»"');
     expect(html).toContain('Её освещал яркий свет.');
   });
 
@@ -152,20 +149,21 @@ describe('the strip at the seam', () => {
 });
 
 describe('the mark on a sentence', () => {
-  it('prints the record numeral and the overflow as a real button', () => {
-    const filings = FILINGS[0];
+  it('prints the change’s own number as a real button, never a token from an id', () => {
+    const [filings] = filingsForBlock([comment({ changeSeq: 12 })], 'ch08#aa11bb22');
     const html = renderToStaticMarkup(
       <FilingMark filings={filings!} onOpen={() => undefined} />,
     );
-    // The numeral is the button: what the reader sees is what the reader taps.
-    expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">1/u);
-    expect(html).toContain('aria-label="замечание 1 · ждёт"');
+    // The number is the button: what the reader sees is what the reader taps.
+    expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">012/u);
+    expect(html).toContain('aria-label="правка 012 · ждёт"');
+    expect(html).not.toContain('№4Q7');
     expect(html).not.toContain('style=');
   });
 
   it('keeps the numeral inside the 24 px target and names the overflow in the label', () => {
-    const second = comment({ id: 'cmt_01J9Z8K5AA', createdAt: '2026-10-22T09:00:00Z' });
-    const [group] = filingsForBlock([comment(), second], 'ch08#aa11bb22');
+    const second = comment({ id: 'cmt_01J9Z8K5AA', changeSeq: 13, createdAt: '2026-10-22T09:00:00Z' });
+    const [group] = filingsForBlock([comment({ changeSeq: 12 }), second], 'ch08#aa11bb22');
     const html = renderToStaticMarkup(
       <FilingMark filings={group!} onOpen={() => undefined} />,
     );
@@ -195,9 +193,9 @@ describe('the empty slot row', () => {
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} onRevise={() => undefined} />);
     expect(html).toContain('«в комнате должен быть свет, но не от лампы»');
     // BOOK-111 (owner, 2026-10-27): a held premise says it waits — one word, after the field.
-    expect(html).toContain(`<span class="premise-label">${STATE_WORDS.accepted}</span>`);
+    expect(html).toContain('<span class="premise-label">ждёт</span>');
     // And the word is part of what the row names itself: `aria-label` would otherwise hide it.
-    expect(html).toContain(`aria-label="глава 7 · ${STATE_WORDS.accepted}"`);
+    expect(html).toContain('aria-label="глава 7 · ждёт"');
     expect(html).not.toContain('замысел');
   });
 });

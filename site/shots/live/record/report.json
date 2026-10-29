@@ -1,0 +1,46 @@
+{
+  "pass": true,
+  "widths": {
+    "390": {
+      "acts": 1,
+      "marks": [
+        "tick"
+      ],
+      "notes": [],
+      "strip": [],
+      "marginText": "",
+      "numberMentions": 0,
+      "idTokens": 0,
+      "record": "refused",
+      "head": "правка 004 · отклонено",
+      "stateLine": "проверка не ответила — текст возвращён к прежней редакции, правка остановлена",
+      "sections": [
+        "история"
+      ]
+    },
+    "1440": {
+      "acts": 1,
+      "marks": [
+        "004"
+      ],
+      "notes": [],
+      "strip": [],
+      "marginText": "004",
+      "numberMentions": 1,
+      "idTokens": 0,
+      "record": "refused",
+      "head": "правка 004 · отклонено",
+      "stateLine": "проверка не ответила — текст возвращён к прежней редакции, правка остановлена",
+      "sections": [
+        "история"
+      ]
+    }
+  },
+  "shots": [
+    "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/record/390-margin.png",
+    "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/record/390-record.png",
+    "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/record/1440-margin.png",
+    "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/record/1440-record.png"
+  ],
+  "origin": "http://127.0.0.1:5173"
+}
