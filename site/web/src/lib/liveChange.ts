@@ -76,7 +76,7 @@ export function closedPassOf(facts: LiveChangeFacts, changeId: string | null | u
 export function liveLineOf(line: ChangeLine): string | null {
   switch (line.kind) {
     case 'queued':
-      return line.ahead > 0 ? `в очереди · впереди ${String(line.ahead)}` : 'в очереди · следующая';
+      return line.ahead > 0 ? `ждёт · впереди ${String(line.ahead)}` : 'ждёт · следующая';
     case 'processing':
       return `идёт · попытка ${String(line.attempt)}`;
     case 'adapted': {
@@ -112,7 +112,7 @@ export function resetLiveChange(): void {
 
 /** The stage's own word, for the stages the record reads back for a pass it was not there for. */
 export const STAGE_WORDS: Readonly<Record<PassStage, string>> = {
-  queued: 'в очереди',
+  queued: 'ждёт',
   read: 'прочитано',
   verdict: 'проверено',
   drafting: 'написано',

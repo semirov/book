@@ -14,7 +14,7 @@ import { ScreenExit } from './ScreenExit.tsx';
 /**
  * BOOK-221 — the trail row's two lines, in the reader's own vocabulary (BOOK-DOC-82).
  *
- * The row used to print our machinery: «замечание №A7K · внесено» and «в очереди на запись».
+ * The row used to print our machinery: «замечание №A7K · внесено» and «ждёт записи».
  * A reader is owed a number («правка 014»), the chapter and the moment, and one sentence that
  * says what became of **their** edit. Every such string lives here and nowhere else:
  * `TRAIL_STATE_WORDS` holds the sentences that need no data, `TRAIL_STATE_LINES` the templates
@@ -54,7 +54,7 @@ const TRAIL_STATE_WORDS = {
 /** The sentences that carry a fact; each placeholder is filled once, from the row's own data. */
 const TRAIL_STATE_LINES = {
   writing: 'пишется · глава {chapter}',
-  landed: 'внесено · глава {chapter} · ревизия {rev}',
+  landed: 'внесено · глава {chapter} · редакция {rev}',
   // BOOK-137 — the mode a frame filing was filed as is derived (`filingConsequence`), never
   // assumed: «оформление» is only the default, and «поправка»/«расхождение» are real modes.
   registered: 'рассмотрено · {mode}',
@@ -349,12 +349,6 @@ export function TrailPage({
                         </p>
                       )}
                       <p className="sled-state">{trailStateLine(comment)}</p>
-                      {comment.report === null || comment.report === undefined ? null : (
-                        <>
-                          <p className="sled-detail">{comment.report.line1}</p>
-                          <p className="sled-detail">{comment.report.line2}</p>
-                        </>
-                      )}
                     </li>
                   );
                 })}

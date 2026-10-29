@@ -59,6 +59,7 @@ const CHAIN: ParagraphChainDto = {
 function filing(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: 'ch08#b1', blockIndex: 0, quote: 'Её освещал тусклый свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -134,7 +135,7 @@ describe('the history guard', () => {
     for (const fixture of FIXTURES) {
       const rows = historyRows({ chain: CHAIN, filing: fixture.filing, viewer: 'Филипп', quote: 'Её освещал яркий свет.', failed: fixture.failed === true });
       for (const row of rows) {
-        expect(row.facts, fixture.name).toMatch(/^\d\d\.\d\d, \d\d:\d\d · (вы |читатель |печатник |никто ).+$/u);
+        expect(row.facts, fixture.name).toMatch(/^\d\d\.\d\d, \d\d:\d\d · (вы |читатель |машина |никто ).+$/u);
       }
     }
   });

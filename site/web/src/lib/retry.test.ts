@@ -16,6 +16,7 @@ import { REVISE_EXHAUSTED } from './revise.ts';
 function filing(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_1',
+    number: 12,
     chapter: 8,
     anchor: { blockId: 'ch08#b1', blockIndex: 0, quote: 'Фраза.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',

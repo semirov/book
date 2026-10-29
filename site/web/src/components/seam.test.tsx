@@ -35,6 +35,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 1, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -132,12 +133,14 @@ describe('the strip at the seam', () => {
 
   it('lists a filing in the strip as a row whose state word is printed and kept in the label (BOOK-70, BOOK-111)', () => {
     const html = strip({ withFilings: true });
-    expect(html).toContain('№4Q7');
+    // BOOK-218 — the row names the filing by its own public number, never a token from its id.
+    expect(html).toContain('замечание 12');
+    expect(html).not.toContain('№4Q7');
     expect(html).toContain('Аня');
     // BOOK-111 (owner, 2026-10-27): a filing that exists must say it waits — the word is
     // visible on the row; the button's label still names the whole row for a screen reader.
     expect(html).toContain('<span class="seam-filing-word">ждёт</span>');
-    expect(html).toContain('aria-label="замечание №4Q7 · ждёт · «Её освещал яркий свет.»"');
+    expect(html).toContain('aria-label="замечание 12 · ждёт · «Её освещал яркий свет.»"');
     expect(html).toContain('Её освещал яркий свет.');
   });
 
@@ -155,8 +158,8 @@ describe('the mark on a sentence', () => {
       <FilingMark filings={filings!} onOpen={() => undefined} />,
     );
     // The number is the button: what the reader sees is what the reader taps.
-    expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">012/u);
-    expect(html).toContain('aria-label="правка 012 · ждёт"');
+    expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">12/u);
+    expect(html).toContain('aria-label="замечание 12 · ждёт"');
     expect(html).not.toContain('№4Q7');
     expect(html).not.toContain('style=');
   });
@@ -193,9 +196,10 @@ describe('the empty slot row', () => {
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} onRevise={() => undefined} />);
     expect(html).toContain('«в комнате должен быть свет, но не от лампы»');
     // BOOK-111 (owner, 2026-10-27): a held premise says it waits — one word, after the field.
-    expect(html).toContain('<span class="premise-label">ждёт</span>');
+    // BOOK-218 — the deck's own word for an accepted premise is «принято».
+    expect(html).toContain('<span class="premise-label">принято</span>');
     // And the word is part of what the row names itself: `aria-label` would otherwise hide it.
-    expect(html).toContain('aria-label="глава 7 · ждёт"');
+    expect(html).toContain('aria-label="глава 7 · принято"');
     expect(html).not.toContain('замысел');
   });
 });

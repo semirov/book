@@ -283,7 +283,7 @@ describe('the record’s `правка` section (a change, not a surface)', () =
       }),
     );
     const cases: Array<[ChangeLine, string]> = [
-      [{ kind: 'queued', at: AT, eventSeq: 1, ahead: 2, depth: 3 }, 'в очереди · впереди 2'],
+      [{ kind: 'queued', at: AT, eventSeq: 1, ahead: 2, depth: 3 }, 'ждёт · впереди 2'],
       [{ kind: 'processing', at: AT, eventSeq: 2, ahead: 0, attempt: 1 }, 'идёт · попытка 1'],
       [{ kind: 'adapted', at: AT, eventSeq: 3, intent: 'ровный свет', reason: 'не про эту сцену' }, 'сужено · ровный свет · не про эту сцену'],
       [{ kind: 'stale', at: AT, eventSeq: 4, grade: 'weak', evidence: [], options: [] }, 'основа изменилась, решается заново'],
@@ -351,7 +351,7 @@ describe('the record’s `правка` section (a change, not a surface)', () =
     expect(asked[0]).toContain('pass=stp_1');
     expect(asked[0]).toContain('limit=50');
     expect([...container.querySelectorAll('.rec-change-stage')].map((node) => node.textContent)).toEqual([
-      'в очереди',
+      'ждёт',
       'отказ',
     ]);
     // The memo answers the second open: one pass is one read.

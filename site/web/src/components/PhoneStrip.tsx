@@ -1,8 +1,7 @@
 import type { CommentDto } from '@book/shared';
-import { filingWord, interventionKindLabel } from '@book/shared';
+import { interventionKindLabel } from '@book/shared';
 
-import { changeNumber } from '../lib/changeStatus.ts';
-import { filingInk, stripFilings } from '../lib/filings.ts';
+import { filingInk, filingNumber, stripFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
 
 /**
@@ -37,15 +36,15 @@ export function PhoneStrip({
         const marginalia = filingMarginalia(comment);
         const ink = filingInk(comment);
         const kind = interventionKindLabel(comment.interventionKind);
-        const number =
-          comment.changeSeq === null || comment.changeSeq === undefined ? null : changeNumber(comment.changeSeq);
+        // BOOK-218 — the filing's own public number, the same one the mark prints.
+        const number = Number.isFinite(comment.number) ? filingNumber(comment) : null;
         return (
           <button
             key={comment.id}
             type="button"
             className="phone-strip-row"
             data-status={comment.status}
-            data-number={filingWord(comment.changeSeq)}
+            data-number={number ?? undefined}
             onClick={(event) => onOpen(comment, event.currentTarget)}
           >
             {/* §11.3 — the phone's number is the change's own, as the mark's is: a token cut

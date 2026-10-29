@@ -202,7 +202,7 @@ describe('the posted filing enters the page at once (BOOK-111)', () => {
     expect(document.querySelector('.seam-form')).toBeNull();
     expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('receipt');
     expect(receipt).toBe('принято · замечание 1');
-    expect(receipt).not.toContain('ждёт');
+    expect(receipt).not.toContain('в очереди');
     expect(receipt).not.toContain('cmt_');
     // BOOK-111: the caller gets the whole row, not its id — that is what fills the feed.
     expect(posted).toHaveBeenCalledWith(dto);

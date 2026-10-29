@@ -61,14 +61,14 @@ describe('the six situations', () => {
     const own = filing({ author: 'Филипп' });
     const result = state({ filings: [own], own: (comment) => comment.author === 'Филипп' });
     expect(result.word).toBe('ждёт');
-    expect(result.line).toBe('ваша — в очереди');
+    expect(result.line).toBe('ваша — ждёт');
   });
 
   it('внесено — the text includes the accepted change, and the line says where it went', () => {
     const result = state({ filings: [filing({ status: 'applied', applied: { chapter: 67, rev: 4 } })] });
     expect(result.word).toBe('внесено');
-    // BOOK-189 — the one receipt shape of every surface: «глава 67 · ревизия 4».
-    expect(result.line).toBe('глава 67 · ревизия 4');
+    // BOOK-218 — the landing's one sentence, from `marginalia.ts` (`landedSentence`).
+    expect(result.line).toBe('в главу 67. это четвёртая редакция');
     expect(result.ink).toBe('ink');
   });
 
@@ -76,7 +76,7 @@ describe('the six situations', () => {
     const result = state({
       filings: [filing({ status: 'rejected', refusal: 'auditor', reason: 'чужая цитата без источника' })],
     });
-    expect(result.word).toBe('отклонено');
+    expect(result.word).toBe('не принято');
     expect(result.line).toBe('чужая цитата без источника');
     expect(result.ink).toBe('revise');
   });
@@ -92,22 +92,18 @@ describe('the six situations', () => {
     // BOOK-189: the row's word stops at triage; the linked change says whether the writer holds
     // it now. `pending` waits, `processing` is «идёт» with the one line «пишется».
     const working = state({ filings: [filing({ status: 'accepted', changeStatus: 'processing' })] });
-    expect(working.word).toBe('идёт');
-    expect(working.line).toBe('пишется');
+    expect(working.word).toBe('главу пишут');
   });
 
   it('ждёт — an accepted filing the lane has not reached yet', () => {
     const pending = state({ filings: [filing({ status: 'accepted', changeStatus: 'pending' })] });
-    expect(pending.word).toBe('ждёт');
-    expect(pending.line).toBe('в очереди на запись');
+    expect(pending.word).toBe('принято');
     // A row written before BOOK-189 carries no field: it is not a queue place either.
     const legacy = state({ filings: [filing({ status: 'accepted' })] });
-    expect(legacy.word).toBe('ждёт');
-    expect(legacy.line).toBe('в очереди на запись');
+    expect(legacy.word).toBe('принято');
     // The reader's own filing says whose it is, in the same word.
     const own = state({ filings: [filing({ status: 'accepted', author: 'Филипп' })], own: (c) => c.author === 'Филипп' });
-    expect(own.word).toBe('ждёт');
-    expect(own.line).toBe('ваша — в очереди');
+    expect(own.word).toBe('принято');
   });
 
   it('prints the same three words as the thread: внесено · ждёт · отклонено', () => {
@@ -118,15 +114,15 @@ describe('the six situations', () => {
       filing({ id: 'cmt_r', status: 'rejected', refusal: 'auditor', reason: 'вне книги: этот мир не просит чудес' }),
     ];
     const words = rows.map((row) => state({ filings: [row] }));
-    expect(words[0]).toMatchObject({ word: 'внесено', line: 'глава 67 · ревизия 4', situation: 'landed' });
-    expect(words[1]).toMatchObject({ word: 'ждёт', line: 'в очереди на запись', situation: 'waiting' });
-    expect(words[2]).toMatchObject({ word: 'отклонено', line: 'вне книги: этот мир не просит чудес', situation: 'refused' });
+    expect(words[0]).toMatchObject({ word: 'внесено', line: 'в главу 67. это четвёртая редакция', situation: 'landed' });
+    expect(words[1]).toMatchObject({ word: 'принято', situation: 'waiting' });
+    expect(words[2]).toMatchObject({ word: 'не принято', line: 'вне книги: этот мир не просит чудес', situation: 'refused' });
     expect(JSON.stringify(words[0])).not.toContain('идёт');
   });
 
   it('the deck’s hold — a quarantined filing waits for a person', () => {
     const result = state({ filings: [filing({ status: 'quarantined' })] });
-    expect(result.word).toBe('ждёт');
+    expect(result.word).toBe('проверяется');
     expect(result.line).toBe('ждёт человека');
   });
 
@@ -157,7 +153,7 @@ describe('the six situations', () => {
     const result = state({
       filings: [filing({ status: 'rejected', reason: 'правка остановлена — текст остался прежним' })],
     });
-    expect(result.word).toBe('отклонено');
+    expect(result.word).toBe('не принято');
     expect(result.line).toBe('правка остановлена — текст остался прежним');
     expect(result.line).not.toContain('в очереди');
   });
@@ -172,7 +168,7 @@ describe('the six situations', () => {
 
   it('the row register prints the same word as the state block', () => {
     const held = filing({ id: 'cmt_hold', status: 'quarantined' });
-    expect(interventionRows({ filings: [held], own: never })[0]?.facts).toContain('ждёт');
+    expect(interventionRows({ filings: [held], own: never })[0]?.facts).toContain('проверяется');
     const refused = filing({ id: 'cmt_ref', status: 'rejected', refusal: 'rights', reason: 'не принято: пересказ' });
     expect(interventionRows({ filings: [refused], own: never })[0]?.facts).toContain('не принято');
   });
@@ -287,7 +283,7 @@ describe('the head line (§11.3)', () => {
   });
 
   it('names the printer’s act only where no filing is the subject', () => {
-    expect(headLineOf({ filing: null, viewer: null, chain, frozen: null })).toBe('печатник внёс правку 28.10, 15:08');
+    expect(headLineOf({ filing: null, viewer: null, chain, frozen: null })).toBe('машина внесла правку 28.10, 15:08');
     expect(headLineOf({ filing: null, viewer: null, chain: null, frozen: null })).toBeNull();
     expect(headLineOf({ filing: null, viewer: null, chain: null, frozen: 'frame' })).toBe('рамка книги');
   });
@@ -335,7 +331,7 @@ describe('rows', () => {
     const [row] = historyRows({
       chain: { blockUid: 'u1', blockId: 'ch67#b1', chapter: 67, alive: true, versions: [VERSION], line: 'печатник' },
     });
-    expect(row?.facts).toBe('28.10, 15:08 · печатник внёс правку');
+    expect(row?.facts).toBe('28.10, 15:08 · машина внесла правку');
     expect(row?.specimen).toBe('');
     expect(row?.facts).not.toContain('пара');
   });
@@ -355,7 +351,7 @@ describe('rows', () => {
       quote: 'Её освещал яркий свет.',
     });
     expect(rows.map((row) => row.facts)).toEqual([
-      '28.10, 15:08 · печатник внёс правку',
+      '28.10, 15:08 · машина внесла правку',
       '28.10, 03:24 · вы предложили эту правку',
     ]);
     expect(rows[0]?.specimen).toBe('было: «Её освещал тусклый свет.» → стало: «Её освещал яркий свет.»');

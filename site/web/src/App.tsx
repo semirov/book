@@ -1,25 +1,26 @@
 import type { CommentDto, Envelope } from '@book/shared';
+import type { BookView } from './components/ViewSwitch.tsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getChapters, getFront, getState } from './api.ts';
 import { chapterInViewport, elementInViewport } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
+import { AgeGate } from './components/AgeGate.tsx';
 import { CapacityPlate } from './components/CapacityPlate.tsx';
-import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
-import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
 import { FootJumps } from './components/FootJumps.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
+import { RecordMode, recordModeOf } from './components/RecordMode.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
-import { TrailView } from './components/TrailView.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
 import { revisingOf } from './lib/revisingMark.ts';
+import { useAgeGate } from './lib/useAgeGate.ts';
 import { withFreshFront, withRevision, type BookData } from './lib/bookState.ts';
 import { escalationMarkers } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
@@ -136,7 +137,10 @@ export function App() {
    * The one door to a change: it lands on the change's sentence and opens the record there with
    * the `правка` section expanded. A change never gets a surface of its own again.
    */
-  const changeDoor = useChangeDoor({ ready: book !== null && view === 'book', loadChapter });
+  const age = useAgeGate();
+  // BOOK-225 — the gate outranks every door into prose: a gated page has no change record and
+  // no deep link, because both land in text the reader has not been cleared to read.
+  const changeDoor = useChangeDoor({ ready: book !== null && view === 'book' && age.acknowledged, loadChapter });
   const openChange = useCallback(
     (changeId: string) => {
       setView('book');
@@ -195,9 +199,11 @@ export function App() {
     }
   }, [update]);
 
-  // BOOK-209 — the place layer owns landing, the fragment and back/forward; BOOK-220's page
-  // hands it only its readiness and whether the reader is signed in.
-  usePosition(book !== null, page.viewer.signedIn);
+  // BOOK-225 — the deep link lands only once the chapters exist: a `#ch-12` on a gated page has
+  // nowhere to land, and the position layer remembers what it acted on, so acting too early would
+  // consume the link and never re-land it after the answer. BOOK-209 — the place layer owns the
+  // fragment, the landing and back/forward; the page hands it readiness and the signed-in fact.
+  usePosition(book !== null && age.acknowledged, page.viewer.signedIn);
   useEffect(() => {
     void refreshAll(false);
     void loadThread();
@@ -358,44 +364,21 @@ export function App() {
         связь: {page.connection}
       </p>
     );
-  if (trail) {
+  // BOOK-225 — both record modes are prose doors, so a gated page is the book page and nothing
+  // else: `recordModeOf` says so once, and the gate stands where the chapters would.
+  const recordMode = recordModeOf({ acknowledged: age.acknowledged, trail, view, chronicle });
+  if (recordMode !== null) {
     return (
-      <>
-        <TrailView
-          state={state} ribbon={page.ribbon} catalog={catalog}
-          markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-          live={history} client={page} offlineAt={offlineAt}
-          reading={reading} viewer={page.viewer}
-          filings={page.filings} filingUpdates={page.filingUpdates}
-          imprint={front.imprint} donateUrl={front.donateUrl ?? null}
-          exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
-        />
-        <ConsentBanner />
-        <CapacityPlate active={connection === 'capacity'} />
-        {doorLine}
-        {connectionLine}
-      </>
-    );
-  }
-
-  if (view === 'chronicle' && chronicle) {
-    return (
-      <>
-        <ViewSwitch view={view} onChange={setView} live={chronicle} />
-        <ConsentBanner />
-        <Chronicle
-          catalog={catalog}
-          frontRev={front.rev}
-          tick={page.historyTick}
-          onOpenChange={openChange}
-          started={chronicle}
-          live={history}
-          onLoadChapter={loadChapter}
-        />
-        <CapacityPlate active={connection === 'capacity'} />
-        {doorLine}
-        {connectionLine}
-      </>
+      <RecordMode
+        mode={recordMode} view={view} onViewChange={setView} state={state} ribbon={page.ribbon}
+        catalog={catalog} markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
+        live={history} client={page} offlineAt={offlineAt}
+        filings={page.filings} filingUpdates={page.filingUpdates}
+        reading={reading} viewer={page.viewer} front={front}
+        historyTick={page.historyTick} plate={connection === 'capacity'}
+        doorLine={doorLine === null ? connectionLine : <>{doorLine}{connectionLine}</>}
+        loadChapter={loadChapter}
+      />
     );
   }
 
@@ -414,52 +397,74 @@ export function App() {
         live={history} chronicle={chronicle}
         client={page} offlineAt={offlineAt}
         reading={reading}
+        gated={!age.acknowledged}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
-      <ChapterList
-        catalog={catalog}
-        revisions={page.revisions}
-        revising={revisingOf(state.revising)}
-        markers={markers}
-        fresh={page.fresh}
-        applied={page.applied}
-        chapterFeed={chapterFeed}
-        changes={changes}
-        nowMs={nowMs}
-        onRead={loadChapter}
-        onPosted={onPosted}
-        sentence={sentence}
-        composer={composer}
-        viewer={page.viewer}
-        history={history}
-      />
-      {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
-      <EndMatter
+      {/* BOOK-225 — the gate stands where the chapters would: a reader who has not answered sees
+          no ink, and the print never starts behind it. */}
+      {age.acknowledged ? (
+        <ChapterList
+          catalog={catalog}
+          revisions={page.revisions}
+          revising={revisingOf(state.revising)}
+          markers={markers}
+          fresh={page.fresh}
+          applied={page.applied}
+          chapterFeed={chapterFeed}
+          changes={changes}
+          nowMs={nowMs}
+          onRead={loadChapter}
+          onPosted={onPosted}
+          sentence={sentence}
+          composer={composer}
+          viewer={page.viewer}
+          history={history}
+        />
+      ) : (
+        <AgeGate title={front.title} onAccept={age.accept} />
+      )}
+      {age.acknowledged ? (
+        <>
+          {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
+          <EndMatter
+            imprint={front.imprint}
+            lastRevisionAt={state.activity.lastFileChangeAt}
+            live={history}
+            exportBytes={front.exportBytes ?? null}
+          />
+          <Discussion
+            depth={state.queue.depth}
+            pending={page.queue}
+            stage={stage}
+            busy={!threadSettled}
+            complete={commentsComplete}
+            changes={changes}
+            comments={comments}
+            nowMs={nowMs}
+            live={history}
+            failed={commentsFailed}
+            onLoadChapter={loadChapter}
+          />
+        </>
+      ) : null}
+      <Colophon
+        state={state}
         imprint={front.imprint}
-        lastRevisionAt={state.activity.lastFileChangeAt}
-        live={history}
+        viewer={page.viewer}
+        donateUrl={front.donateUrl ?? null}
         exportBytes={front.exportBytes ?? null}
+        gated={!age.acknowledged}
       />
-      <Discussion
-        depth={state.queue.depth}
-        pending={page.queue}
-        stage={stage}
-        busy={!threadSettled}
-        complete={commentsComplete}
-        changes={changes}
-        comments={comments}
-        nowMs={nowMs}
-        live={history}
-        failed={commentsFailed}
-        onLoadChapter={loadChapter}
-      />
-      <Colophon state={state} imprint={front.imprint} viewer={page.viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
-      {doorLine}
-      {connectionLine}
-      <NoticeTicket notice={notice} onGo={go} onDismiss={() => update((current) => ({ ...current, notice: null }))} />
-      <FootJumps live={history} plate={connection === 'capacity'} />
-      <CapacityPlate active={connection === 'capacity'} />
+      {age.acknowledged ? (
+        <>
+          {doorLine}
+          {connectionLine}
+          <NoticeTicket notice={notice} onGo={go} onDismiss={() => update((current) => ({ ...current, notice: null }))} />
+          <FootJumps live={history} plate={connection === 'capacity'} />
+          <CapacityPlate active={connection === 'capacity'} />
+        </>
+      ) : null}
     </>
   );
 }

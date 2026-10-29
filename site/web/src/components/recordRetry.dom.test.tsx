@@ -48,6 +48,7 @@ const ENTRY: CatalogEntry = {
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_retry',
+    number: 12,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: QUOTE, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -302,7 +303,8 @@ describe('one tap re-queues the same filing', () => {
     await open();
     await press('.rec-retry');
     expect(retryCalls).toBe(1);
-    expect(document.querySelector('.rec-state-line')?.textContent).toContain('модель ответила не по форме');
+    // BOOK-218 — the line is the module's, never the stored reason read back as prose.
+    expect(document.querySelector('.rec-state-line')?.textContent).toContain('машина не смогла внести');
     expect(document.querySelector('.rec-retry-line')?.textContent).toBe('повтор недоступен');
     expect(rec()?.textContent).not.toContain('повторяем с начала');
   });

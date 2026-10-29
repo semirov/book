@@ -19,7 +19,7 @@ import { STATE_LINES } from './lib/marginalia.ts';
 /**
  * BOOK-206 audit B1 — the live record moves without a reload.
  *
- * A reader's filing was accepted and then written; the page kept printing «в очереди на запись»
+ * A reader's filing was accepted and then written; the page kept printing «ждёт записи»
  * over text that already existed, because only `comment:added`/`comment:decision` refreshed the
  * filings. This mounts the real `App` on a stubbed socket and REST edge and drives the three
  * frames the page used to read for the change's own story only: `change:processing`,

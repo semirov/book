@@ -3,7 +3,6 @@ import { chapterStartPages, partOf, TOTAL_CHAPTERS, type CatalogEntry, type Stat
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
 import { LANDING_PX } from '../lib/headerOffset.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { Header } from './Header.tsx';
@@ -491,9 +490,10 @@ describe('one number in the phone head', () => {
     expect(row.querySelector('.folio')?.textContent).toBe(String(chapterStartPages(catalog).get(21)));
     // The chip is still rendered — its hiding is the sheet's, not the markup's.
     expect(row.querySelector('.top-chapter')?.getAttribute('data-n')).toBe('21');
-    // With the slot hidden, the phone row says the book's title, its idle word and the page.
+    // BOOK-220 §11.1: idle prints no status line — no word, no placeholder, no reserved space.
     const phone = row.cloneNode(true) as HTMLElement;
     phone.querySelector('.top-chapter')?.remove();
-    expect(phone.textContent).toBe(`Бланктихо${chapterStartPages(catalog).get(21)}`);
+    phone.querySelector('.head-line')?.remove();
+    expect(phone.textContent).toBe(`Бланк${chapterStartPages(catalog).get(21)}`);
   });
 });

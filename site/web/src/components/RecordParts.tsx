@@ -2,7 +2,8 @@ import type { CommentDto } from '@book/shared';
 import { filingWord } from '@book/shared';
 import type { ReactNode } from 'react';
 
-import { filingConsequence } from '../lib/marginalia.ts';
+import { filingNumber } from '../lib/filings.ts';
+import { filingConsequence, STATE_WORDS } from '../lib/marginalia.ts';
 import { RECORD_CUT, type InterventionRow, type RowWindow } from '../lib/recState.ts';
 
 /**
@@ -10,6 +11,21 @@ import { RECORD_CUT, type InterventionRow, type RowWindow } from '../lib/recStat
  * with the count law, and a filing read in full. They live beside `Record.tsx` because they are
  * drawn, not decided: every word and every count comes from `lib/recState.ts`.
  */
+
+/**
+ * BOOK-218 — the receipt a filing prints after posting: `принято · замечание 12`, then the
+ * module's one line under it (or none). One row of ink, never two.
+ */
+export function ReceiptBody({ comment, line }: { comment: CommentDto; line: string | null }) {
+  return (
+    <div className="rec-receipt-body">
+      <p className="rec-receipt" role="status">
+        {`${STATE_WORDS.accepted} · ${filingNumber(comment)}`}
+      </p>
+      {line === null ? null : <p className="rec-line rec-quiet">{line}</p>}
+    </div>
+  );
+}
 
 /** A section header: label, count, one chevron that rotates and never lays out. */
 export function SectionHeader({
@@ -82,7 +98,8 @@ export function RowsList({
             onClick={() => onOpen?.(row as InterventionRow)}
           >
             <span className="rec-row-facts">{row.facts}</span>
-            <span className="rec-row-specimen">{row.specimen}</span>
+            {/* A row with no honest pair says only what it knows: no empty line. */}
+            {row.specimen === '' ? null : <span className="rec-row-specimen">{row.specimen}</span>}
           </button>
         );
       })}

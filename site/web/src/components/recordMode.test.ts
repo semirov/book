@@ -3,9 +3,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { HEAD_WORDS } from '../lib/marginalia.ts';
-import type { Stages } from '../lib/useStages.ts';
-import type { SocketStatus } from '../lib/ws.ts';
+import { initialClientState } from '../lib/clientState.ts';
+import { NOW_VERBS } from '@book/shared';
 import { state, stubDocument } from './colophon.fixture.ts';
 import { RecordMode, recordModeOf } from './RecordMode.tsx';
 
@@ -43,9 +42,6 @@ describe('which record page a request is (BOOK-225)', () => {
 });
 
 describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
-  /** The stage log is not what this file asserts; neither record branch reads it. */
-  const stages = { log: {}, passes: {}, note: () => undefined, reset: () => undefined } as unknown as Stages;
-
   /**
    * The colophon's fixture is the empty book; the head reads the book's own title, so this page
    * gets one. Nothing else in a record page reads the position.
@@ -63,7 +59,7 @@ describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
   };
 
   /** One record page; only the head reads the position, so an empty book is enough here. */
-  const render = (mode: 'trail' | 'chronicle', socket: SocketStatus, live = true): string =>
+  const render = (mode: 'trail' | 'chronicle', offline: boolean, live = true): string =>
     renderToStaticMarkup(
       createElement(RecordMode, {
         mode,
@@ -75,8 +71,8 @@ describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
         markers: [],
         onOpenChange: () => undefined,
         live,
-        socket,
-        stages,
+        client: initialClientState(),
+        offlineAt: offline ? Date.parse('2026-10-29T12:00:00Z') : null,
         reading: { n: null, page: null },
         viewer: { signedIn: false, displayName: null },
         front,
@@ -88,21 +84,21 @@ describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
     );
 
   it('renders «книга · хроника» even when the page’s own live fact is off', () => {
-    const html = render('chronicle', 'open', false);
+    const html = render('chronicle', false, false);
     expect(html).toContain('aria-label="как читать"');
     expect(html).toContain('книга');
     expect(html).toContain('хроника');
   });
 
   it('and the switch is the same one when the page is live', () => {
-    expect(render('chronicle', 'open')).toBe(render('chronicle', 'open', false));
+    expect(render('chronicle', false)).toBe(render('chronicle', false, false));
   });
 
   it('hands the page’s connection to the record’s head (BOOK-218)', () => {
     stubDocument();
-    // The head says `связи нет` from the fact the page holds, so the record must receive it —
+    // The head says `нет связи` from the fact the page holds, so the record must receive it —
     // the trail has no socket of its own to fall back on.
-    expect(render('trail', 'closed')).toContain(HEAD_WORDS.offline);
-    expect(render('trail', 'open')).not.toContain(HEAD_WORDS.offline);
+    expect(render('trail', true)).toContain(NOW_VERBS.offline);
+    expect(render('trail', false)).not.toContain(NOW_VERBS.offline);
   });
 });

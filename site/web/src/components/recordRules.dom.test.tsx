@@ -45,6 +45,7 @@ const QUOTE = 'Её освещал яркий свет.';
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: QUOTE, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -184,15 +185,16 @@ describe('one filing, one action', () => {
     const paragraph = document.querySelector('.p');
     const marks = [...(paragraph?.querySelectorAll('.filing-mark') ?? [])];
     expect(marks).toHaveLength(1);
-    expect(marks[0]?.textContent).toBe('012');
-    expect(marks[0]?.getAttribute('data-number')).toBe('правка 012');
+    // BOOK-218 — the numeral is the filing's own public number.
+    expect(marks[0]?.textContent).toBe('12');
+    expect(marks[0]?.getAttribute('data-number')).toBe('замечание 12');
     // The note beside it says the state, not the number again; the margin prints no token.
     const note = paragraph?.querySelector('.margin-note');
-    expect(note?.textContent).not.toContain('012');
+    expect(note?.textContent).not.toContain('замечание 12');
     const margin = [...(paragraph?.querySelectorAll('.filing-mark, .margin-note') ?? [])];
     const marginText = margin.map((node) => node.textContent ?? '').join(' ');
     expect(marginText).not.toContain('№');
-    expect(marginText.match(/012/gu) ?? []).toHaveLength(1);
+    expect(marginText.match(/12/gu) ?? []).toHaveLength(1);
   });
 
   it('leaves the record’s own filing out of `замечания`, and lists only the others', async () => {

@@ -374,7 +374,7 @@ describe('the landing frame (BOOK-219)', () => {
 /**
  * BOOK-206 audit B1 — the frame that says the change's next attempt is scheduled. Its only fact
  * is the retry time; the reader's line is the frame's own `reason`, so the row must never keep
- * «в очереди на запись» while a stopped attempt is being retried.
+ * «ждёт записи» while a stopped attempt is being retried.
  */
 describe('the frame’s scheduled retry (BOOK-206 B1)', () => {
   const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' });

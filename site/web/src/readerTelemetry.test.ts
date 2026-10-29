@@ -54,7 +54,7 @@ function source(path: string): string {
 
 /**
  * The stage vocabulary **as the record printed it**: the verb and its colon (`внёс:`). The bare
- * verb is the reader's own language — «печатник внёс правку», «машина пишет главу» — and the
+ * verb is the reader's own language — «машина внесла правку», «машина пишет главу» — and the
  * owner asked for it; the colon is what made a word a stage label, so that is what is forbidden.
  */
 const STAGES = ['ждал:', 'читал:', 'писал:', 'сверял:', 'внёс:'];
@@ -89,13 +89,13 @@ describe('the reader’s surfaces carry no engine telemetry', () => {
     }
   });
 
-  it('its two rules can fail: «внёс:» is machinery, «печатник внёс правку» is the reader’s', () => {
+  it('its two rules can fail: «внёс:» is machinery, «машина внесла правку» is the reader’s', () => {
     // The guard's positive side: a synthetic line with the label is a hit…
     expect(stageHit('28.10, 00:29 · внёс: правка')).toBe(true);
     expect(stageHit('писал: глава 12')).toBe(true);
     expect(stageHit('сверял: ответ')).toBe(true);
     // …while the owner's own sentences are not, and neither is a template literal a price.
-    expect(stageHit('печатник внёс правку 28.10, 00:29')).toBe(false);
+    expect(stageHit('машина внесла правку 28.10, 00:29')).toBe(false);
     expect(stageHit('никто не внёс правку')).toBe(false);
     expect(stageHit('машина пишет главу')).toBe(false);
     expect(moneyHit('0,05 $')).toBe(true);

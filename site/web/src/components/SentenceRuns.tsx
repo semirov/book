@@ -56,13 +56,25 @@ export function SentenceRuns({
   onOpenFiling: (comment: CommentDto, origin: HTMLElement, range: { start: number; end: number }) => void;
 }): ReactNode[] {
   const nodes: ReactNode[] = [];
+  /**
+   * BOOK-218 — one filing, one mark: a filing whose quote resolves to more than one run of the
+   * block is drawn once, at the run that carries it first. Without this the same filing got a
+   * second numeral and a second note, and the reader saw two filings where there was one.
+   */
+  const shown = new Set<string>();
   let cursor = from;
   sentences.forEach((sentence, index) => {
     if (sentence.start < from || sentence.end > to) return;
     // The gap the splitter did not claim — double spaces, a stray quote, an indent.
     if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
-    const filings = marks.get(sentence.start);
-    const cited = citedClass(filings);
+    const group = marks.get(sentence.start);
+    const cited = citedClass(group);
+    // The group minus the filings an earlier run already drew; a stale group shows nothing.
+    const filings =
+      group === undefined || group.stale
+        ? group
+        : { ...group, all: group.all.filter((comment) => !shown.has(comment.id)) };
+    if (filings !== undefined) for (const comment of filings.all) shown.add(comment.id);
     /** §11.3 — the group's alive filings decide the note: its newest row and the count. */
     const aliveFilings = filings === undefined || filings.stale ? [] : filings.all.filter(isAlive);
     const newestAlive = aliveFilings[0] ?? null;
@@ -122,7 +134,7 @@ export function SentenceRuns({
         >
           {text.slice(sentence.start, sentence.end)}
         </span>
-        {filings === undefined || filings.stale ? null : (
+        {filings === undefined || filings.stale || filings.all.length === 0 ? null : (
           <>
             <FilingMark filings={filings} onOpen={(comment, origin) => onOpenFiling(comment, origin, { start: sentence.start, end: sentence.end })} />
             {/* §11.3 — one mark and one note per sentence group: the number is the mark's,

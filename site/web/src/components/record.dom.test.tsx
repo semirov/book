@@ -40,6 +40,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -380,9 +381,9 @@ describe('the record: the sentence is the door', () => {
     const rows = [...document.querySelectorAll('.rec-row[data-kind="history"]')].map((node) => node.textContent ?? '');
     // The proposal and the printer's write: when, who, what — never a placeholder, never an id.
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain('печатник внёс правку');
+    expect(rows[0]).toContain('машина внесла правку');
     expect(rows[1]).toContain('читатель предложил эту правку');
-    expect(rows[2]).toContain('печатник написал фразу');
+    expect(rows[2]).toContain('машина написала фразу');
     expect(rows.join(' ')).not.toContain('пара');
     expect(rows.join(' ')).not.toContain('№');
   });

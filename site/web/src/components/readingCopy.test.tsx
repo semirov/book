@@ -154,6 +154,7 @@ const WAITING_RIBBON: Ribbon = {
 const PREMISE: CommentDto = {
   attempt: null,
   id: 'cmt_premise',
+  number: 12,
   chapter: 3,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -443,7 +444,7 @@ describe('the reading surface prints the book, not the product', () => {
     // reader who already filed reads the slot as empty and is refused as a duplicate.
     const labels = [...container.querySelectorAll('.premise-label')];
     expect(labels).toHaveLength(1);
-    expect(labels[0]?.textContent).toBe('ждёт');
+    expect(labels[0]?.textContent).toBe('принято');
     // A row of the flow never prints the state word `замысел`. A premise's quote is the
     // reader's own words, though, and the rule allows them — so quotes are stripped here.
     const flow = (container.querySelector('main')?.cloneNode(true) as Element | null) ?? null;

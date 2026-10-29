@@ -54,7 +54,7 @@ export type RecordState = {
  * The old line was the hand of the last version (`печатник · 28.10.2026, 00:29`) — the
  * printer's own timestamp, which the reader did not ask for and which said nothing about their
  * own filing. Now a filing names the reader's act (`вы предложили 28.10, 00:24`); the printer's
- * act (`печатник внёс правку 28.10, 00:29`) stands only where it is the point — the record of a
+ * act (`машина внесла правку 28.10, 00:29`) stands only where it is the point — the record of a
  * sentence with no filing, and the trail's rows — never beside a state word that already says
  * «внесено». A sentence nobody wrote has no line at all.
  */
@@ -112,7 +112,7 @@ export function recordStateOf(input: {
     // situation and the line, never a second word for the same row.
     const { word } = filingMarginalia(filing);
     // BOOK-219 — a receipt on the row is the server's landing fact, the one receipt shape of the
-    // block: «внесено · глава 67 · ревизия 4», whatever the row's status still says.
+    // block: «внесено · глава 67 · редакция 4», whatever the row's status still says.
     const receipt = landedReceiptLine(filing.applied);
     if (receipt !== null) return { situation: 'landed', word, ink: 'ink', line: receipt, empty: false };
     // §11.3 — a failed attempt is our failure, said once in the book's own sentence (the row
@@ -133,7 +133,7 @@ export function recordStateOf(input: {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'решения ещё нет',
+          line: mine ? 'ваша — ждёт' : 'решения ещё нет',
           empty: false,
         };
       case 'batched':
@@ -142,7 +142,7 @@ export function recordStateOf(input: {
           situation: 'working',
           word,
           ink: 'live',
-          line: 'в очереди на запись',
+          line: 'ждёт записи',
           empty: false,
         };
       case 'accepted':
@@ -162,7 +162,7 @@ export function recordStateOf(input: {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'в очереди на запись',
+          line: mine ? 'ваша — ждёт' : 'ждёт записи',
           empty: false,
         };
       case 'quarantined':
@@ -301,10 +301,10 @@ export type HistoryRow = {
 
 /** The one word for an op: the printer's act, never the chain's own verb. */
 const OP_WORDS: Readonly<Record<ParagraphVersionDto['op'], string>> = {
-  introduced: 'печатник написал фразу',
-  revised: 'печатник внёс правку',
+  introduced: 'машина написала фразу',
+  revised: 'машина внесла правку',
   kept: 'никто не менял фразу',
-  erased: 'печатник убрал фразу',
+  erased: 'машина убрала фразу',
 };
 
 /** A short fragment of a changed text: the pair is never the whole sentence on the row. */
@@ -322,7 +322,7 @@ function proposer(own: boolean): string {
  * §11.3 — the record's `история`: one row per event, newest first.
  *
  * Every row answers **when, who, what happened** to the sentence: `28.10, 00:24 · вы
- * предложили эту правку`, `28.10, 00:29 · печатник внёс правку`, `28.10, 00:31 · никто не
+ * предложили эту правку`, `28.10, 00:29 · машина внесла правку`, `28.10, 00:31 · никто не
  * внёс правку`. No placeholder ever reaches the reader (`пара не записана` is gone), no id and
  * no machine noun: the words come from `OP_WORDS` and the row's own moment. When the text
  * changed and the pair is honestly held (the filing's stored quote and the sentence that stands

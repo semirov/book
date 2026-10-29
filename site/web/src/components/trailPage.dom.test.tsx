@@ -210,10 +210,8 @@ describe('«ваш след»', () => {
     expect(links[0]?.getAttribute('href')).toBe('#ch-12-b8');
     expect(links[1]?.getAttribute('href')).toBe('#ch-13-b3');
     expect(links[0]?.textContent).toBe('«Он вошёл в регистратуру.»');
-    // How it was read is one line, and this row was written into a document.
-    expect(rows[0]?.textContent).toContain(
-      'прочитали как бумагу — в сцене это некому сказать, поэтому слово ушло в документ',
-    );
+    // The row's word is the deck's, and the sentence it was filed on stays its door (BOOK-218).
+    expect(rows[0]?.textContent).toContain('внесено');
     // The page prints no total, only the trace's own line.
     expect(container.textContent).not.toContain('всего');
     expect(container.textContent).not.toContain('50');
@@ -226,17 +224,17 @@ describe('«ваш след»', () => {
       [{ status: 'new', attempt: 'failed' }, 'попытка не удалась — правка ждёт'],
       [{ status: 'accepted', attempt: 'failed' }, 'попытка не удалась — правка ждёт'],
       // BOOK-218 line 1 — the filing was delivered to the reading.
-      [{ status: 'batched' }, 'идёт · вашу правку читают'],
-      [{ status: 'delivered' }, 'идёт · вашу правку читают'],
+      [{ status: 'batched' }, 'идёт · её читают'],
+      [{ status: 'delivered' }, 'идёт · её читают'],
       // BOOK-218 line 6 — the chapter's turn has not come.
-      [{ status: 'accepted', changeStatus: 'pending' }, 'принято · правка ждёт своей минуты'],
+      [{ status: 'accepted', changeStatus: 'pending' }, 'принято · впишется, когда машина возьмёт главу'],
       // BOOK-218 line 7 — the chapter is being drafted (the start moment is the change's, not
       // this row's).
-      [{ status: 'accepted', changeStatus: 'processing', chapter: 7 }, 'главу пишут'],
+      [{ status: 'accepted', changeStatus: 'processing', chapter: 7 }, 'пишется · глава 7'],
       // BOOK-218 line 10 — one sentence, the sink word in front of its own fact.
-      [{ status: 'applied', applied: { chapter: 12, rev: 4 } }, 'внесено в главу 12. это четвёртая редакция'],
+      [{ status: 'applied', applied: { chapter: 12, rev: 4 } }, 'внесено · глава 12 · редакция 4'],
       // A landed row keeps its receipt whatever became of an earlier attempt.
-      [{ status: 'applied', applied: { chapter: 12, rev: 4 }, attempt: 'failed' }, 'внесено в главу 12. это четвёртая редакция'],
+      [{ status: 'applied', applied: { chapter: 12, rev: 4 }, attempt: 'failed' }, 'внесено · глава 12 · редакция 4'],
       [{ status: 'applied', applied: null }, 'внесено'],
       // A note is never «внесено · глава N»: it moved no text (BOOK-190).
       [{ status: 'applied', applied: { chapter: 12, rev: 4 }, interventionKind: null }, 'замечание сохранено'],
@@ -252,7 +250,7 @@ describe('«ваш след»', () => {
       [{ status: 'quarantined' }, 'проверяется · ждёт человека'],
       [
         { status: 'rejected', refusal: 'rights', reason: 'не принято: чужая цитата без источника' },
-        'не принято: чужая цитата без источника',
+        'не принято · чужая цитата без источника',
       ],
       [
         { status: 'rejected', refusal: 'auditor', reason: 'вне рамок: форма книги' },
@@ -360,7 +358,6 @@ describe('«ваш след»', () => {
         applied: null,
         interventionKind: null,
         changeSeq: null,
-        report: null,
       }),
     ]);
     await mount(true);
@@ -385,7 +382,7 @@ describe('«ваш след»', () => {
       await Promise.resolve();
     });
 
-    expect(row()?.textContent ?? '').toContain('отклонено');
+    expect(row()?.textContent ?? '').toContain('не принято');
     expect(fetchMock.mock.calls.length).toBe(before);
   });
 

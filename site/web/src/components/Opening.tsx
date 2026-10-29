@@ -46,6 +46,7 @@ export function Opening({
   client,
   offlineAt,
   reading,
+  gated = false,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -70,6 +71,11 @@ export function Opening({
   offlineAt?: number | null;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
+  /**
+   * BOOK-225 — the age gate is unanswered: «книга · хроника» is a way into past chapters, and
+   * past chapters are prose, so the switch waits for the same answer the chapters wait for.
+   */
+  gated?: boolean;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -95,7 +101,8 @@ export function Opening({
         offlineAt={offlineAt}
         reading={reading}
       />
-      <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
+      {/* BOOK-225 — a gated page has no second mode: the record's past chapters are prose. */}
+      {gated ? null : <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />}
     </>
   );
 }

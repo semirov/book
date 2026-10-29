@@ -1,9 +1,7 @@
 import type { CommentDto } from '@book/shared';
-import { filingWord } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
-import { changeNumber } from '../lib/changeStatus.ts';
-import { filingInk, isAlive, isLanded, sortFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingInk, filingNum, filingNumber, isAlive, isLanded, sortFilings, type SentenceFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
@@ -66,10 +64,9 @@ export function FilingMark({
   if (alive !== undefined) {
     const ink = filingInk(alive);
     const extra = aliveCount - 1;
-    const number = filingWord(alive.changeSeq);
-    // An alive filing with no change number has no ordinal to print: the tick is the honest
-    // shape, and the accessible name still says who it is.
-    if (alive.changeSeq === null || alive.changeSeq === undefined) {
+    // BOOK-218 — the filing's own public number (`comments.number`), what the reader reads.
+    const number = filingNumber(alive);
+    if (!Number.isFinite(alive.number)) {
       return (
         <span className="filing-mark-slot" ref={slot}>
           <button
@@ -98,7 +95,7 @@ export function FilingMark({
           aria-label={`${number} · ${filingMarginalia(alive).word}${extra > 0 ? ` · ещё ${String(extra)}` : ''}`}
           onClick={(event) => onOpen(alive, event.currentTarget)}
         >
-          <span className="filing-mark-num">{changeNumber(alive.changeSeq)}</span>
+          <span className="filing-mark-num">{filingNum(alive)}</span>
         </button>
       </span>
     );
@@ -111,9 +108,9 @@ export function FilingMark({
           ref={button}
           type="button"
           className="filing-mark filing-tick"
-          data-number={filingWord(landed.changeSeq)}
+          data-number={filingNumber(landed)}
           data-state="accepted"
-          aria-label={`${filingMarginalia(landed).word} · открыть запись ${filingWord(landed.changeSeq)}`}
+          aria-label={`${filingNumber(landed)} · ${filingMarginalia(landed).word}`}
           onClick={(event) => onOpen(landed, event.currentTarget)}
         >
           <span className="filing-tick-bar" aria-hidden="true" />

@@ -23,6 +23,7 @@ const QUOTE = 'Её освещал яркий свет.';
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 1, quote: QUOTE, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -58,7 +59,7 @@ describe('the margin note (≥1024)', () => {
     expect(html).toContain('«Её освещал яркий свет.»');
     expect(html).toContain('свидетельство · Аня');
     // The one line a reader must be able to read without a click.
-    expect(html).toContain('попадёт в триаж');
+    expect(html).toContain('её ещё не читали');
     // No timestamp in the margin: the stamp belongs to the opened object.
     expect(html).not.toContain('21.10');
     // No hover-only information: the word is text in the DOM, not a `title` attribute.
@@ -73,7 +74,7 @@ describe('the margin note (≥1024)', () => {
   });
 
   it('prints the group’s count only when there really are several', () => {
-    expect(renderToStaticMarkup(<MarginNote comment={comment()} onOpen={noop} />)).not.toContain('ещё');
+    expect(renderToStaticMarkup(<MarginNote comment={comment()} onOpen={noop} />)).not.toContain('ещё 2');
     const html = renderToStaticMarkup(<MarginNote comment={comment()} extra={2} onOpen={noop} />);
     expect(html).toContain('data-extra="2"');
     expect(html).toContain('margin-note-more">ещё 2');
@@ -94,19 +95,20 @@ describe('the phone strip (<1024)', () => {
     );
     expect(html).toContain('class="phone-strip');
     expect(html).toContain('phone-strip-row');
-    expect(html).toContain('>012<');
+    expect(html).toContain('>замечание 12<');
     expect(html).not.toContain('№4Q7');
     expect(html).toContain('свидетельство');
     expect(html).toContain('ждёт');
     expect(html).toContain('→');
     // No count, no badge: the strip is rows, not a summary.
-    expect(html).not.toContain('замечани');
+    expect(html).not.toContain('№');
   });
 
-  it('starts a row with no number at its kind, never a dangling separator', () => {
+  it('starts a row with its number, and never a dangling separator', () => {
+    // BOOK-218 — every filing has its own public number, so a row always names one.
     const html = renderToStaticMarkup(<PhoneStrip comments={[comment()]} skipQuote={null} onOpen={noop} />);
-    expect(html).toContain('>свидетельство<');
-    expect(html).not.toContain('phone-strip-n');
+    expect(html).toContain('>замечание 12<');
+    expect(html).toContain('phone-strip-n');
     expect(html.replace(/<[^>]+>/gu, '')).not.toMatch(/^·/u);
   });
 
@@ -142,13 +144,13 @@ describe('the mark at the sentence', () => {
     );
     expect(html).toContain('filing-alive');
     expect(html).toContain('class="filing-mark-num"');
-    expect(html).toContain('>012<');
-    expect(html).toContain('data-number="правка 012"');
-    expect(html).toContain('aria-label="правка 012 · ждёт"');
+    expect(html).toContain('>12<');
+    expect(html).toContain('data-number="замечание 12"');
+    expect(html).toContain('aria-label="замечание 12 · ждёт"');
     expect(html).not.toContain('№');
   });
 
-  it('carries the group’s count, and a filing with no change number is a tick', () => {
+  it('carries the group’s count, and prints the filing’s own number', () => {
     const [many] = filingsForBlock(
       [comment({ id: 'cmt_1', changeSeq: 12 }), comment({ id: 'cmt_2', changeSeq: 13, status: 'batched' })],
       'ch08#aa11bb22',
@@ -156,13 +158,12 @@ describe('the mark at the sentence', () => {
     const html = renderToStaticMarkup(<FilingMark filings={many!} onOpen={noop} />);
     expect(html).toContain('data-extra="1"');
     expect(html).toContain('ещё 1');
-    // An ordinal no row carries is never cut out of an id: the mark is the honest tick.
+    // BOOK-218 — the number is the filing's own (`comments.number`), never a token from its id.
     const [bare] = filingsForBlock([comment()], 'ch08#aa11bb22');
-    const tick = renderToStaticMarkup(<FilingMark filings={bare!} onOpen={noop} />);
-    expect(tick).toContain('filing-bare');
-    expect(tick).toContain('filing-tick-bar');
-    expect(tick).not.toContain('filing-mark-num');
-    expect(tick).not.toContain('№');
+    const one = renderToStaticMarkup(<FilingMark filings={bare!} onOpen={noop} />);
+    expect(one).toContain('filing-mark-num');
+    expect(one).toContain('>12<');
+    expect(one).not.toContain('№');
   });
 
   it('shows a single tick for a landed change: no visible words, the fact in the label', () => {
@@ -176,7 +177,7 @@ describe('the mark at the sentence', () => {
     expect(html).toContain('filing-tick');
     expect(html).toContain('filing-tick-bar');
     expect(html).not.toContain('filing-mark-num');
-    expect(html).toContain('aria-label="внесено · открыть запись правка"');
+    expect(html).toContain('aria-label="замечание 12 · внесено"');
     // The tick carries no visible text at all.
     expect(html.replace(/<[^>]+>/gu, '').trim()).toBe('');
   });
@@ -193,7 +194,7 @@ describe('the mark at the sentence', () => {
       <FilingMark filings={texts[0]!} onOpen={noop} />,
     );
     expect(html).toContain('filing-alive');
-    expect(html).toContain('>012<');
+    expect(html).toContain('>12<');
     expect(html).not.toContain('filing-tick');
   });
 
@@ -205,18 +206,18 @@ describe('the mark at the sentence', () => {
 
 describe('AC4 — one vocabulary, three surfaces', () => {
   // BOOK-189: `accepted` is not a word of its own — it waits until its change is in hand — and
-  // a refusal is «отклонено», never «ждёт».
+  // a refusal is «отклонено», never «в очереди».
   const table: Array<[CommentDto['status'], string]> = [
     ['new', STATE_WORDS.waiting],
-    ['batched', STATE_WORDS.working],
-    ['delivered', STATE_WORDS.working],
-    ['accepted', STATE_WORDS.waiting],
+    ['batched', STATE_WORDS.reading],
+    ['delivered', STATE_WORDS.reading],
+    ['accepted', STATE_WORDS.accepted],
     ['applied', STATE_WORDS.landed],
-    ['superseded', STATE_WORDS.waiting],
+    ['superseded', STATE_WORDS.dropped],
     ['rejected', STATE_WORDS.refused],
-    ['quarantined', STATE_WORDS.waiting],
-    ['expired', STATE_WORDS.waiting],
-    ['hidden', STATE_WORDS.waiting],
+    ['quarantined', STATE_WORDS.held],
+    ['expired', STATE_WORDS.dropped],
+    ['hidden', STATE_WORDS.hidden],
   ];
 
   it('prints the same word from the note, the strip and the record entry, status by status', () => {
@@ -238,7 +239,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
       renderToStaticMarkup(<PhoneStrip comments={[working]} skipQuote={null} onOpen={noop} />),
       renderToStaticMarkup(<FilingCard comment={working} onClose={noop} />),
     ]) {
-      expect(html).toContain(`>${STATE_WORDS.working}<`);
+      expect(html).toContain(`>${STATE_WORDS.writing}<`);
     }
   });
 
@@ -268,7 +269,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     for (const html of [landedNote, landedStrip, landedPanel]) expect(count(html, 'внесено')).toBe(1);
     // The receipt is the same line on the note and the card; the strip is the word and a door.
     for (const html of [landedNote, landedPanel]) {
-      expect(html).toContain('глава 7 · ревизия 4');
+      expect(html).toContain('в главу 7. это четвёртая редакция');
       expect(html).not.toContain('право на ваш текст');
     }
   });
@@ -277,7 +278,21 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     // BOOK-137 added «рассмотрено» (a decision about a record) and BOOK-189 «отклонено» (a
     // refusal); BOOK-206 removed the author's word. None is a phrase, and «внесено» stays what
     // the text says.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено', 'отклонено']);
+    // BOOK-218 — the closed deck, in its order: the wait, the reading, the receipt, the
+    // chapter's writing, the landed text, the paperwork, the hold, the refusal and our failure.
+    expect(Object.values(STATE_WORDS)).toEqual([
+      'ждёт',
+      'идёт',
+      'принято',
+      'главу пишут',
+      'внесено',
+      'рассмотрено',
+      'проверяется',
+      'не принято',
+      'не дошло',
+      'снято',
+      'скрыто',
+    ]);
     for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }

@@ -38,9 +38,9 @@ const closed = (overrides: Partial<PassClosedPayload> = {}): PassClosedPayload =
 
 describe('the change’s last line, in the reader’s words', () => {
   it('names the queue place, the claim, the narrowing and the moved basis', () => {
-    expect(liveLineOf({ kind: 'queued', at: AT, eventSeq: 1, ahead: 2, depth: 3 })).toBe('в очереди · впереди 2');
+    expect(liveLineOf({ kind: 'queued', at: AT, eventSeq: 1, ahead: 2, depth: 3 })).toBe('ждёт · впереди 2');
     // The head of the lane has no «впереди»: it is the next one.
-    expect(liveLineOf({ kind: 'queued', at: AT, eventSeq: 1, ahead: 0, depth: 1 })).toBe('в очереди · следующая');
+    expect(liveLineOf({ kind: 'queued', at: AT, eventSeq: 1, ahead: 0, depth: 1 })).toBe('ждёт · следующая');
     expect(liveLineOf({ kind: 'processing', at: AT, eventSeq: 2, ahead: 0, attempt: 3 })).toBe('идёт · попытка 3');
     expect(liveLineOf({ kind: 'adapted', at: AT, eventSeq: 3, intent: 'ровный свет', reason: '' })).toBe(
       'сужено · ровный свет',
