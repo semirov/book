@@ -91,7 +91,7 @@ export type StepRow = {
   landed_sha: string | null;
   pre_blocks: string | null;
   rights_scan: string | null;         // BOOK-61 — Gate B's scan of the new blocks, as JSON
-  closed_at: string | null;
+  closed_at: string | null; reopened_at: string | null;  // BOOK-117: the wall's second window
 };
 
 export type LeaseRow = {

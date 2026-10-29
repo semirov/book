@@ -25,12 +25,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v30', () => {
+describe('migrate — schema v31', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(30);
+    expect(SCHEMA_VERSION).toBe(31);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -57,6 +57,8 @@ describe('migrate — schema v30', () => {
     // BOOK-7: an intervention on an empty chapter is that chapter's premise.
     expect(columns(db, 'changes')).toContain('premise');
     expect(columns(db, 'steps')).toContain('premise_change');
+    // BOOK-117 (v31): the wall's second window, nullable — a step opened before it has none.
+    expect(columns(db, 'steps')).toContain('reopened_at');
     expect(
       db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'changes_premise_pending'`).get(),
     ).toEqual({ name: 'changes_premise_pending' });

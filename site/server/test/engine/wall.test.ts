@@ -4,8 +4,9 @@
  * A real pass writes 10 000–30 000 characters and then waits for the gates; that is
  * longer than `LEASE_TTL_MS` (120 s), so a lease that only the session may beat strands every
  * real step. The engine beats the leases of its open steps by itself and the **step wall**
- * (`STEP_WALL_MS`, from `steps.at`, the step's opening) is the only bound on growth. These
- * tests exercise the protocol end to end — the same calls the CLI makes — not the helpers.
+ * (`STEP_WALL_MS`, from the step's opening — or from its reopen, BOOK-117) is the only bound on
+ * growth. These tests exercise the protocol end to end — the same calls the CLI makes — not the
+ * helpers.
  */
 
 import { TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
@@ -14,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { insertRevision } from '../../src/db/repo/revisions.ts';
 import { closeStep } from '../../src/engine/close.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
-import { acquireLease, releaseLease } from '../../src/engine/leases.ts';
+import { acquireLease, releaseLease, stepWallOf } from '../../src/engine/leases.ts';
 import * as store from '../../src/engine/store.ts';
 import type { EngineError } from '../../src/engine/types.ts';
 import { toIso } from '../../src/util/time.ts';
@@ -38,7 +39,8 @@ function leaseRow(fixture: Fixture, leaseId: string): store.LeaseRow {
 function wallOf(fixture: Fixture, stepId: string): number {
   const step = store.getStep(fixture.db, stepId);
   if (!step) throw new Error(`no step ${stepId}`);
-  return Date.parse(step.at) + fixture.config.stepWallMs;
+  // The engine's own rule, not a second copy of it (BOOK-117: a reopen moves the wall).
+  return stepWallOf(fixture.deps, step);
 }
 
 function verdict(fixture: Fixture, role: 'editor' | 'consultant'): void {
