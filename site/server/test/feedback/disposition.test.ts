@@ -2,9 +2,10 @@
  * BOOK-174 — the chooser: the four answers tried in order, and the author's door behind them.
  *
  * The ladder is the design, not a preference: `as_said` → `through_paper` → `refused_in_world`
- * → `inadmissible` (only under a lock), and everything the ladder cannot place is `escalated`.
- * A failed carrier returns **one rung up** — never down to a bin — and the two anti-cheat caps
- * keep «the world refuses» from becoming a template.
+ * → `inadmissible` (only under a lock), and it is **total** (BOOK-206, ADR-045 §5): a failed
+ * carrier returns one rung up and the floor is `as_said` on the filing's own block anchor —
+ * `escalated` is not in the chooser's codomain any more. The two anti-cheat caps keep «the world
+ * refuses» from becoming a template.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,7 +13,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CARRIER_LABELS,
   DISPOSITION_REASONS,
-  ESCALATION_QUESTION,
   LOCK_ALTERNATIVES,
   LOCK_REASONS,
   REPORT_LINE_MAX_CHARS,
@@ -95,7 +95,6 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       sentenceId: SENTENCE_ID,
       blockIndex: 3,
       sentenceIndex: 1,
-      escalated: false,
       alternate: false,
     });
     expect(chainReport(decision, ANCHOR, true)).toEqual({
@@ -155,7 +154,6 @@ describe('the ladder — each of the five outcomes is reachable', () => {
         quoteKept: null,
         blockIndex: null,
         sentenceIndex: null,
-        escalated: false,
       });
       expect(chainReport(decision, ANCHOR, true)).toEqual({
         line1: 'не принято',
@@ -165,7 +163,7 @@ describe('the ladder — each of the five outcomes is reachable', () => {
     }
   });
 
-  it('escalated: a proposal may not refuse, and a quote spanning two sentences is not as said', () => {
+  it('as_said is the floor: a proposal may not refuse, and a quote across two sentences still lands', () => {
     const decision = chooseDisposition(
       input({
         quote: TWO_SENTENCES,
@@ -174,18 +172,18 @@ describe('the ladder — each of the five outcomes is reachable', () => {
         proposal: { disposition: 'refused_in_world' },
       }),
     );
+    // No carrier and no resolved sentence: the words are still read as said, on the block anchor
+    // they were filed against. A filing never waits for a person (ADR-045 §5).
     expect(decision).toMatchObject({
-      disposition: 'escalated',
+      disposition: 'as_said',
       lock: null,
-      escalated: true,
-      question: ESCALATION_QUESTION,
-      reason: DISPOSITION_REASONS.escalated,
       sentenceId: null,
+      carrierKind: null,
     });
-    expect(chainReport(decision, ANCHOR, true)).toEqual({
-      line1: 'ждёт решения автора',
-      line2: DISPOSITION_REASONS.escalated,
-      line3: 'решает автор',
+    expect(chainReport(decision, ANCHOR, false)).toEqual({
+      line1: 'прочитано как сказано',
+      line2: DISPOSITION_REASONS.as_said,
+      line3: 'где это в книге: глава 12 · абзац 4 · предложение 2',
     });
   });
 });
@@ -214,7 +212,7 @@ describe('one rung up — a failed carrier never falls to a bin', () => {
     expect(decision.disposition).toBe('as_said');
   });
 
-  it('returns to as_said when as_said fails and the carrier is short: then the author, not a bin', () => {
+  it('returns to as_said when as_said fails and the carrier is short: the floor, never a bin', () => {
     const decision = chooseDisposition(
       input({
         quote: TWO_SENTENCES,
@@ -223,7 +221,8 @@ describe('one rung up — a failed carrier never falls to a bin', () => {
         proposal: { disposition: 'through_paper', carrierKind: 'document', quoteKept: 'тридцать дней', factsChanged: 1 },
       }),
     );
-    expect(decision.disposition).toBe('escalated');
+    expect(decision.disposition).toBe('as_said');
+    expect(decision.sentenceId).toBeNull();
   });
 });
 
@@ -351,7 +350,7 @@ describe('the report’s two forms and its bounds', () => {
     expect(withLiteral.alternate).toBe(true);
 
     // …while the same wording with no carrier fails `as_said` and has no paper to fall back on:
-    // the filing goes to the author, and no report claims a plan that never existed.
+    // it lands at the floor, and no report claims a plan that never existed.
     const noCarrier = chooseDisposition(
       input({
         blockText: 'Срок — 30 дней. Он вошёл.',
@@ -360,7 +359,7 @@ describe('the report’s two forms and its bounds', () => {
         proposedText: null,
       }),
     );
-    expect(noCarrier.disposition).toBe('escalated');
+    expect(noCarrier.disposition).toBe('as_said');
     expect(noCarrier.alternate).toBe(false);
   });
 
@@ -382,12 +381,12 @@ describe('the report’s two forms and its bounds', () => {
   });
 
   it('has one closed word per reading and a closed label per carrier', () => {
+    // BOOK-206: four readings and no fifth — a filing is placed, never parked for a person.
     expect(Object.values(DISPOSITION_WORDS)).toEqual([
       'прочитано как сказано',
       'прочитано через бумагу',
       'прочитано как отказ в мире',
       'не принято',
-      'ждёт решения автора',
     ]);
     expect(Object.values(CARRIER_LABELS)).toEqual([
       'документ',
@@ -416,7 +415,10 @@ describe('as_said’s own exclusions', () => {
         proposedText: null,
       }),
     );
-    expect(stored.disposition).toBe('escalated');
+    // A rewritten digit with no carrier fails `as_said` — and there is nothing above it, so the
+    // floor answers: read as said, against the block. Never a fifth state (ADR-045 §5).
+    expect(stored.disposition).toBe('as_said');
+    expect(stored.carrierKind).toBeNull();
   });
 
   it('holds for a filing with no quote: it makes no sentence claim to fail', () => {

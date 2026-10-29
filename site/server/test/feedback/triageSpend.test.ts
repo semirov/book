@@ -75,9 +75,11 @@ function editKeys(h: Harness): string[] {
 const REJECT = ['--reason', 'вне рамок: не про текст этой главы'];
 
 describe('the ledger records the spend of a refused attempt', () => {
-  it('charges a triage pass and closes the attempt as held (an escalation refuses nobody)', async () => {
+  it('charges a triage pass and closes the attempt as refused under a lock', async () => {
     const h = await boot();
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    // BOOK-206: the one refusal left is a lock — the legal flag is the harm lock's fact.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
 
     const rejected = cli(
       h,
@@ -109,15 +111,12 @@ describe('the ledger records the spend of a refused attempt', () => {
       priced: 1,
       day: '2026-10-25',
     });
-    // BOOK-174: the line escalated the filing — the question waits for a person, and no gate
-    // refused it, so the ledger says `held`.
-    expect(attempt(h, id)).toMatchObject({ n: 1, outcome: 'held' });
+    // The lock refused the filing, so the ledger says `refused`.
+    expect(attempt(h, id)).toMatchObject({ n: 1, outcome: 'refused' });
     // The answer cost the reader no edit: the day belongs to an accepted filing.
     expect(editKeys(h)).toEqual([]);
 
-    // A retried call is refused before it can charge the same attempt twice — the row is not a
-    // second decision's to make, even though the first one escalated it (BOOK-174: an escalated
-    // row is answered with `--as author`, and a re-run of the same line is not an answer).
+    // A retried call is refused before it can charge the same attempt twice: first decision wins.
     expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(1);
     expect(spend(h)).toHaveLength(1);
   });
@@ -146,16 +145,18 @@ describe('the ledger records the spend of a refused attempt', () => {
     expect(off.code).toBe(0);
     expect(spend(h)).toHaveLength(1);
     expect(spend(h)[0]).toMatchObject({ pass: 'triage', pass_id: `triage:${id}:1`, usd: 0.001, priced: 1 });
-    expect(attempt(h, id)).toMatchObject({ outcome: 'held' });
+    // BOOK-206: the attempt stays open — the applier still has to place the reading it carries.
+    expect(attempt(h, id)).toMatchObject({ outcome: 'submitted', decided_at: null });
   });
 
   it('writes no row when no amount was named, and keeps the attempt closed', async () => {
     const h = await boot();
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
     expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(0);
     expect(spend(h)).toHaveLength(1);
     expect(spend(h)[0]).toMatchObject({ model: null, tokens_in: 0, tokens_out: 0, usd: 0, priced: 0 });
-    expect(attempt(h, id)).toMatchObject({ outcome: 'held' });
+    expect(attempt(h, id)).toMatchObject({ outcome: 'refused' });
   });
 
   it('refuses a value that is not money instead of guessing one', async () => {
@@ -174,15 +175,16 @@ describe('the ledger records the spend of a refused attempt', () => {
 });
 
 describe('the refusal the reader reads is always a sentence', () => {
-  it('turns an engine handle into a sentence and keeps the handle for the operator', async () => {
+  it('keeps an engine handle on the operator’s column and prints nothing to the reader', async () => {
     const h = await boot();
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
     expect(cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'INTENT_SHAPE').code).toBe(0);
 
-    // BOOK-174: the handle stays the operator's (`audit_reason`); the reader is owed the answer,
-    // which for an `OFF` with no lock is the author's question.
-    expect(h.db.prepare('SELECT reason, audit_reason FROM comments WHERE id = ?').get(id)).toEqual({
-      reason: 'можно ли оформить это бумагой?',
+    // BOOK-206: an `OFF` records the verdict and leaves the row — the reader's line is the
+    // ladder's, written when the applier places the reading, never this handle.
+    expect(h.db.prepare('SELECT status, reason, audit_reason FROM comments WHERE id = ?').get(id)).toEqual({
+      status: 'new',
+      reason: null,
       audit_reason: 'INTENT_SHAPE',
     });
   });
@@ -214,6 +216,7 @@ describe('a refusal does not spend the daily edit budget, an accepted filing doe
   it('spends on acceptance only, once a day, and never for an exempt identity', async () => {
     const h = await boot();
     const refusedId = await filing(h, 'Первый абзац лучше начать иначе.');
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(refusedId);
     expect(cli(h, 'decide', refusedId, 'rejected', ...REJECT).code).toBe(0);
     expect(editKeys(h)).toEqual([]);
 
@@ -260,8 +263,9 @@ describe('the footer’s aggregate counts triage money, not triage steps (BOOK-1
       )
       .run();
 
-    // A plain refusal: no model ran, so the ledger row has no model and no amount.
+    // A lock refusal with no model: the ledger row has no model and no amount.
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
     expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(0);
     expect(spend(h)).toHaveLength(2);
 
@@ -276,6 +280,7 @@ describe('the footer’s aggregate counts triage money, not triage steps (BOOK-1
   it('still adds a priced triage pass to the total without counting it as a step', async () => {
     const h = await boot();
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
     expect(
       cli(
         h,

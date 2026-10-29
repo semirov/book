@@ -237,17 +237,10 @@ describe('AC4 — one vocabulary, three surfaces', () => {
   });
 
   it('has one word per state, and none of them is a phrase', () => {
-    // BOOK-137 added «рассмотрено» (a decision about a record), BOOK-174 «ждёт решения автора»
-    // (the ladder's own word) and BOOK-189 «отклонено» (a refusal): none of them is a phrase,
-    // and «внесено» stays what the text says.
-    expect(Object.values(STATE_WORDS)).toEqual([
-      'ждёт',
-      'идёт',
-      'внесено',
-      'рассмотрено',
-      'ждёт решения автора',
-      'отклонено',
-    ]);
+    // BOOK-137 added «рассмотрено» (a decision about a record) and BOOK-189 «отклонено» (a
+    // refusal); BOOK-206 removed the author's word. None is a phrase, and «внесено» stays what
+    // the text says.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено', 'отклонено']);
     for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }

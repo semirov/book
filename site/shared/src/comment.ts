@@ -94,9 +94,10 @@ export type CommentStatus =
   | 'superseded'
   | 'rejected'
   /**
-   * BOOK-174 §4 — the ladder could not place the filing and no lock applies, so it waits for
-   * the author's decision. It is decided (nobody else will decide it) and it is not a refusal:
-   * the reader sees «ждёт решения автора», never «не принято».
+   * BOOK-206 — a value **no new row can take**: the ladder is total and places every filing, so
+   * the author's door is gone. It stays in the type because it is still a stored value on a
+   * volume the boot migration has not re-opened yet (`migrateV30` moves every such row back to
+   * `new`), and a reader must render that row instead of crashing on it.
    */
   | 'escalated'
   | 'quarantined'
@@ -247,8 +248,9 @@ export type CommentDto = {
   applied: null | { chapter: number; rev: number };
   /**
    * BOOK-174 §5 — how this filing was read (`as_said`, `through_paper`, `refused_in_world`,
-   * `inadmissible`, `escalated`); `null` for a row stored before v27, which was never read
-   * this way. Declared optional so a page that does not render it yet still typechecks.
+   * `inadmissible`); `null` for a row stored before v27, which was never read this way, and for
+   * the ladder's removed fifth state, which is no chain any more (BOOK-206). Declared optional
+   * so a page that does not render it yet still typechecks.
    */
   disposition?: Disposition | null;
   /**
@@ -353,10 +355,11 @@ export type CommentDecisionPayload = {
    */
   chapter: number;
   /**
-   * BOOK-174 §4 — `escalated` is a decision too: the filing waits for the author, and the
-   * frame says so instead of announcing a refusal nobody made.
+   * BOOK-206 — the frame carries the answer a filing got, and the removed fifth state is not one
+   * of them: every filing is accepted, registered as paperwork, refused under a lock, or still
+   * waiting (`new`). `registered` is the paperwork branch's own word (BOOK-137).
    */
-  status: 'accepted' | 'rejected' | 'escalated' | 'expired' | 'quarantined';
+  status: 'accepted' | 'registered' | 'rejected' | 'expired' | 'quarantined';
   reason: string;
   decidedAt: string;
   batchId: string | null;

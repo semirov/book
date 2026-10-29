@@ -29,12 +29,26 @@ export const FILING_ENVELOPE = 'book.filing/v1';
 export { FRAMING_SENTENCE, fenceLine };
 
 /** The four fields a stranger writes. A verdict may quote one of them and nothing else. */
-export type EnvelopeField = 'author' | 'quote' | 'text' | 'proposed';
+export type EnvelopeField = 'author' | 'quote' | 'text' | 'proposed' | 'world';
 
-export const ENVELOPE_FIELDS: readonly EnvelopeField[] = ['author', 'quote', 'text', 'proposed'];
+/**
+ * BOOK-206 (ADR-045 §4): `world` is the fifth field a verdict may quote — the anchor block and
+ * its two neighbours **as the server read them from rows**. It is trusted (no stranger typed it),
+ * so it lives beside the four rather than inside the `untrusted` mark: «does this fit this
+ * world» cannot be grounded in the filing alone, and a quote from it is post-checked like any
+ * other (the server's own text is what makes the check meaningful).
+ */
+export const ENVELOPE_FIELDS: readonly EnvelopeField[] = ['author', 'quote', 'text', 'proposed', 'world'];
 
 /** Every untrusted value travels with its own mark, so a nested read cannot lose it. */
 export type UntrustedValue = Untrusted<string | null>;
+
+/**
+ * A value the **server** built (`world`): it travels in the same shape, so one reader answers
+ * every field, and its mark says so — `untrusted: false` is the one thing a stranger's value can
+ * never carry, because a batch line's `world` is dropped when it is read back (`asEnvelope`).
+ */
+export type TrustedValue = { value: string | null; untrusted: false };
 
 export type FilingEnvelope = {
   envelope: typeof FILING_ENVELOPE;
@@ -47,6 +61,8 @@ export type FilingEnvelope = {
   quote: UntrustedValue;
   text: UntrustedValue;
   proposed: UntrustedValue;
+  /** The anchor block and its neighbours, from rows; null when no world was attached. */
+  world: TrustedValue;
 };
 
 /** The normalised values of one filing, before they are wrapped in the envelope. */
@@ -59,6 +75,10 @@ export type FilingValues = {
 
 function untrusted(value: string | null): UntrustedValue {
   return { value, untrusted: true };
+}
+
+function trusted(value: string | null): TrustedValue {
+  return { value, untrusted: false };
 }
 
 /**
@@ -84,7 +104,17 @@ export function buildEnvelope(item: {
     quote: untrusted(item.values.quote),
     text: untrusted(item.values.text),
     proposed: untrusted(item.values.proposed),
+    world: trusted(null),
   };
+}
+
+/**
+ * The same envelope with the world attached (BOOK-206). `world` is the server's own reading of
+ * the anchor block and its neighbours from rows, so it travels in the fence's shape without the
+ * stranger's mark: it is the book the filing is judged against, never a value anyone submitted.
+ */
+export function withWorld(envelope: FilingEnvelope, world: string | null): FilingEnvelope {
+  return { ...envelope, world: trusted(world) };
 }
 
 /** The value of one envelope field; `null` when the filing has none. */
@@ -211,6 +241,9 @@ function asEnvelope(value: unknown): FilingEnvelope | null {
     quote: asValue(record.quote),
     text: asValue(record.text),
     proposed: asValue(record.proposed),
+    // A file may carry any `world` it likes: the server builds that field from its own rows, so a
+    // line read back from disk never supplies one.
+    world: trusted(null),
   };
   return shape;
 }
@@ -230,13 +263,26 @@ export function norm(value: string): string {
   return foldForMatch(spaceInvisible(value).replace(/\s+/gu, ' ').trim());
 }
 
-/** A quote shorter than this cannot be checked: it would match half the book. */
+/**
+ * The bound on a quote: past this a match is evidence, below it the quote would match half the
+ * book. It is a bound on the **quote**, never on the filing — a field shorter than this has
+ * exactly one checkable quote, itself (see `quoteIn`).
+ */
 export const QUOTE_MIN_CHARS = 12;
 
-/** A quote qualifies only when it is long enough and really sits in the field it names. */
+/**
+ * A quote qualifies only when it is long enough and really sits in the field it names.
+ *
+ * The minimum is per field, capped by the field's own length: «a quote must be checkable», not
+ * «a filing must be long». A filing whose whole text is «он чихнул» (nine normalised characters)
+ * can never carry a twelve-character quote of itself, so its one checkable quote is its whole
+ * text — a three-character prefix of it is still refused, because it is shorter than the field.
+ */
 export function quoteIn(fieldValue: string | null, quote: string): boolean {
   if (fieldValue === null) return false;
+  const hay = norm(fieldValue);
   const needle = norm(quote);
-  if (needle.length < QUOTE_MIN_CHARS) return false;
-  return norm(fieldValue).includes(needle);
+  if (hay.length === 0 || needle.length === 0) return false;
+  const min = Math.min(QUOTE_MIN_CHARS, hay.length);
+  return needle.length >= min && hay.includes(needle);
 }

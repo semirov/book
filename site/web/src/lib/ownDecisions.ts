@@ -29,7 +29,6 @@ const STATE: Record<MyDecisionDto['outcome'], { copy: string; tone: DecisionTone
   // «внесена», because no letter of the sentence changed. The reason on the line says the mode.
   registered: { copy: STATE_WORDS.registered, tone: 'done' },
   queued: { copy: 'принято · ждёт очереди', tone: 'live' },
-  escalated: { copy: 'правка остановлена · ждёт решения автора', tone: 'live' },
   dropped: { copy: 'правка снята', tone: 'stopped' },
   superseded: { copy: 'правка перекрыта более поздней правкой', tone: 'stopped' },
   failed: { copy: 'не удалось внести', tone: 'stopped' },
@@ -132,7 +131,7 @@ function withReport(parts: Array<string | null>, decision: MyDecisionDto): strin
 /**
  * BOOK-174 — the reading's own two lines, after the summary and never in place of it: line 1
  * says how the filing was read and line 2 why, in the closed words the server chose. A line
- * already printed by the summary (an escalated filing's «ждёт решения автора») is not repeated.
+ * already printed by the summary (the reading's own clause) is not repeated.
  */
 function appendReport(parts: string[], decision: MyDecisionDto): void {
   const report = decision.report ?? null;

@@ -20,10 +20,10 @@ import { clampQuote } from './seam.ts';
  * BOOK-90 / BOOK-137 — the state words and the deck under them.
  *
  * One table for a filing, one for a change: every status has exactly one of «ждёт» · «идёт» ·
- * «внесено» · «рассмотрено» · «ждёт решения автора» (BOOK-174), and the second line carries
- * what the word cannot (a refusal, a
- * superseded anchor, a held check, an expired pass, the paperwork mode). The revision object's
- * two rows are resolved on the paragraph's own text, by the same rule the mark uses.
+ * «внесено» · «рассмотрено» · «отклонено» (BOOK-189; BOOK-206 removed the author's word), and
+ * the second line carries what the word cannot (a refusal, a superseded anchor, a held check,
+ * an expired pass, the paperwork mode). The revision object's two rows are resolved on the
+ * paragraph's own text, by the same rule the mark uses.
  */
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
@@ -78,14 +78,12 @@ function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 }
 
 describe('the state words', () => {
-  it('are the only vocabulary: ждёт · идёт · внесено · рассмотрено · ждёт решения автора · отклонено', () => {
+  it('are the only vocabulary: ждёт · идёт · внесено · рассмотрено · отклонено', () => {
     expect(STATE_WORDS).toEqual({
       waiting: 'ждёт',
       working: 'идёт',
       landed: 'внесено',
       registered: 'рассмотрено',
-      // BOOK-174: escalated is decided and not refused — the author's turn, in its own words.
-      escalated: 'ждёт решения автора',
       // BOOK-189: a refusal is decided too, and it is not a wait.
       refused: 'отклонено',
     });
@@ -102,8 +100,9 @@ describe('the state words', () => {
       ['applied', 'внесено'],
       // BOOK-137: accepted as paperwork — decided, and nothing was written.
       ['registered', 'рассмотрено'],
-      // BOOK-174: the ladder could not place the filing — it waits for the author, not for a gate.
-      ['escalated', 'ждёт решения автора'],
+      // BOOK-206: a legacy `escalated` row (before the boot migration re-opens it) waits like any
+      // undecided filing; the author's word is gone.
+      ['escalated', 'ждёт'],
       ['superseded', 'ждёт'],
       // BOOK-189: a refusal is a decision of its own.
       ['rejected', 'отклонено'],

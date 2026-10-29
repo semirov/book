@@ -105,8 +105,8 @@ describe('the reader’s own record prints the reading too (BOOK-174)', () => {
       chapter: 12,
       premise: false,
       intent: null,
-      outcome: 'escalated',
-      reason: 'можно ли оформить это бумагой?',
+      outcome: 'refused',
+      reason: 'вне книги: не про эту главу',
       chapters: [],
       waves: null,
       blocks: null,
@@ -116,22 +116,22 @@ describe('the reader’s own record prints the reading too (BOOK-174)', () => {
     };
   }
 
-  it('keeps the escalated wording, and adds the reading’s own clause', () => {
+  it('keeps the refusal wording, and adds the reading’s own clause', () => {
     const line = decisionLine(
       decision({
         report: {
-          line1: 'ждёт решения автора',
-          line2: 'потому что эта правка меняет не слово, а исход',
-          line3: 'решает автор',
+          line1: 'не принято',
+          line2: 'потому что это не ваш текст',
+          line3: 'сработает иначе: перескажите своими в пяти словах',
         },
       }),
       0,
     );
-    expect(line.text).toContain('правка остановлена · ждёт решения автора');
+    expect(line.text).toContain('правка не принята');
     // The reading's clause is the fact the state word cannot carry; line 1 is not repeated.
-    expect(line.text).toContain('потому что эта правка меняет не слово, а исход');
-    expect(line.text.match(/ждёт решения автора/gu)).toHaveLength(1);
-    expect(line.tone).toBe('live');
+    expect(line.text).toContain('потому что это не ваш текст');
+    expect(line.text).not.toContain('ждёт решения автора');
+    expect(line.tone).toBe('stopped');
   });
 
   it('adds the reading to a landed filing without replacing its summary', () => {

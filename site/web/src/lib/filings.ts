@@ -46,9 +46,10 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
   registered: { rule: 'solid', tone: 'done' },
   superseded: { rule: 'solid', tone: 'stopped' },
   rejected: { rule: 'solid', tone: 'stopped' },
-  // BOOK-174 — escalated is live, not stopped: nothing was refused, the author has yet to read
-  // it. The word «ждёт решения автора» carries the fact; the ink must not say «done».
-  escalated: { rule: 'solid', tone: 'live' },
+  // BOOK-206 — a filing is never parked for a person any more; a legacy `escalated` row (before
+  // the boot migration re-opens it) is a decided-but-unplaced record, so it keeps the quiet ink
+  // of an undecided row and no word of its own.
+  escalated: { rule: 'solid', tone: 'quiet' },
   quarantined: { rule: 'solid', tone: 'stopped' },
   expired: { rule: 'solid', tone: 'stopped' },
   hidden: { rule: 'none', tone: 'stopped' },

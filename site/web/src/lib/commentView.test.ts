@@ -270,18 +270,11 @@ describe('one applied, one pending, one refused filing (BOOK-189)', () => {
 
 describe('the three refusals, told apart by their own words (BOOK-61)', () => {
   it('keeps the book’s state words and adds no gate word to them', () => {
-    // BOOK-90 is untouched, BOOK-137 added the paperwork's word («рассмотрено»), BOOK-174 the
-    // escalated one («ждёт решения автора») and BOOK-189 the refusal («отклонено»). That refusal
-    // word is also C's gate word — a refusal is one word the book already printed; B's «не
-    // принято» and A's «проверяется» are not states, they qualify a wait.
-    expect(Object.values(STATE_WORDS)).toEqual([
-      'ждёт',
-      'идёт',
-      'внесено',
-      'рассмотрено',
-      'ждёт решения автора',
-      'отклонено',
-    ]);
+    // BOOK-90 is untouched, BOOK-137 added the paperwork's word («рассмотрено») and BOOK-189 the
+    // refusal («отклонено»); BOOK-206 removed the author's word. The refusal word is also C's gate
+    // word — a refusal is one word the book already printed; B's «не принято» and A's
+    // «проверяется» are not states, they qualify a wait.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено', 'отклонено']);
     const gate = Object.values(GATE_WORDS);
     expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
     expect(new Set(gate).size).toBe(3);
@@ -312,12 +305,12 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
     expect(off.detail).toBe('вне книги: этот мир не просит чудес');
   });
 
-  it('prints an escalated filing as the author’s turn, never as a refusal', () => {
-    const line = commentStatusLine(
-      comment({ status: 'escalated', reason: 'можно ли оформить это бумагой?' }),
-    );
-    expect(line).toMatchObject({ state: 'ждёт решения автора', tone: 'live', form: 'chip' });
-    expect(line.detail).toBe('можно ли оформить это бумагой?');
+  it('prints a legacy escalated row as waiting, and never as the author’s turn (BOOK-206)', () => {
+    const line = commentStatusLine(comment({ status: 'escalated', reason: 'можно ли оформить это бумагой?' }));
+    expect(line).toMatchObject({ state: 'ждёт', tone: 'live', form: 'chip' });
+    // The old question is not a line the reader is owed any more: the row claims nothing.
+    expect(line.detail).toBeNull();
+    expect(JSON.stringify(line)).not.toContain('автор');
   });
 
   it('reads the gate from the stored verdict, never from the reason text', () => {

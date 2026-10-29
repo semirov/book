@@ -269,9 +269,12 @@ describe('a public list asks the attempt ledger only about a refused row', () =>
     expect(rows).toHaveLength(6);
     const dtos = rows.map((row) => toCommentDto(counted.db, row, T0));
 
-    // Three counts (filing, identity, network) for the one row a revision could reopen.
+    // Three counts (filing, identity, network) for the one row a revision could reopen. BOOK-206
+    // adds one indexed lookup per `new` row (is the open attempt out of tries?) — a statement
+    // that names the ledger, never a fourth count over it.
     const attemptReads = counted.statements().filter((sql) => sql.includes('comment_attempts'));
-    expect(attemptReads).toHaveLength(3);
+    expect(attemptReads.filter((sql) => sql.includes('COUNT(*)'))).toHaveLength(3);
+    expect(attemptReads).toHaveLength(3 + 5);
 
     // The accepted rows still carry the shape the page reads, and the refused one keeps the
     // exact state the ledger gives it.

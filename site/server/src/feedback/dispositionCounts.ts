@@ -45,7 +45,7 @@ export type DispositionLimits = {
   partZero: 'ok' | 'defect';
 };
 
-/** Statuses that mean "a decision was made" — an escalated filing is not one of them. */
+/** Statuses that mean "a decision was made" — a legacy `escalated` row is not one of them. */
 const ACCEPTED_STATUSES = new Set(['accepted', 'applied', 'registered']);
 
 /** A chapter's share is judged only once the chapter has enough filings to have a shape. */

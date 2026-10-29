@@ -174,10 +174,10 @@ function recipientOf(db: Db, event: PassEvent): Recipient | null {
  *     build does not know the word, and a guess would be a lie on a lock screen;
  *   · `void` — the change was refused (`dropped`, `superseded`): «правка по главе N отклонена» is
  *     the truthful word and the reader is owed it;
- *   · everything else is **not an answer**: `escalated` means «остановлено — нужно решение», the
- *     operator still has to act; `processing`, `pending`, `stale` and `failed` are states on the
- *     way. Announcing any of them as «отклонена» would tell a reader their filing was refused
- *     while the engine is waiting for a decision about it.
+ *   · everything else is **not an answer**: `escalated` is a **change** a gate stopped (a filing
+ *     is never in that state — BOOK-206 places every filing), and `processing`, `pending`, `stale`
+ *     and `failed` are states on the way. Announcing any of them as «отклонена» would tell a
+ *     reader their filing was refused while the engine is still working on it.
  *
  * Silence has to happen **before** the claim, not after it: the claim is permanent per chapter,
  * so a silent event that took it would swallow the real answer that comes later.
@@ -186,9 +186,9 @@ function copyOf(event: PassEvent, recipient: Recipient): OutboxCopy | null {
   const n = recipient.chapter;
   if (event.kind === 'landed') return { title: `глава ${String(n)} написана`, chapter: n, body: BODY };
   if (event.kind === 'commentDecision') {
-    // BOOK-174: the book's own word leads — «не принято» for a lock, «ждёт решения автора» for an
-    // escalation — and «отклонена» is kept for a row nobody read this way at all (a gate's hold or
-    // a legacy row). A disposition that is not a lock must never read as a refusal.
+    // BOOK-174/BOOK-206: the book's own word leads — the rung's line («прочитано…», «не принято») for
+    // a filing the ladder placed — and «отклонена» is kept for a row nobody read this way at all (a
+    // gate's hold). A disposition that is not a lock must never read as a refusal.
     return event.report === null
       ? { title: REFUSED_TITLE.replace('{n}', String(n)), chapter: n, body: BODY }
       : { title: event.report.line1, chapter: n, body: event.report.line3 };

@@ -81,11 +81,10 @@ export type ReviseView = {
 
 export function reviseView(comment: CommentDto, nowMs: number = Date.now()): ReviseView | null {
   const hint = comment.hint ?? null;
-  // BOOK-174: two states are the reader's to rework — a refusal under a lock, and a filing that
-  // waits for the author (a revision withdraws it from the author's desk). Everything else is
-  // `NOT_REVISABLE` on the server; a held one still owes its hint — «уберите из текста указания
-  // в адрес модели».
-  if (comment.status !== 'rejected' && comment.status !== 'escalated') {
+  // BOOK-174/BOOK-206: a refusal under a lock is the reader's to rework — the only state that is.
+  // Everything else is `NOT_REVISABLE` on the server; a held one still owes its hint — «уберите
+  // из текста указания в адрес модели».
+  if (comment.status !== 'rejected') {
     return hint === null ? null : { hint, allowed: false, blocked: null };
   }
   const allowed = comment.revise?.allowed === true;

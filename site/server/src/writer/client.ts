@@ -80,6 +80,50 @@ export type EngineStateView = {
   budget: BudgetDto | null;
 };
 
+/**
+ * BOOK-206 (ADR-045 §3): one filing the engine claims for a read. The envelope is the filing as
+ * the server wrote it (the four untrusted values plus the world); `recordedVerdict` is gate C's
+ * stored answer, when there is one — then only the missing half is asked.
+ */
+export type TriageAskView = {
+  commentId: string;
+  attempt: number;
+  chapter: number;
+  kind: string | null;
+  envelope: Record<string, unknown>;
+  world: string | null;
+  recordedVerdict: 'FITS' | 'OFF' | null;
+};
+
+/** `assignment: null` with `reason: 'budget'` is the engine's own stop for a paused day. */
+export type TriageNextView = { assignment: TriageAskView | null; reason: 'budget' | null };
+
+/** What `verdict` sends: the model's answer and the money it cost. */
+export type TriageVerdictInput = {
+  commentId: string;
+  n: number;
+  verdict: unknown;
+  spend: { model: string; tokensIn: number; tokensOut: number; usd: number };
+};
+
+export type TriageVerdictView = { stored: boolean; already?: true };
+
+/** A failed call: a code the engine records, never the reader's text. */
+/**
+ * BOOK-206 (AC5): a failed call is still money. `spend` is present when the provider answered
+ * with usage (a shape failure, a recorded-verdict conflict, an engine refusal of the answer) and
+ * absent for a transport failure that never reported any.
+ */
+export type TriageFailInput = {
+  commentId: string;
+  n: number;
+  code: string;
+  detail?: string;
+  spend?: TriageVerdictInput['spend'];
+};
+
+export type TriageFailView = { tries: number; nextAt: string | null; cap: boolean };
+
 /** What a gate session receives (`engine/gates.ts` `GateAssignment`), narrowed to what we read. */
 /** Gate B's assignment: its own shape (a rule, no prose findings), `rule: null` for a clean scan. */
 export type RightsAssignmentView = {
@@ -255,6 +299,12 @@ export type EngineClient = {
   recordPass(input: RecordPassInput): Promise<WriterStateView>;
   /** BOOK-187 AC7: store the pass's redacted receipt once, after the outcome is known. */
   transcript(input: { passId: string; rows: readonly TranscriptRowInput[] }): Promise<TranscriptStored>;
+  /** BOOK-206: claim one due filing for a read, or learn that there is none (or no money). */
+  nextTriage(session: string): Promise<TriageNextView>;
+  /** Store one validated answer — once per attempt; a second one answers `already`. */
+  verdictTriage(input: TriageVerdictInput): Promise<TriageVerdictView>;
+  /** Report the try as failed, so the engine backs off and, at the cap, raises a defect. */
+  failTriage(input: TriageFailInput): Promise<TriageFailView>;
 };
 
 function readToken(options: EngineClientOptions): string {
@@ -406,5 +456,15 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       })) as WriterStateView,
     transcript: async (input) =>
       (await post('/internal/transcript', { passId: input.passId, rows: input.rows })) as TranscriptStored,
+    nextTriage: async (session) => {
+      const data = await post('/internal/triage/next', { session });
+      if (data === null) return { assignment: null, reason: null };
+      const answer = data as Record<string, unknown>;
+      // The paused day is the engine's answer, not an error: no filing is claimed and none is lost.
+      if (answer.assignment === null) return { assignment: null, reason: answer.reason === 'budget' ? 'budget' : null };
+      return { assignment: data as TriageAskView, reason: null };
+    },
+    verdictTriage: async (input) => (await post('/internal/triage/verdict', input)) as TriageVerdictView,
+    failTriage: async (input) => (await post('/internal/triage/fail', input)) as TriageFailView,
   };
 }

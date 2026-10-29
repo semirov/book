@@ -77,13 +77,18 @@ export function settleAttempt(db: Db, input: SettleInput): SettledAttempt | null
     if (open === undefined) return null;
     if (!setAttemptOutcome(db, input.commentId, open.n, input.outcome, input.at)) return null;
     const passId = `triage:${input.commentId}:${open.n}`;
-    if (input.spend !== undefined) recordTriageSpend(db, { ...input.spend, chapter: input.chapter, passId, at: input.at });
+    if (input.spend !== undefined) chargeTriageSpend(db, { ...input.spend, chapter: input.chapter, passId, at: input.at });
     return { n: open.n, passId };
   });
   return run();
 }
 
-function recordTriageSpend(
+/**
+ * One row of the money ledger for one triage call: `pass = 'triage'`, a `pass_id` per attempt,
+ * `INSERT OR IGNORE` so a retried caller cannot charge twice. BOOK-206's engine writes it from
+ * the answer it stored — the same row the CLI's `--usd` writes, through the same function.
+ */
+export function chargeTriageSpend(
   db: Db,
   input: TriageSpend & { chapter: number; passId: string; at: string },
 ): void {

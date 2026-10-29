@@ -23,8 +23,9 @@ export const MY_OPEN_LIMIT = 10;
 
 /**
  * The vocabulary a reader is shown. It carries no status code and no gate role:
- * `refused` is the guard, triage and auditor refusal told as one public fact, and
- * `escalated` means the consequence stopped and waits for the author's decision.
+ * `refused` is the guard, triage and auditor refusal told as one public fact. BOOK-206 removed
+ * the old «waits for the author» state — a filing is placed by the ladder, never parked — so a
+ * legacy row reads as `refused` with the gate's own line, never as a wait.
  */
 export type MyDecisionOutcome =
   | 'applied'
@@ -35,7 +36,6 @@ export type MyDecisionOutcome =
    */
   | 'registered'
   | 'queued'
-  | 'escalated'
   | 'dropped'
   | 'superseded'
   | 'failed'

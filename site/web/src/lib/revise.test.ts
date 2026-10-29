@@ -263,21 +263,17 @@ describe('the accounting line (BOOK-158)', () => {
 });
 
 /**
- * BOOK-174: the door is open on an escalated filing too — its words are the reader's, and a
- * revision withdraws the question from the author's desk. Nothing else changes about the view.
+ * BOOK-206: the author's door is gone, so an `escalated` status (a legacy value the boot
+ * migration re-opens) is no longer a state the reader can rework — the door is a lock refusal's.
  */
-describe('the way back from an escalation (BOOK-174)', () => {
-  it('offers the door while the filing waits for the author', () => {
-    const view = reviseView(
-      comment({ status: 'escalated', refusal: null, reason: 'можно ли оформить это бумагой?', hint: null }),
-      NOW,
-    );
-    expect(view).toEqual({ hint: null, allowed: true, blocked: null });
+describe('a legacy escalated status is not a door (BOOK-206)', () => {
+  it('offers nothing for a row that waits for nobody', () => {
+    expect(reviseView(comment({ status: 'escalated', refusal: null, hint: null }), NOW)).toBeNull();
   });
 
-  it('keeps the cooldown the same: the counters are the filing’s, not the verdict’s', () => {
+  it('still opens on a lock refusal, with its cooldown', () => {
     const cooling = { allowed: false, at: new Date(NOW + 4 * 60_000).toISOString(), attemptsLeft: 3, closed: false, blocked: 'cooldown' as const };
-    expect(reviseView(comment({ status: 'escalated', revise: cooling }), NOW)?.blocked).toBe(
+    expect(reviseView(comment({ status: 'rejected', refusal: 'auditor', revise: cooling }), NOW)?.blocked).toBe(
       'можно повторить через 4 минуты',
     );
   });

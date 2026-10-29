@@ -8,9 +8,9 @@
  *
  * Two rules this file exists to enforce:
  *
- *   1. **a filing never ends as a bare rejection outside a lock.** If no lock applies, the row
- *      becomes `escalated` — `decided_at` written, the question as its reason, one `escalated`
- *      event — and no change and no rejection is recorded;
+ *   1. **a refusal is a lock, and only a lock.** If no lock applies, nothing is written and the
+ *      caller is told so (`{status:'no-lock'}`): the ladder is total and places every filing, so
+ *      a rejection with no lock is a caller's mistake, not a state a row may enter (BOOK-206);
  *   2. **the sentence anchor is the filing's own** (ADR-044 `comments.sentence_id`). A reading
  *      records `disposition`, `lock`, `carrier_kind` and `quote_kept`; it never rewrites where
  *      the reader pointed, because that place outlives every decision about the words.
@@ -18,7 +18,6 @@
 
 import {
   DISPOSITION_REASONS,
-  ESCALATION_QUESTION,
   LOCK_REASONS,
   chainReport,
   normalizeCarrierKind,
@@ -34,7 +33,6 @@ import { isBasisSlot } from '../engine/text.ts';
 import { safeJson } from '../engineState/rows.ts';
 import {
   chooseDisposition,
-  escalationDecision,
   type ChooseDispositionInput,
   type DispositionCaps,
   type DispositionDecision,
@@ -93,8 +91,8 @@ export function dispositionCaps(db: Db, comment: CommentRow, stamp: string | nul
               WHERE chapter = ? AND disposition = 'refused_in_world' AND quote_kept = ? AND id <> ?`,
           )
           .get(comment.chapter, wanted, comment.id) as { n: number });
-  // The trailing run is read from the rows themselves, in decision order: an escalated or a
-  // landed filing in between ends the run, which is what keeps a refusal from being a template.
+  // The trailing run is read from the rows themselves, in decision order: a filing that is not
+  // an in-world refusal ends the run, which is what keeps a refusal from being a template.
   const decided = db
     .prepare(
       `SELECT disposition FROM comments
@@ -180,8 +178,6 @@ export function paperDecisionOf(db: Db, comment: CommentRow): DispositionDecisio
     sentenceId: comment.sentence_id,
     blockIndex: anchor.blockIndex,
     sentenceIndex: anchor.sentenceIndex,
-    escalated: false,
-    question: null,
     // The as-said plan never existed here: the frame's letters do not move.
     alternate: false,
   };
@@ -205,8 +201,6 @@ export function storedDecision(row: CommentRow): DispositionDecision | null {
     sentenceId: row.sentence_id,
     blockIndex: null,
     sentenceIndex: null,
-    escalated: disposition === 'escalated',
-    question: disposition === 'escalated' ? ESCALATION_QUESTION : null,
     alternate: disposition === 'through_paper',
   };
 }
@@ -236,18 +230,29 @@ export type RejectionInput = {
    * word is — but it stays in the comment event, where an operator can look it up.
    */
   note?: string | null;
+  /**
+   * BOOK-206 — the reading a caller already chose (`chooseFor` over a proposal). A finale lock
+   * is a **decision**, not a fact of the row, so re-choosing without it would lose the lock and
+   * write the author's question instead of the lock's own clause.
+   */
+  decision?: DispositionDecision | null;
 };
 
-export type RejectionResult = {
-  status: 'rejected' | 'escalated';
-  /** The sentence the reader now owes: the lock's line, or the author's question. */
-  reason: string;
-  decision: DispositionDecision;
-};
+export type RejectionResult =
+  | {
+      status: 'rejected';
+      /** The sentence the reader now owes: the lock's own closed clause. */
+      reason: string;
+      decision: DispositionDecision;
+    }
+  /** No lock applies: nothing was written and no row changed. A refusal needs a lock. */
+  | { status: 'no-lock' };
 
 /**
- * The rejection path's one writer. A lock → `rejected` with the lock's chain and one `decided`
- * event; no lock → `escalated`, the question as the reason, one `escalated` event. The caller
+ * The rejection path's one writer, and it is a **lock writer only**: a lock → `rejected` with the
+ * lock's chain and one `decided` event; no lock → nothing at all, and `{status:'no-lock'}` says
+ * so. There is no escalation any more (BOOK-206): the ladder places every filing, and a caller
+ * that asks to refuse one with no lock is asking for a state that does not exist. The caller
  * announces the frame; nothing here emits.
  */
 export function disposeRejection(db: Db, input: RejectionInput): RejectionResult {
@@ -258,33 +263,29 @@ export function disposeRejection(db: Db, input: RejectionInput): RejectionResult
   const decision =
     stored !== null && (stored.disposition !== 'inadmissible' || lockStillHolds(db, row, stored.lock))
       ? stored
-      : chooseFor(db, row, null);
-  const lock = decision.disposition === 'inadmissible' ? decision : null;
-  const chain = lock ?? escalationDecision();
-  const status: RejectionResult['status'] = lock === null ? 'escalated' : 'rejected';
-  // A reader reads the book's word, not the engine's note about why it gave up: the lock's own
-  // closed clause, or the author's question.
-  const reason = lock?.reason ?? ESCALATION_QUESTION;
+      : (input.decision ?? chooseFor(db, row, null));
+  if (decision.disposition !== 'inadmissible') return { status: 'no-lock' };
+  // A reader reads the book's word, not the engine's note about why it gave up.
+  const reason = decision.reason;
   db.prepare(
     `UPDATE comments
-        SET status = ?, decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id),
+        SET status = 'rejected', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id),
             disposition = ?, lock = ?, carrier_kind = ?, quote_kept = ?
       WHERE id = ?`,
   ).run(
-    status,
     input.at,
     reason,
     input.batch ?? null,
-    chain.disposition,
-    chain.lock,
-    chain.carrierKind,
-    chain.quoteKept,
+    decision.disposition,
+    decision.lock,
+    decision.carrierKind,
+    decision.quoteKept,
     input.comment.id,
   );
-  appendCommentEvent(db, input.comment.id, status === 'escalated' ? 'escalated' : 'decided', input.at, {
-    status,
-    ...(chain.lock === null ? {} : { lock: chain.lock }),
+  appendCommentEvent(db, input.comment.id, 'decided', input.at, {
+    status: 'rejected',
+    ...(decision.lock === null ? {} : { lock: decision.lock }),
     ...(input.note === undefined || input.note === null || input.note.length === 0 ? {} : { note: input.note }),
   });
-  return { status, reason, decision: chain };
+  return { status: 'rejected', reason, decision };
 }
