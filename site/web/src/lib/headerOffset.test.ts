@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  BREATHING_PX,
+  LANDING_PX,
   OFFSET_TOP_PROPERTY,
   headerHeight,
   offsetTopOfPage,
@@ -16,10 +16,10 @@ import {
  *
  * The head is one box: the running row, and — when something is happening — the status line in
  * its flow. Idle it is the row alone; active the line adds height. `useStickyOffsets` observes
- * `.top` itself, so `--offset-top` must be the measured box plus the site's constant breathing
- * space in both states, and it must be rewritten when the line appears or goes. jsdom has no
- * layout, so the head's box is a deterministic stub; the observer and the write are the real
- * code. The pixel proof at 390 and 1440 is `scripts/head-cdp.mjs`.
+ * `.top` itself, so `--offset-top` must be the measured box plus the landing's air
+ * (`LANDING_PX`, BOOK-209's 16 px) in both states, and it must be rewritten when the line
+ * appears or goes. jsdom has no layout, so the head's box is a deterministic stub; the observer
+ * and the write are the real code. The pixel proof at 390 and 1440 is `scripts/head-cdp.mjs`.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -106,11 +106,11 @@ function fire(): void {
 describe('§11.1 — one measured offset, idle and active', () => {
   it('writes the head’s own height plus breathing space in idle', () => {
     expect(headerHeight(document)).toBe(IDLE_PX);
-    expect(offsetTop()).toBe(IDLE_PX + BREATHING_PX);
+    expect(offsetTop()).toBe(IDLE_PX + LANDING_PX);
     // The offset is the measurement: the difference is the site's constant, never a literal
     // copied from a screenshot (`offsetTopOfPage` reads the same property back).
-    expect(offsetTop() - headerHeight(document)).toBe(BREATHING_PX);
-    expect(offsetTopOfPage(document)).toBe(IDLE_PX + BREATHING_PX);
+    expect(offsetTop() - headerHeight(document)).toBe(LANDING_PX);
+    expect(offsetTopOfPage(document)).toBe(IDLE_PX + LANDING_PX);
   });
 
   it('rewrites the offset when the status line appears, and again when it goes', () => {
@@ -120,9 +120,9 @@ describe('§11.1 — one measured offset, idle and active', () => {
     // The line appears: the head box grows by the observer's own measurement.
     height = ACTIVE_PX;
     fire();
-    expect(offsetTop()).toBe(ACTIVE_PX + BREATHING_PX);
+    expect(offsetTop()).toBe(ACTIVE_PX + LANDING_PX);
     expect(offsetTop()).toBeGreaterThan(idle);
-    expect(offsetTop() - headerHeight(document)).toBe(BREATHING_PX);
+    expect(offsetTop() - headerHeight(document)).toBe(LANDING_PX);
     // One resize, one write: the callback measured and published, nothing polled.
     const topWrites = write.mock.calls.filter(([property]) => property === OFFSET_TOP_PROPERTY);
     expect(topWrites).toHaveLength(1);
@@ -131,7 +131,7 @@ describe('§11.1 — one measured offset, idle and active', () => {
     height = IDLE_PX;
     fire();
     expect(offsetTop()).toBe(idle);
-    expect(offsetTop() - headerHeight(document)).toBe(BREATHING_PX);
+    expect(offsetTop() - headerHeight(document)).toBe(LANDING_PX);
     expect(write.mock.calls.filter(([property]) => property === OFFSET_TOP_PROPERTY)).toHaveLength(2);
   });
 

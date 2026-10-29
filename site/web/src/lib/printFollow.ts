@@ -56,6 +56,16 @@ export function printFollowState(): { on: boolean; active: number } {
   return { on, active };
 }
 
+/**
+ * BOOK-220 × BOOK-209 — the ink owns the page while it is followed: on, and with a renderer
+ * printing. The position layer (`lib/usePosition.ts`) asks this before it restores a place, so a
+ * resume or a back/forward never lands under the follow's one scroll a frame. The follow itself
+ * never calls the position layer: it moves the page, it does not remember it.
+ */
+export function followingInk(): boolean {
+  return on && active > 0;
+}
+
 export function subscribePrintFollow(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

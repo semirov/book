@@ -85,4 +85,17 @@ describe('migration v35 — the ladder', () => {
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     db.close();
   });
+
+  it('is the step a v34 volume runs: the reader’s place keeps 34, the ladder takes 35', () => {
+    // A store main already migrated: BOOK-209's `reader_places` and the cursor at 34. Only the
+    // ladder's step is pending, and it must be the one `migrate` reaches — not a renumbering of
+    // the place's step, which an install at 34 would skip for ever.
+    const db = openDatabase(':memory:');
+    migrate(db);
+    db.pragma('user_version = 34');
+    expect(migrate(db)).toEqual({ from: 34, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
+    expect(columns(db, 'steps')).toEqual(expect.arrayContaining(['desperate', 'widened']));
+    db.close();
+  });
 });

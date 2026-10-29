@@ -42,8 +42,12 @@ const ACTIVE = 'writing';
 const WIDTHS = [390, 1440];
 const PHONE = 390;
 const MAX_PHONE_ROWS = 2;
-/** `headerOffset.ts`'s `BREATHING_PX`: the site's air between the head and an anchor. */
-const BREATHING_PX = 8;
+/**
+ * `headerOffset.ts`'s `LANDING_PX`: the air between the sticky head's bottom and an anchor
+ * (BOOK-209 — the owner's landing, 16 px; it was 8 before that item). Mirrored here on purpose:
+ * the harness proves the token is the measured head plus this number, not a literal of its own.
+ */
+const LANDING_PX = 16;
 const DELTA_PX = 1;
 
 const args = process.argv.slice(2);
@@ -196,12 +200,12 @@ function factsViolations(where, facts) {
   return bad;
 }
 
-/** The offset contract: `--offset-top` is the measured head plus the site's breathing space. */
+/** The offset contract: `--offset-top` is the measured head plus the landing's air. */
 function offsetViolations(where, facts) {
   if (facts.headHeight === null || !Number.isFinite(facts.offsetTop)) return [`${where}: no head or no --offset-top`];
-  if (Math.abs(facts.offsetTop - (facts.headHeight + BREATHING_PX)) > DELTA_PX) {
+  if (Math.abs(facts.offsetTop - (facts.headHeight + LANDING_PX)) > DELTA_PX) {
     return [
-      `${where}: --offset-top is ${String(facts.offsetTop)} px, the head is ${String(facts.headHeight)} px (+${String(BREATHING_PX)} expected)`,
+      `${where}: --offset-top is ${String(facts.offsetTop)} px, the head is ${String(facts.headHeight)} px (+${String(LANDING_PX)} expected)`,
     ];
   }
   return [];
