@@ -35,6 +35,7 @@ import { registerFrontRoutes } from './http/routes/front.ts';
 import { registerHealthRoutes } from './http/routes/health.ts';
 import { registerHistoryRoutes } from './http/routes/history.ts';
 import { registerMeRoutes } from './http/routes/me.ts';
+import { registerPlaceRoutes } from './http/routes/place.ts';
 import { registerPushRoutes } from './http/routes/push.ts';
 import { registerStageRoutes } from './http/routes/stages.ts';
 import { registerStateRoutes } from './http/routes/state.ts';
@@ -250,6 +251,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerHistoryRoutes(app, deps);
   registerAuthorsRoutes(app, deps);
   registerMeRoutes(app, deps);
+  registerPlaceRoutes(app, deps);
   registerPushRoutes(app, deps);
   registerAdminRoutes(app, deps);
 

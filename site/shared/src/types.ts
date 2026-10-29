@@ -356,6 +356,27 @@ export type HealthDto = {
   writer: WriterStateDto | null;
 };
 
+/**
+ * BOOK-209 — the reader's place, as `GET`/`PUT /api/me/place` carry it and as `reader_places`
+ * stores it. It is an anchor, never a pixel of scroll height: `sentenceId` names the block and
+ * the sentence the reader was at, `deltaPx` says how far below the reading line that anchor sat
+ * when they left. A second device rebuilds the same position from the same prose, which a stored
+ * scroll offset could not do — a reflow, another font size or another screen is another height.
+ *
+ * Own only: the identity is the session cookie and there is no id in this object, in the path,
+ * in the query or in the body.
+ */
+export type ReaderPlaceDto = {
+  /** 1..`TOTAL_CHAPTERS` (`@book/shared`); the chapter the anchor lives in. */
+  chapter: number;
+  /** The anchor key — block id plus sentence index, e.g. `ch12#b3/s4`, 1..200 characters. */
+  sentenceId: string;
+  /** CSS px the anchor sat below the reading line: finite, |x| ≤ 10000. */
+  deltaPx: number;
+  /** ISO 8601 moment of the reader's visit. */
+  at: string;
+};
+
 /** `GET /api/admin/health` — the operator's half of the health, token-guarded (§17). */
 export type AdminHealthDto = {
   uptimeMs: number;

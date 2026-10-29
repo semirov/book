@@ -21,8 +21,14 @@ import { chapterLinkFromHash } from './route.ts';
  *
  * The hook is separate from `App` because the page is at its line budget: the act is small,
  * the book is what the file is for.
+ *
+ * BOOK-209 — a back/forward that carries a **place** is not a fragment open: the position layer
+ * (`lib/usePosition.ts`) restores the place the reader left, at the line they left it on. So the
+ * popstate handler asks `restore` first and gives way when it claims the event, and it marks the
+ * hash as acted on so the `hashchange` that follows the same entry does not land the fragment's
+ * nominal anchor over the restored place. There is still one fragment parser, in this file.
  */
-export function useDeepLink(ready: boolean): void {
+export function useDeepLink(ready: boolean, restore?: (state: unknown) => boolean): void {
   /** The last fragment this page acted on: one landing per hash, and a new one on a change. */
   const landed = useRef<string | null>(null);
 
@@ -40,12 +46,20 @@ export function useDeepLink(ready: boolean): void {
         if (landedHere) track('deep_link_open', { chapter: link.chapter });
       });
     };
+    /** A popstate whose entry carries a place hands the event to the position layer. */
+    const onPop = (event: PopStateEvent): void => {
+      if (restore?.(event.state) !== true) {
+        open();
+        return;
+      }
+      landed.current = window.location.hash;
+    };
     open();
     window.addEventListener('hashchange', open);
-    window.addEventListener('popstate', open);
+    window.addEventListener('popstate', onPop);
     return () => {
       window.removeEventListener('hashchange', open);
-      window.removeEventListener('popstate', open);
+      window.removeEventListener('popstate', onPop);
     };
-  }, [ready]);
+  }, [ready, restore]);
 }

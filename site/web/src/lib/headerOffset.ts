@@ -17,10 +17,11 @@
  *
  * What is measured, exactly:
  *   - top: `getBoundingClientRect().height` of the sticky head (`.top`), crisp pixels, plus
- *     `BREATHING_PX`;
+ *     `LANDING_PX` (BOOK-209: the owner's landing is the head's **bottom** + 16 px, so the
+ *     opaque head is cleared and a line of air is kept above the first line of prose);
  *   - bottom: the tallest `getBoundingClientRect().height` among `BOTTOM_BANDS` present, plus
- *     `BREATHING_PX`. With no band on the page nothing is written and the sheet's 8 px fallback
- *     stands — the breathing space alone.
+ *     `BOTTOM_BREATHING_PX`. With no band on the page nothing is written and the sheet's 8 px
+ *     fallback stands — the breathing space alone.
  *
  * Nothing here is stored and nothing is cached: the value is re-measured on mount, on every
  * head resize (`ResizeObserver`) and on every window resize.
@@ -29,12 +30,20 @@
 import { useEffect, useLayoutEffect, type RefObject } from 'react';
 
 /**
- * The site's own breathing space between the sticky head and the line a jump lands on (and
- * between the last line of the book and the band over the bottom edge). Two pixels of this is
- * the rounding `pageTrack.ts` calls `ANCHOR_EPS`; the rest is air, so the heading's hairline
- * is read, not touched.
+ * The air a landing keeps between the sticky head's **bottom** and the line it puts a target
+ * on (owner, BOOK-209): the landing edge is the head's lower edge plus this, and it is the one
+ * number the top token, `scroll-margin-top`, the reading line and every landing share. Two
+ * pixels of it is the rounding `pageTrack.ts` calls `ANCHOR_EPS`; the rest is air, so the
+ * heading's hairline is read, not touched.
  */
-export const BREATHING_PX = 8;
+export const LANDING_PX = 16;
+
+/**
+ * The breathing space between the last line of the book and the band the page fixes over the
+ * bottom edge. Separate from {@link LANDING_PX}: the top edge is a landing and the bottom edge
+ * is a clamp, and the two numbers are free to differ.
+ */
+export const BOTTOM_BREATHING_PX = 8;
 
 /** The sticky head: the running head `Header` renders. */
 export const HEADER_SELECTOR = '.top';
@@ -53,10 +62,20 @@ export const OFFSET_BOTTOM_PROPERTY = '--offset-bottom';
 
 export type StickyOffsets = { top: number; bottom: number };
 
-/** A measured height plus the breathing space; a fractional height is rounded to whole pixels. */
+/** A measured height plus the landing air: the offset a jump lands on. Whole pixels. */
 export function offsetOf(height: number): number {
-  const whole = Number.isFinite(height) ? Math.round(height) : 0;
-  return Math.max(0, whole) + BREATHING_PX;
+  return whole(height) + LANDING_PX;
+}
+
+/** A measured height plus the bottom breathing space: the room a band over the edge reserves. */
+export function bottomOffsetOf(height: number): number {
+  return whole(height) + BOTTOM_BREATHING_PX;
+}
+
+/** A measured height as whole pixels; a broken measurement is nothing. */
+function whole(height: number): number {
+  const rounded = Number.isFinite(height) ? Math.round(height) : 0;
+  return Math.max(0, rounded);
 }
 
 /** The element's own height; 0 when it is absent or not laid out (jsdom, a hidden page). */
@@ -68,7 +87,7 @@ function heightOf(element: Element | null): number {
 
 /**
  * The offset a jump lands on: the measured `--offset-top` when the page has it, and the head's
- * own live height plus the breathing space when it does not (a sheet that has not been read, a
+ * own live height plus the landing air when it does not (a sheet that has not been read, a
  * page the hook has not met yet). No literal: the fallback is the same measurement.
  */
 export function offsetTopOfPage(doc: Document = document): number {
@@ -102,7 +121,7 @@ export function applyStickyOffsets(doc: Document = document): StickyOffsets {
   const header = headerHeight(doc);
   const grip = gripHeight(doc);
   const top = offsetOf(header);
-  const bottom = offsetOf(grip);
+  const bottom = bottomOffsetOf(grip);
   const root = doc.documentElement;
   if (header > 0) root.style.setProperty(OFFSET_TOP_PROPERTY, `${String(top)}px`);
   else root.style.removeProperty(OFFSET_TOP_PROPERTY);

@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { BREATHING_PX } from '../lib/headerOffset.ts';
+import { LANDING_PX } from '../lib/headerOffset.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { Header } from './Header.tsx';
 import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
@@ -210,7 +210,7 @@ beforeEach(() => {
   document.documentElement.style.setProperty('--offset-top', `${String(HEAD)}px`);
   nativeRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
-    return this.classList.contains('top') ? rectOf({ top: 0, height: HEAD - BREATHING_PX }) : nativeRect.call(this);
+    return this.classList.contains('top') ? rectOf({ top: 0, height: HEAD - LANDING_PX }) : nativeRect.call(this);
   };
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });

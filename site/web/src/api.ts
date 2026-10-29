@@ -22,6 +22,7 @@ import type {
   PostCommentInput,
   PostCommentResponse,
   QueueDto,
+  ReaderPlaceDto,
   ReviseCommentInput,
   ReviseCommentResponse,
   StateSnapshot,
@@ -345,6 +346,32 @@ export function getMyDecisions(): Promise<MyDecisionsDto> {
  */
 export function getMyFilings(): Promise<MyFilingsDto> {
   return readJson<MyFilingsDto>('/api/me/filings');
+}
+
+/**
+ * BOOK-209 — where this reader stopped reading, own only. `null` is the normal answer for a
+ * reader who has never left a place (the route answers `204`): the page then starts at the top
+ * on its own terms rather than at a chapter 1 nobody read.
+ */
+export async function getMyPlace(): Promise<ReaderPlaceDto | null> {
+  const response = await requestJson('/api/me/place');
+  if (response.status === 204) return null;
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as ReaderPlaceDto;
+}
+
+/**
+ * Remember the reader's place on the server (BOOK-209): idempotent, own only, and the identity
+ * comes from the cookie — this function sends no id of any kind. A refused body is the client's
+ * own bug (`400 {code:'BAD_PLACE'}`), so it is thrown and not retried here.
+ */
+export async function putMyPlace(place: ReaderPlaceDto): Promise<void> {
+  const response = await requestJson('/api/me/place', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(place),
+  });
+  if (!response.ok) throw await toApiError(response);
 }
 
 /**

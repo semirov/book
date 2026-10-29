@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  BREATHING_PX,
+  BOTTOM_BREATHING_PX,
+  LANDING_PX,
   OFFSET_BOTTOM_PROPERTY,
   OFFSET_TOP_PROPERTY,
   applyStickyOffsets,
@@ -163,10 +164,10 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
   /**
    * The owner's words: «a tap on row N leaves the chapter's heading inside the viewport with
    * its top at the header's lower edge ±2 px». The breathing space is part of the offset, so
-   * the assertion is against **header bottom + breathing space**, within 2 px — not against
+   * the assertion is against **header bottom + landing air**, within 2 px — not against
    * the head's own edge.
    */
-  it('lands row 2’s heading at header bottom + breathing space, within 2 px', async () => {
+  it('lands row 2’s heading at header bottom + landing air, within 2 px', async () => {
     const heading = document.querySelector<HTMLElement>('#ch-2 .ch-h');
     expect(heading).not.toBeNull();
     await act(async () => rowOf(2).click());
@@ -176,9 +177,9 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
     expect(scrollTo.mock.calls[0]?.[0]?.behavior).toBe('auto');
     const headerBottom = document.querySelector<HTMLElement>('.top')!.getBoundingClientRect().bottom;
     const landing = heading!.getBoundingClientRect().top;
-    expect(Math.abs(landing - (headerBottom + BREATHING_PX))).toBeLessThanOrEqual(2);
+    expect(Math.abs(landing - (headerBottom + LANDING_PX))).toBeLessThanOrEqual(2);
     // The arithmetic came from the measurement, not from a literal.
-    expect(OFFSET_TOP).toBe(HEADER_PX + BREATHING_PX);
+    expect(OFFSET_TOP).toBe(HEADER_PX + LANDING_PX);
     expect(scrollY).toBe(chapterTop(2) - OFFSET_TOP);
   });
 
@@ -190,13 +191,13 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
 
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo.mock.calls[0]?.[0]).toMatchObject({
-      top: chapterTop(4) - (HEADER_PX + BREATHING_PX),
+      top: chapterTop(4) - (HEADER_PX + LANDING_PX),
       // A jump, never an animation: measured in a real Chromium, a smooth landing from the
       // colophon moved 5 px in 1.8 s and the tap read as a tap that did nothing.
       behavior: 'auto',
     });
-    expect(scrollY).toBe(chapterTop(4) - (HEADER_PX + BREATHING_PX));
-    expect(Math.abs(section!.getBoundingClientRect().top - (HEADER_PX + BREATHING_PX))).toBeLessThanOrEqual(2);
+    expect(scrollY).toBe(chapterTop(4) - (HEADER_PX + LANDING_PX));
+    expect(Math.abs(section!.getBoundingClientRect().top - (HEADER_PX + LANDING_PX))).toBeLessThanOrEqual(2);
   });
 
   it('never swallows a click without a target: the browser’s own #ch-N jump stays', async () => {
@@ -216,7 +217,7 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
     expect(finale).not.toBeNull();
     await act(async () => rowOf(TOTAL_CHAPTERS).click());
     expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(scrollY).toBe(chapterTop(TOTAL_CHAPTERS) - (HEADER_PX + BREATHING_PX));
+    expect(scrollY).toBe(chapterTop(TOTAL_CHAPTERS) - (HEADER_PX + LANDING_PX));
   });
 });
 
@@ -230,8 +231,8 @@ describe('the footer’s bottom contract', () => {
     document.body.append(grip);
 
     const { bottom } = applyStickyOffsets(document);
-    expect(bottom).toBe(GRIP_PX + BREATHING_PX);
-    expect(document.documentElement.style.getPropertyValue(OFFSET_BOTTOM_PROPERTY)).toBe(`${GRIP_PX + BREATHING_PX}px`);
+    expect(bottom).toBe(GRIP_PX + BOTTOM_BREATHING_PX);
+    expect(document.documentElement.style.getPropertyValue(OFFSET_BOTTOM_PROPERTY)).toBe(`${GRIP_PX + BOTTOM_BREATHING_PX}px`);
     expect(gripHeight(document)).toBe(GRIP_PX);
 
     // The sheet reads that property and states no number of its own.
@@ -253,15 +254,29 @@ describe('the footer’s bottom contract', () => {
     expect(document.documentElement.style.getPropertyValue(OFFSET_TOP_PROPERTY)).toBe(`${OFFSET_TOP}px`);
     expect(offsetTopOfPage(document)).toBe(OFFSET_TOP);
   });
+
+  /**
+   * BOOK-209 — the last chapters can only rise to the reading line if the document can still
+   * scroll. A book that ends where the colophon's own rows end leaves rows 40–42 stuck at the
+   * last scroll offset (measured in Chromium: 20.5 / 80.5 / 196.5 px short at 1440, 21.4 at
+   * 390), so the last page keeps a viewport of paper: a **floor**, never a height, and the
+   * measured bottom band rather than a literal.
+   */
+  it('keeps a viewport of paper after the last chapter, so the last contents rows can land', () => {
+    const colophon = firstDeclarations(sheets['../styles/book.css'] ?? '', '.colophon');
+    expect(colophon).toContain('min-height: calc(100vh + var(--offset-bottom))');
+    // A fixed `height` would cut the colophon's own rows instead of flooring below them.
+    expect(colophon).not.toMatch(/(?:^|\n)\s*height:/u);
+  });
 });
 
 describe('nothing hardcodes the head’s height', () => {
-  it('writes the measured head plus breathing space at every head height', () => {
+  it('writes the measured head plus landing air at every head height', () => {
     for (const height of [56, 59.1, 76.6, 72, 80]) {
       const header = document.querySelector<HTMLElement>('.top')!;
       header.getBoundingClientRect = () => rect(0, height);
       const { top } = applyStickyOffsets(document);
-      expect(top).toBe(Math.round(height) + BREATHING_PX);
+      expect(top).toBe(Math.round(height) + LANDING_PX);
       expect(document.documentElement.style.getPropertyValue(OFFSET_TOP_PROPERTY)).toBe(`${top}px`);
       // The reading line and the taps read the same property (`pageTrack` and `dom.ts`).
       expect(offsetTopOfPage(document)).toBe(top);
@@ -287,7 +302,7 @@ describe('the head publishes its own measurement', () => {
     const host = document.body.appendChild(document.createElement('div'));
     const probe = createRoot(host);
     await act(async () => probe.render(<Probe />));
-    expect(document.documentElement.style.getPropertyValue(OFFSET_TOP_PROPERTY)).toBe('67px');
+    expect(document.documentElement.style.getPropertyValue(OFFSET_TOP_PROPERTY)).toBe('75px');
     await act(async () => probe.unmount());
     host.remove();
   });

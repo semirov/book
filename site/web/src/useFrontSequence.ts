@@ -11,6 +11,7 @@ import {
   shouldRun,
 } from './lib/frontSequence.ts';
 import { blockText, createReveal, revealComplete, tickReveal } from './lib/reveal.ts';
+import { resumePending } from './lib/usePosition.ts';
 
 /**
  * BOOK-DOC-49 §2, §3, §5 — the first load: the gate under the sequence and the typed title.
@@ -52,6 +53,22 @@ export type FrontSequenceStage = 'idle' | 'run' | 'done';
 /** The title before its first grapheme: an empty line that only the caret holds open. */
 const EMPTY_REVEAL: TitleReveal = { text: '', caret: 'typing' };
 
+/**
+ * The run in flight, as a function that ends it; `null` when this document runs no sequence.
+ *
+ * BOOK-209 — a resume must never land under a running sequence. The skip is decided at mount
+ * from the **local** row (`resumePending`), and a second device has no local row: the cover
+ * starts, and the place only arrives later, from the server. The position layer therefore ends
+ * the sequence through this seam before such a resume lands — the same `settle` the reader's
+ * first input and a `front:updated` already use, so there is still one way a run ends.
+ */
+let settleSequence: (() => void) | null = null;
+
+/** Finish the sequence this document is running, whole: the title printed, the gate `done`. */
+export function settleFrontSequence(): void {
+  settleSequence?.();
+}
+
 export function useFrontSequence(motionToken: number): FrontSequenceStage {
   const [stage, setStage] = useState<FrontSequenceStage>('idle');
   /** The one way to finish the run from outside the loop; `null` when there is nothing to finish. */
@@ -63,7 +80,7 @@ export function useFrontSequence(motionToken: number): FrontSequenceStage {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const root = document.documentElement;
     const ran = root.getAttribute(GATE_ATTRIBUTE) === GATE_DONE;
-    if (!shouldRun({ hash: window.location.hash, scrollY: window.scrollY, reduced: reducedMotion(), ran })) {
+    if (!shouldRun({ hash: window.location.hash, scrollY: window.scrollY, reduced: reducedMotion(), ran, restore: resumePending() })) {
       return;
     }
 
@@ -105,6 +122,7 @@ export function useFrontSequence(motionToken: number): FrontSequenceStage {
       setStage('done');
     };
     settleRef.current = settle;
+    settleSequence = settle;
 
     // §2: one timer for the whole budget. Whatever the run did, the gate is `done` at 1 920 ms
     // and the page is final — the title's own loop can never leave a block waiting.
@@ -118,6 +136,7 @@ export function useFrontSequence(motionToken: number): FrontSequenceStage {
       stop();
       detach();
       settleRef.current = null;
+      if (settleSequence === settle) settleSequence = null;
     };
   }, []);
 

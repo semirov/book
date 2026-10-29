@@ -18,7 +18,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getChapters, getFront, getState } from './api.ts';
-import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
+import { chapterInViewport, elementInViewport } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
 import { AgeGate } from './components/AgeGate.tsx';
@@ -62,7 +62,7 @@ import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { usePending } from './usePending.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
-import { useDeepLink } from './lib/useDeepLink.ts';
+import { usePosition, jumpToChapter } from './lib/usePosition.ts';
 import { setChangeOpener } from './lib/changeDoor.ts';
 import { useChangeDoor } from './useChangeDoor.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
@@ -175,7 +175,7 @@ export function App() {
   // BOOK-225 — the deep link lands only once the chapters exist: a `#ch-12` on a gated page has
   // nowhere to land, and `useDeepLink` remembers what it acted on, so acting too early would
   // consume the link and never re-land it after the answer.
-  useDeepLink(data !== null && age.acknowledged);
+  usePosition(data !== null && age.acknowledged, viewer.signedIn);
   const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
     setData((current) => (current === null ? current : withAuthorsCount(current, count)));
   }, []);
@@ -395,7 +395,7 @@ export function App() {
       document.getElementById('toc')?.scrollIntoView({ behavior: 'auto', block: 'start' });
       return;
     }
-    scrollToChapter(target.n);
+    jumpToChapter(target.n);
   };
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,

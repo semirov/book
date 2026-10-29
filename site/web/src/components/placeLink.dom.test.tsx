@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LANDING_PX } from '../lib/headerOffset.ts';
 import { PLACE_NOTE } from '../lib/place.ts';
 import { currentRecord, resetRecordMemory } from '../lib/record.ts';
 import { currentFiling, hideFiling } from '../lib/useFiling.ts';
@@ -22,7 +23,6 @@ import {
   closePlacePage,
   type PlacePage,
 } from './placeStub.ts';
-import { BREATHING_PX } from '../lib/headerOffset.ts';
 
 /**
  * BOOK-168 — the door's landing, and the **record** it opens.
@@ -98,9 +98,11 @@ describe('a filing lands on its paragraph and opens the record', () => {
     await act(async () => { link.click(); });
     await page.settle();
 
+    // top(#ch-3-b12) = 1 200 document px; the reading line is the measured head + landing air.
+    expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo).toHaveBeenCalledWith({ top: BLOCK_TOP - OFFSET_TOP, behavior: 'auto' });
     const landedTop = document.getElementById('ch-3-b12')!.getBoundingClientRect().top;
-    expect(Math.abs(landedTop - (HEADER_PX + BREATHING_PX))).toBeLessThanOrEqual(2);
+    expect(Math.abs(landedTop - (HEADER_PX + LANDING_PX))).toBeLessThanOrEqual(2);
 
     // The record, not a card: the filing's id and the sentence as it stands.
     expect(currentRecord()?.filing?.id).toBe('cmt_1');

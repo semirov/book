@@ -2,7 +2,7 @@
 import { AUTHOR_COLORS, type CommentDto } from '@book/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BREATHING_PX } from './headerOffset.ts';
+import { LANDING_PX } from './headerOffset.ts';
 import {
   PLACE_RETRY_FRAMES,
   landFragment,
@@ -134,7 +134,7 @@ describe('a landing that asks the page first', () => {
     expect(target?.chapterOnly).toBe(false);
     expect(target?.element.id).toBe('ch-3-b12');
     // The chapter's mouth is where its own read starts, so the page went there first…
-    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1000 - BREATHING_PX, behavior: 'auto' });
+    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1000 - LANDING_PX, behavior: 'auto' });
     // …and the paragraph that arrived needed no frame at all.
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(frames).toHaveLength(0);
@@ -155,7 +155,7 @@ describe('a landing that asks the page first', () => {
     expect(target?.element.id).toBe('ch-3-b12');
     expect(frames).toHaveLength(3);
     // The jump to the chapter happened before a single frame was spent waiting.
-    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1000 - BREATHING_PX);
+    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1000 - LANDING_PX);
   });
 
   it('sees the commit itself, without spending a frame on it', async () => {
@@ -189,7 +189,7 @@ describe('a landing that asks the page first', () => {
     expect(frames).toBe(3);
     expect(target?.chapterOnly).toBe(true);
     expect(target?.element.id).toBe('ch-3');
-    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1000 - BREATHING_PX);
+    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1000 - LANDING_PX);
   });
 
   it('does not wait for an anchor the log says is gone: the note is printed at once', async () => {
@@ -296,8 +296,8 @@ describe('a copied fragment lands with the page’s own measurement', () => {
 
     expect(landed).toBe(true);
     expect(scrollTo).toHaveBeenCalledTimes(1);
-    // The paragraph's top at the reading line: the measured head (0 here) plus the breathing.
-    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1200 - BREATHING_PX, behavior: 'auto' });
+    // The paragraph's top at the reading line: the measured head (0 here) plus the landing air.
+    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1200 - LANDING_PX, behavior: 'auto' });
   });
 
   it('jumps to the chapter first, waits for prose that is still being read, then lands it', async () => {
@@ -315,9 +315,9 @@ describe('a copied fragment lands with the page’s own measurement', () => {
     expect(landed).toBe(true);
     expect(turns).toBe(2);
     // The chapter's mouth first — that jump is what starts the chapter's own read…
-    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1000 - BREATHING_PX, behavior: 'auto' });
+    expect(scrollTo.mock.calls[0]?.[0]).toEqual({ top: 1000 - LANDING_PX, behavior: 'auto' });
     // …then the paragraph the read delivered, in one more jump.
-    expect(scrollTo.mock.calls[1]?.[0]).toEqual({ top: 1500 - BREATHING_PX, behavior: 'auto' });
+    expect(scrollTo.mock.calls[1]?.[0]).toEqual({ top: 1500 - LANDING_PX, behavior: 'auto' });
     expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 
@@ -326,10 +326,10 @@ describe('a copied fragment lands with the page’s own measurement', () => {
     const landed = await landFragment({ fragment: { chapter: 3, blockIndex: 12 }, frames: 2 });
 
     expect(landed).toBe(true);
-    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1100 - BREATHING_PX);
+    expect(scrollTo.mock.calls[0]?.[0]?.top).toBe(1100 - LANDING_PX);
     // The first jump to the chapter already is the honest place; the second one re-measures it
     // after the wait, and neither of them invents a paragraph.
-    expect(scrollTo.mock.calls.at(-1)?.[0]?.top).toBe(1100 - BREATHING_PX);
+    expect(scrollTo.mock.calls.at(-1)?.[0]?.top).toBe(1100 - LANDING_PX);
   });
 
   it('moves nothing and claims nothing for a chapter that is not on this page', async () => {
@@ -371,6 +371,6 @@ describe('a copied fragment lands with the page’s own measurement', () => {
 
     // The stale landing claims nothing and never scrolls to a paragraph it did not wait for.
     expect(landed).toBe(false);
-    expect(scrollTo.mock.calls.every((call) => call[0]?.top !== 1200 - BREATHING_PX)).toBe(true);
+    expect(scrollTo.mock.calls.every((call) => call[0]?.top !== 1200 - LANDING_PX)).toBe(true);
   });
 });

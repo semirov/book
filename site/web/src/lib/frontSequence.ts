@@ -94,15 +94,21 @@ export type FrontSequenceInput = {
   reduced: boolean;
   /** The document already reached `done`: a later commit inherits the final state. */
   ran: boolean;
+  /**
+   * BOOK-209 — this load is a **resume**: a remembered place will be restored, so the reader did
+   * not open on the cover any more than a deep link did. The sequence is not played over it.
+   */
+  restore?: boolean;
 };
 
 /**
  * §2b, §2c, §5 — the sequence is for a page load that opened on the cover, on a machine that
  * did not ask for still paper, and only once per document: nothing is stored, nothing is
- * unlearned, and a gesture any input ends is not a gimmick.
+ * unlearned, and a gesture any input ends is not a gimmick. A load that arrives with a fragment,
+ * a restored scroll or a remembered place (BOOK-209) did not open on the cover.
  */
 export function shouldRun(input: FrontSequenceInput): boolean {
-  if (input.ran || input.reduced) return false;
+  if (input.ran || input.reduced || input.restore === true) return false;
   if (input.hash !== '') return false;
   return input.scrollY <= 0;
 }

@@ -26,8 +26,8 @@ import { useDeepLink } from './useDeepLink.ts';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-function Probe({ ready }: { ready: boolean }) {
-  useDeepLink(ready);
+function Probe({ ready, restore }: { ready: boolean; restore?: (state: unknown) => boolean }) {
+  useDeepLink(ready, restore);
   return null;
 }
 
@@ -138,9 +138,9 @@ describe('useDeepLink', () => {
     await settle();
 
     expect(scroll).toHaveBeenCalledTimes(1);
-    // The paragraph's top (1 400) at the reading line: no head on this page, so the breathing
-    // space alone (8 px) — the same sum `landingScroll` states as numbers. One jump, no travel.
-    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 1392, behavior: 'auto' });
+    // The paragraph's top (1 400) at the reading line: no head on this page, so the landing air
+    // alone (`LANDING_PX`, 16 px) — the same sum `landingScroll` states as numbers. One jump.
+    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 1384, behavior: 'auto' });
     expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 3 });
   });
 
@@ -153,7 +153,7 @@ describe('useDeepLink', () => {
     await act(async () => root.render(<Probe ready />));
     await settle();
     expect(scroll).toHaveBeenCalledTimes(1);
-    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 992, behavior: 'auto' });
+    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 984, behavior: 'auto' });
     expect(track).not.toHaveBeenCalled();
 
     // The read commits the paragraph a few frames later: the landing finishes on it.
@@ -164,7 +164,7 @@ describe('useDeepLink', () => {
     await pump(3);
 
     expect(scroll).toHaveBeenCalledTimes(2);
-    expect(scroll.mock.calls[1]?.[0]).toEqual({ top: 1392, behavior: 'auto' });
+    expect(scroll.mock.calls[1]?.[0]).toEqual({ top: 1384, behavior: 'auto' });
     expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 3 });
   });
 
@@ -205,6 +205,48 @@ describe('useDeepLink', () => {
     await settle();
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(track).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a popstate that carries a place to the position layer, and marks its hash acted on', async () => {
+    // BOOK-209 — the entry's own place wins over the fragment's nominal anchor, and the
+    // `hashchange` that follows the same entry is not a second open of the same chapter.
+    chapter(7);
+    const restore = vi.fn((state: unknown): boolean => state !== null);
+    await act(async () => root.render(<Probe ready restore={restore} />));
+    await settle();
+    expect(scroll).not.toHaveBeenCalled();
+
+    history.replaceState({ bookPlace: { chapter: 7 } }, '', '#ch-7');
+    const state = { bookPlace: { chapter: 7 } };
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state }));
+    });
+    await settle();
+    expect(restore).toHaveBeenCalledWith(state);
+    // Claimed: the fragment is not landed here, the position layer owns the landing.
+    expect(scroll).not.toHaveBeenCalled();
+
+    await act(async () => window.dispatchEvent(new HashChangeEvent('hashchange')));
+    await settle();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it('consults the restore seam on every popstate, and lands the fragment when it declines', async () => {
+    chapter(7);
+    const restore = vi.fn(() => false);
+    await act(async () => root.render(<Probe ready restore={restore} />));
+    await settle();
+    // The entry the browser restores names a chapter and carries no place of its own.
+    history.replaceState(null, '', '#ch-7');
+
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    });
+    await settle();
+    expect(restore).toHaveBeenCalledWith(null);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 7 });
   });
 
   it('claims no open for a fragment that moved nothing', async () => {

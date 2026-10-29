@@ -2,7 +2,7 @@
 import { chapterStartPages, PAGE_CHARS, TOTAL_CHAPTERS, totalPages, type ChapterLength } from '@book/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { BREATHING_PX } from './headerOffset.ts';
+import { LANDING_PX } from './headerOffset.ts';
 import {
   ANCHOR_EPS,
   atDocumentEnd,
@@ -32,11 +32,11 @@ describe('readingLine', () => {
 
   it('falls back to the page’s own measurement, never to a negative or a fractions-of-nothing line', () => {
     // There is no head and no token on this page (jsdom lays nothing out), so the fallback is
-    // `offsetTopOfPage()` itself: the breathing space and nothing else. No second literal.
-    expect(headOffset()).toBe(BREATHING_PX);
-    expect(readingLine(Number.NaN)).toBe(BREATHING_PX + ANCHOR_EPS);
-    expect(readingLine(0)).toBe(BREATHING_PX + ANCHOR_EPS);
-    expect(readingLine(-40)).toBe(BREATHING_PX + ANCHOR_EPS);
+    // `offsetTopOfPage()` itself: the landing air and nothing else. No second literal.
+    expect(headOffset()).toBe(LANDING_PX);
+    expect(readingLine(Number.NaN)).toBe(LANDING_PX + ANCHOR_EPS);
+    expect(readingLine(0)).toBe(LANDING_PX + ANCHOR_EPS);
+    expect(readingLine(-40)).toBe(LANDING_PX + ANCHOR_EPS);
   });
 });
 
@@ -52,9 +52,9 @@ describe('headOffset', () => {
     // One source: an unreadable token falls back to the head’s own measured height — no head
     // here, so the breathing space alone — never to a number copied out of the sheet.
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
-    expect(headOffset()).toBe(BREATHING_PX);
+    expect(headOffset()).toBe(LANDING_PX);
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'auto' }));
-    expect(headOffset()).toBe(BREATHING_PX);
+    expect(headOffset()).toBe(LANDING_PX);
   });
 });
 

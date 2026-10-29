@@ -15,6 +15,7 @@ import { migrateV29 } from './migrateV29.ts';
 import { migrateV30 } from './migrateV30.ts';
 import { migrateV32 } from './migrateV32.ts';
 import { migrateV33 } from './migrateV33.ts';
+import { migrateV34 } from './migrateV34.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -337,6 +338,8 @@ const MIGRATIONS: Migration[] = [
   // BOOK-173: `migrateV33.ts` — the frozen plan, its mode, price and verification record
   // (BOOK-206 took 30, BOOK-117's `reopened_at` took 31, BOOK-218's `comments.number` took 32).
   { to: 33, up: migrateV33 },
+  // BOOK-209: `migrateV34.ts` — the reader's place, one row per identity (BOOK-173 took 33).
+  { to: 34, up: migrateV34 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */
