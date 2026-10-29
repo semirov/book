@@ -21,13 +21,29 @@
 
 import { readFileSync } from 'node:fs';
 
-import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
+import type { BudgetDto, WriterAssignment } from '@book/shared';
 
-import type { Provenance } from '../engine/model.ts';
 import type { ChapterTextView, StepStateView } from '../engine/text.ts';
 import type { PremiseCause } from '../engine/types.ts';
 
 export type { ChapterTextView, StepStateView };
+// BOOK-206's triage wire shapes live in `triageView.ts`; this client's surface did not move.
+export type {
+  TriageAskView,
+  TriageFailInput,
+  TriageFailView,
+  TriageNextView,
+  TriageVerdictInput,
+  TriageVerdictView,
+} from './triageView.ts';
+import type {
+  TriageAskView,
+  TriageFailInput,
+  TriageFailView,
+  TriageNextView,
+  TriageVerdictInput,
+  TriageVerdictView,
+} from './triageView.ts';
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -79,189 +95,48 @@ export type EngineStateView = {
   budget: BudgetDto | null;
 };
 
+
+// The gate and close wire shapes live in `wire.ts`; this client imports and re-exports them.
 import type {
-  TriageAskView,
-  TriageFailInput,
-  TriageFailView,
-  TriageNextView,
-  TriageVerdictInput,
-  TriageVerdictView,
-} from './triageView.ts';
+  DoneInput,
+  DoneView,
+  EscalateSpend,
+  GateAssignmentView,
+  LandInput,
+  LandView,
+  RecordPassInput,
+  RestoreView,
+  RightsAssignmentView,
+  RightsVerdictInput,
+  StartInput,
+  StartView,
+  TranscriptRowInput,
+  TranscriptStored,
+  VerdictInput,
+  VerdictView,
+  WriterStateView,
+} from './wire.ts';
 
 export type {
-  TriageAskView,
-  TriageFailInput,
-  TriageFailView,
-  TriageNextView,
-  TriageVerdictInput,
-  TriageVerdictView,
-} from './triageView.ts';
-
-/** What a gate session receives (`engine/gates.ts` `GateAssignment`), narrowed to what we read. */
-/** Gate B's assignment: its own shape (a rule, no prose findings), `rule: null` for a clean scan. */
-export type RightsAssignmentView = {
-  stepId: string;
-  role: 'rights';
-  session: string;
-  pass: string;
-  chapter: number | null;
-  landedSha: string | null;
-  rule: string | null;
-  block: number | null;
-  expiresAt: string;
-};
-
-export type GateAssignmentView = {
-  stepId: string;
-  role: 'editor' | 'consultant';
-  session: string;
-  pass: string;
-  chapter: number | null;
-  boundary: string;
-  cycle: number;
-  landedSha: string | null;
-  note: string | null;
-  indexSlice: string | null;
-  expiresAt: string;
-};
-
-/**
- * The writer's relevance answer, sent with `start` (§6A.7): under FIFO a moved base is the normal
- * case, and only the writer may say what the change still means.
- */
-export type StartInput = {
-  decision?: 'adapt' | 'drop' | 'void';
-  reason?: string;
-  intent?: string;
-};
-
-/** What `land` sends: the writer's text, held in memory and never written to a file (BOOK-187). */
-export type LandInput = {
-  text?: string;
-  frontRaw?: string;
-  noWrite?: boolean;
-  rev?: number;
-};
-
-/** `--revert` as a restore revision: what the engine published, and what it replaced. */
-export type RestoreView = { rev: number; sha: string; previousRev: number };
-
-/**
- * BOOK-187 AC5: the lane's counter. A day other than the row's reads as a fresh one (`passes: 0`),
- * so the writer resets nothing at midnight.
- */
-export type WriterStateView = { day: string; passes: number; lastPassAt: string | null; pauseUntil: string | null };
-
-/** What `recordPass` sends: one pass counted, and optionally when the lane may run again. */
-export type RecordPassInput = { day: string; spent: boolean; pauseUntil?: string | null };
-
-/**
- * BOOK-187 AC7: the redacted receipt of a pass, as the writer built it — `transcript.ts`'s
- * `TranscriptRow` seen from the wire side, kept equal by the compiler, not by an import.
- */
-export type TranscriptRowInput = {
-  seq: number;
-  at: number;
-  role: 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant' | 'gate:rights';
-  tokensIn: number;
-  tokensOut: number;
-  promptBundle: string | null;
-  content: string;
-};
-
-export type TranscriptStored = { stored: number; pruned: number };
-
-export type StartView = {
-  leaseId: string;
-  stepId?: string;
-  chapter?: number | 'front';
-  expectedRev?: number;
-  sha: string;
-  /** Absent on the landed answer (below): a step that already landed has no pre-image to size. */
-  chars?: number;
-  /**
-   * BOOK-219: a step that already landed answers `landed: true` and makes no change — the
-   * revision it stands at is `revAfter`, which is what a resumed pass's own re-landing can go
-   * back to.
-   */
-  landed?: boolean;
-  revAfter?: number | null;
-};
-
-export type LandView = {
-  landed: true;
-  revAfter: number;
-  sha: string;
-  changed: boolean;
-  deltaRatio: number;
-  blocksTouched: number;
-};
-
-export type VerdictView = {
-  action: 'close' | 'revise' | 'publish_with_finding';
-  cycle: number;
-  verdict: 'HOLDS' | 'GAP';
-  downgraded: boolean;
-  late: boolean;
-};
-
-/**
- * What a close answers. `STEP_CLOSED` from `done` is not a failure but that close: the step is
- * closed either way (`pass.ts`, the owner's rule of 2026-10-28).
- */
-export type DoneView = {
-  stepId: string;
-  outcome: string;
-  cascadeId: string | null;
-  changeStatus: string | null;
-};
-
-export type VerdictInput = {
-  stepId: string;
-  role: 'editor' | 'consultant';
-  session: string;
-  verdict: 'HOLDS' | 'GAP';
-  findings: Finding[];
-  model?: string;
-  tokensIn?: number;
-  tokensOut?: number;
-};
-
-/** BOOK-61: Gate B answers another question with another enum; `rule` accompanies a REFUSED. */
-export type RightsVerdictInput = {
-  stepId: string;
-  role: 'rights';
-  session: string;
-  verdict: 'CLEAR' | 'REFUSED';
-  rule?: string | null;
-  model?: string;
-  tokensIn?: number;
-  tokensOut?: number;
-};
-
-export type DoneInput = {
-  leaseId: string;
-  note?: string;
-  model?: string;
-  tokensIn?: number;
-  tokensOut?: number;
-  seams?: unknown[];
-  /**
-   * BOOK-219: `pipeline-estimated` when any call of the pass had its usage read off the text.
-   * The ledger row is still priced (`priced = 1`) — the word says the numbers are an estimate.
-   */
-  provenance?: Provenance;
-};
-
-/** What an escalation reports about the model calls it made before it parked (BOOK-117). */
-export type EscalateSpend = {
-  /** The model that ran; omitted when none did — the engine's own default is `null` (ADR-038 §2). */
-  model?: string;
-  tokensIn: number;
-  tokensOut: number;
-  /** BOOK-219: a park after a paid call is priced too, and says whether its numbers are estimated. */
-  provenance?: Provenance;
-};
+  DoneInput,
+  DoneView,
+  EscalateSpend,
+  GateAssignmentView,
+  GatePlanView,
+  LandInput,
+  LandView,
+  RecordPassInput,
+  RestoreView,
+  RightsAssignmentView,
+  RightsVerdictInput,
+  StartInput,
+  StartView,
+  TranscriptRowInput,
+  TranscriptStored,
+  VerdictInput,
+  VerdictView,
+  WriterStateView,
+} from './wire.ts';
 
 export type EngineClient = {
   state(): Promise<EngineStateView>;
@@ -273,6 +148,8 @@ export type EngineClient = {
   /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */
   nextRightsGate(session: string): Promise<RightsAssignmentView | null>;
   pass(chapter: number, session: string): Promise<WriterAssignment>;
+  /** BOOK-173: one chapter of a ripple already planned — its own step, lease and gates. */
+  openRipple(chapter: number, session: string, changeId: string): Promise<WriterAssignment>;
   start(leaseId: string, input?: StartInput): Promise<StartView>;
   land(leaseId: string, input?: LandInput): Promise<LandView>;
   /** One step as the engine holds it: the read for an answer that never arrived (BOOK-219). */
@@ -298,6 +175,11 @@ export type EngineClient = {
   recordPass(input: RecordPassInput): Promise<WriterStateView>;
   /** BOOK-187 AC7: store the pass's redacted receipt once, after the outcome is known. */
   transcript(input: { passId: string; rows: readonly TranscriptRowInput[] }): Promise<TranscriptStored>;
+  /**
+   * BOOK-DOC-80: the process's boot marker, the flag the sample queue consumes. A row (`meta`),
+   * written through the engine because the writer holds no database handle.
+   */
+  writerBoot(): Promise<{ marked: boolean }>;
   /** BOOK-206: claim one due filing for a read, or learn that there is none (or no money). */
   nextTriage(session: string): Promise<TriageNextView>;
   /** Store one validated answer — once per attempt; a second one answers `already`. */
@@ -411,6 +293,8 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     nextGate: async (role, session) =>
       (await post('/internal/next', { role, session })) as GateAssignmentView | null,
     pass: async (chapter, session) => (await post('/internal/pass', { chapter, session })) as WriterAssignment,
+    openRipple: async (chapter, session, changeId) =>
+      (await post('/internal/ripple/open', { chapter, session, changeId })) as WriterAssignment,
     start: async (leaseId, input) =>
       (await post('/internal/start', {
         leaseId,
@@ -427,6 +311,9 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
         ...(input?.frontRaw === undefined ? {} : { frontRaw: input.frontRaw }),
         ...(input?.noWrite === undefined ? {} : { noWrite: input.noWrite }),
         ...(input?.rev === undefined ? {} : { rev: input.rev }),
+        ...(input?.sentences === undefined ? {} : { sentences: input.sentences }),
+        ...(input?.mode === undefined ? {} : { mode: input.mode }),
+        ...(input?.estimateUsd === undefined ? {} : { estimateUsd: input.estimateUsd }),
       })) as LandView,
     // `trace` answers `{ kind: 'step', step: { step, gates, rights } }`: the row is nested once.
     step: async (stepId) => {
@@ -471,6 +358,7 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       })) as WriterStateView,
     transcript: async (input) =>
       (await post('/internal/transcript', { passId: input.passId, rows: input.rows })) as TranscriptStored,
+    writerBoot: async () => (await post('/internal/writer-boot', {})) as { marked: boolean },
     nextTriage: async (session) => {
       const data = await post('/internal/triage/next', { session });
       if (data === null) return { assignment: null, reason: null };

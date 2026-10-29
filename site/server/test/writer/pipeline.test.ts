@@ -84,9 +84,12 @@ describe('writer/pipeline costUsd — the pass arithmetic', () => {
     expect(costUsd(pipeline.pricing, { in: 0, out: 0, cachedIn: 0 })).toBe(0);
   });
 
-  it('ignores the cache split a step cannot record, so it can only overstate a pass', () => {
+  it('splits cached input out of the total and charges the cache rate', () => {
+    // BOOK-173 §5: `prompt_tokens` = hit + miss, so `in` carries both and the split is the bill.
+    // 8 000 in, all cached, no output: 8000/1e6*0.022 = 0.000176; the same call uncached costs 0.00528.
     const withCache = costUsd(pipeline.pricing, { in: 8_000, out: 0, cachedIn: 8_000 });
     const withoutCache = costUsd(pipeline.pricing, { in: 8_000, out: 0, cachedIn: 0 });
-    expect(withCache).toBe(withoutCache);
+    expect(withCache).toBeCloseTo(0.000176, 9);
+    expect(withCache).toBeLessThan(withoutCache);
   });
 });

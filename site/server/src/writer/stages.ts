@@ -14,6 +14,8 @@
 
 import { STAGE_SUMMARY_MAX_CHARS, type PassStage, type StageSpan } from '@book/shared';
 
+import type { ModeChoice, ModeReason } from './mode.ts';
+
 /** The one method the emitter needs: the client's `stage` (or a test double). */
 export type StageSink = {
   stage(event: Record<string, unknown>): Promise<unknown> | unknown;
@@ -54,6 +56,32 @@ function roleName(role: 'editor' | 'consultant'): string {
   return role === 'editor' ? 'редактор' : 'консультант';
 }
 
+/**
+ * BOOK-173 §4: the mode is one fact on the `read` line. The reason is a closed word, not a
+ * sentence: the reader sees whether the pass patched or rewrote, and why it chose that.
+ */
+const MODE_REASONS: Record<ModeReason, string> = {
+  'slot-empty': 'слот пуст',
+  'chapter-scope': 'заявка про главу',
+  'phrase-scope': 'заявка про фразу',
+  // BOOK-173 §3: the filing is anchored on a sentence the book still holds — the unit rule's door.
+  'sentence-anchor': 'заявка привязана к предложению',
+  'no-scope': 'заявка не про фразу',
+  model: 'просит модель',
+  revision: 'замечания гейта',
+  'default-rewrite': 'переключатель WRITER_MODE_DEFAULT',
+};
+
+/**
+ * BOOK-173 §5: the one factual line a no-op pass owes. It is the change card's word and the lane
+ * log's line — the same sentence, because two words for one fact is how a record starts lying.
+ */
+export const NO_OP_LINE = 'перепись не изменила ни одного байта';
+
+export function modeLine(choice: ModeChoice): string {
+  return `режим: ${choice.mode === 'patch' ? 'правка' : 'перепись'} (${MODE_REASONS[choice.reason]})`;
+}
+
 export const stageSummary = {
   queued: (input: {
     chapter: number;
@@ -71,12 +99,13 @@ export const stageSummary = {
     return line([`проход открыт: глава ${String(input.chapter)}, задание ${input.pass}`, task]);
   },
 
-  read: (input: { sections: number; chars: number; neighbours: readonly number[] }): string =>
+  read: (input: { sections: number; chars: number; neighbours: readonly number[]; mode?: ModeChoice | null }): string =>
     line([
       `промпт собран: ${String(input.sections)} разделов, ${grouped(input.chars)} знаков`,
       input.neighbours.length === 0
         ? 'написанных соседей нет'
         : `соседи: ${input.neighbours.map((n) => String(n)).join(', ')}`,
+      input.mode === undefined || input.mode === null ? null : modeLine(input.mode),
     ]),
 
   draftingStarted: (input: { call: number; chars: number; purpose: 'draft' | 'repair' | 'continue' }): string =>
@@ -124,6 +153,10 @@ export const stageSummary = {
     blocks: number;
     tokensIn: number;
     tokensOut: number;
+    /** BOOK-173: the share of the input the provider served from its cache. */
+    tokensCachedIn?: number;
+    /** BOOK-DOC-80: which gates judged the chapter — `local only` is a fact, not a silence. */
+    gates?: string | null;
     costUsd: number;
     /** BOOK-219: the tokens were read off the text, so the number is `≈$0.0465`, not `$0.0465`. */
     estimated?: boolean;
@@ -131,6 +164,11 @@ export const stageSummary = {
     line([
       `глава ${String(input.chapter)}: ${grouped(input.chars)} знаков, ${String(input.blocks)} абзацев`,
       `${grouped(input.tokensIn)} → ${grouped(input.tokensOut)} токенов`,
+      input.tokensCachedIn === undefined || input.tokensCachedIn === 0
+        ? null
+        : `кэш ${grouped(input.tokensCachedIn)}`,
+      input.gates === undefined || input.gates === null ? null : input.gates,
+      // BOOK-219: tokens read off the text are named as an estimate, never as a metered price.
       input.estimated === true ? `≈${money(input.costUsd)}` : money(input.costUsd),
     ]),
 

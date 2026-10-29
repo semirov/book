@@ -168,9 +168,11 @@ export function createEngineFixture(options: {
       return nextRaw(input);
     };
     const passRaw = engine.openChapterPass.bind(engine);
-    engine.openChapterPass = (chapter, session) => {
-      fileIfEmpty(chapter);
-      return passRaw(chapter, session);
+    // BOOK-173: a ripple step (`changeId` present) is never given a filing of its own — the change
+    // it serves already exists, and the chapter it patches is written.
+    engine.openChapterPass = (chapter, session, changeId) => {
+      if (changeId === undefined) fileIfEmpty(chapter);
+      return passRaw(chapter, session, changeId);
     };
   }
 

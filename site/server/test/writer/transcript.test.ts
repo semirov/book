@@ -32,6 +32,8 @@ function callOf(overrides: Partial<CallRecord> = {}): CallRecord {
     user: `замысел: ${PROSE}`,
     answer: `Глава сорок\n\n${PROSE}\n\n${PROSE}`,
     usage: { in: 1_234, out: 567, cachedIn: 0 },
+    cachedIn: 0,
+    prefixSha256: sha256Hex('prefix'),
     ...overrides,
   };
 }

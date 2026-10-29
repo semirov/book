@@ -52,7 +52,8 @@ describe('a chapter whose frame moved is never landed', () => {
     const original = withFrame('исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
-      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 65 появляется документ о допуске' });
+      // A whole-chapter filing (scope `chapter`): the pass rewrites, which is the landing under test.
+      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 65 появляется документ о допуске', scopeHint: 'chapter' });
 
       // The model retypes the frame with a doubled space: the lane's validator collapses it and
       // lets the answer through, so the landing itself is what has to refuse.

@@ -14,6 +14,7 @@ import { migrateV28 } from './migrateV28.ts';
 import { migrateV29 } from './migrateV29.ts';
 import { migrateV30 } from './migrateV30.ts';
 import { migrateV32 } from './migrateV32.ts';
+import { migrateV33 } from './migrateV33.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -303,10 +304,9 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // BOOK-117 (owner, 2026-10-28): who ran a pass. A 'pipeline' step is the writer lane on the
-    // pinned model; an 'operator' step is a repair that closes on the model it actually used.
-    // The ledger keeps the same word, so the money and the history agree about the provenance.
-    // v21, not v20: BOOK-158 took 20 first, and an install may already have run it.
+    // BOOK-117 (owner, 2026-10-28): who ran a pass — the writer lane on the pinned model, or a
+    // repair closing on the model it used. The ledger keeps the same word. v21, not v20: BOOK-158
+    // took 20 first and an install may already have run it.
     to: 21,
     up(db) {
       addColumn(db, 'steps', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
@@ -325,7 +325,7 @@ const MIGRATIONS: Migration[] = [
   { to: 27, up: migrateV27 },
   // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the transcripts, the deltas.
   { to: 28, up: migrateV28 },
-  // BOOK-185 stage 3 (BOOK-DOC-77, ADR-040 §2.1): `migrateV29.ts` — runs, facts, edges, threads.
+  // BOOK-185 stage 3 (BOOK-DOC-77): `migrateV29.ts` — runs, facts, edges, threads.
   { to: 29, up: migrateV29 },
   // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict.
   { to: 30, up: migrateV30 },
@@ -334,6 +334,9 @@ const MIGRATIONS: Migration[] = [
   { to: 31, up(db) { addColumn(db, 'steps', 'reopened_at', 'TEXT'); } },
   // BOOK-218: `migrateV32.ts` — the filing's own number, backfilled by the old rowid.
   { to: 32, up: migrateV32 },
+  // BOOK-173: `migrateV33.ts` — the frozen plan, its mode, price and verification record
+  // (BOOK-206 took 30, BOOK-117's `reopened_at` took 31, BOOK-218's `comments.number` took 32).
+  { to: 33, up: migrateV33 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

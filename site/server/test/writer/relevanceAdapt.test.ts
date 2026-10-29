@@ -21,6 +21,13 @@ import { startWriting } from '../../src/writer/relevance.ts';
 import { accept, seed } from '../engine/premiseHelpers.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
+/**
+ * The seam these tests prove is the close and the way back, so they write a whole chapter:
+ * `WRITER_MODE_DEFAULT=rewrite` is the owner's switch, and the patch default has its own
+ * files (`patchPass.test.ts`, `noOpPass.test.ts`).
+ */
+const REWRITE = { env: { WRITER_MODE_DEFAULT: 'rewrite' } };
+
 const CHAPTER = 40;
 const AT = '2026-10-25T09:00:00Z';
 
@@ -55,7 +62,7 @@ function changeRow(harness: Harness, id: string): Record<string, unknown> | unde
 describe('the writer answers a moved base itself', () => {
   it('adapts the second change on a chapter and closes it `done` as `adapted`', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       viewer(harness);
       // Two filings against the same revision: the first rewrite makes the second one's base move.

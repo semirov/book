@@ -121,6 +121,9 @@ const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
            WHERE c.basis = 0 AND c.n <> 1`,
   },
   { key: 'sentence_touches', label: 'sentence_touches', sql: 'SELECT COUNT(*) AS n FROM sentence_touches' },
+  // BOOK-173: the plans are content too — a reset that left one behind would name a change the
+  // wipe removed.
+  { key: 'change_plans', label: 'change_plans', sql: 'SELECT COUNT(*) AS n FROM change_plans' },
   { key: 'overwrites', label: 'overwrites', sql: 'SELECT COUNT(*) AS n FROM overwrites' },
   { key: 'contributions', label: 'contributions', sql: 'SELECT COUNT(*) AS n FROM contributions' },
   {

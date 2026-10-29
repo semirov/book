@@ -109,11 +109,23 @@ one implementation of "open a draft step, ride its premise, take its lease".
 - `--dry-run` — resolve config, prompt, assignment and validation shape; **zero** model calls,
   nothing written, no transcript.
 - `--loop` — the supervised shape: one pass, then sleep; the launchd job `dev.book-writer`.
+- `--ripple`, `--plan ID`, `--audit-samples [N]` — **operator commands**, not the lane: they need
+  the ledger and open the volume, so they live in `site/bin/ledger.mjs` (`plan <id>`, `ripple`,
+  `audit [N]`) and the writer refuses the flag with that line. The graph they read is filled by
+  BOOK-185's extractor, `node site/bin/graph.mjs` — never by the writer.
 - `--revert --chapter N [--rev R]` — publish the earlier text as a **new** revision through
   `POST /internal/restore` (`cause_kind='restore'`); the old text is read from the revision's
   snapshot row, never from a file. The revert prints the new revision and the sha it verified.
   A pre-image file does not exist: nothing the writer holds could be lost, because the text was
   never written anywhere but the database.
+
+**The mode default is a switch, not a constant** (BOOK-173 §4). `WRITER_MODE_DEFAULT` takes
+`patch` — the signed-off default: a filing on a sentence in a written chapter patches it — or
+`rewrite`, the owner's kill switch, which forces the whole-chapter path for every ordinary pass
+regardless of scope or anchor (a ripple chapter keeps its own mode: it is a consequence of a
+patch). An unknown value is refused at boot (`CONFIG_INVALID`), and the resolved value is printed
+in the config line. **Prod usage:** run with `WRITER_MODE_DEFAULT=rewrite` until the patch path is
+trusted, then remove the line — the default is `patch`.
 
 **Where the lane's own state lives.** Not in the data dir: `writer_state` (one row, the day's
 counter and the pause) and `pass_transcripts` (one row per model call, redacted to section ids,

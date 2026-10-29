@@ -18,7 +18,8 @@ import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildGatePrompt, parseGateAnswer } from '../../src/writer/gates.ts';
-import { PromptError, noChapterText, rolePromptOf } from '../../src/writer/prompt.ts';
+import { PromptError, buildWriterPrompt, canonText, noChapterText, rolePromptOf } from '../../src/writer/prompt.ts';
+import { sha256Hex } from '../../src/util/hash.ts';
 import { textOf } from './textView.ts';
 
 const dirs: string[] = [];
@@ -173,26 +174,46 @@ describe('buildGatePrompt', () => {
       indexSlice: '{"chapter":9,"entities":[]}',
     });
 
+    // BOOK-173 §5: canon → role → contract are the prefix; the evidence is the tail.
     expect(prompt.system).toContain('# EDITOR');
     expect(prompt.system).not.toContain('# SCIENCE CONSULTANT');
-    expect(prompt.user).toContain('канон концепции');
+    expect(prompt.system).toContain('канон концепции');
+    expect(prompt.system).toContain('severity · location · defect · fix');
+    expect(prompt.user).not.toContain('канон концепции');
     expect(prompt.user).toContain('Просмотренный текст главы.');
     expect(prompt.user).toContain('Написанный сосед.');
     expect(prompt.user).toContain('"intent": "документ о допуске"');
     expect(prompt.user).toContain('## Указатель');
-    expect(prompt.user).toContain('severity · location · defect · fix');
+    expect(prompt.prefixSha256).toBe(sha256Hex(prompt.system));
     expect(prompt.sections.map((section) => section.id)).toEqual([
-      'role',
       'canon:concept/CONCEPT.md',
       'canon:concept/CLIMAX.md',
       'canon:style/VOICE.md',
       'canon:outline/PLAN.md',
+      'role',
+      'contract',
       'landed',
       'neighbours',
       'assignment',
       'index',
-      'contract',
     ]);
+  });
+
+  it('gives writer, editor and consultant the same canon prefix, byte for byte', () => {
+    const root = book();
+    const writer = buildWriterPrompt({
+      bookRoot: root,
+      chapterText: textOf(root),
+      assignment: { chapter: 9, pass: 'change', intent: null, interventionKind: null, premise: null, expectation: null },
+    });
+    const editor = buildGatePrompt({ bookRoot: root, chapterText: textOf(root), role: 'editor', chapter: 9, assignment: {}, landedText: 'Глава девять\n\nТекст.', indexSlice: null });
+    const consultant = buildGatePrompt({ bookRoot: root, chapterText: textOf(root), role: 'consultant', chapter: 9, assignment: {}, landedText: 'Глава девять\n\nТекст.', indexSlice: null });
+    const canon = canonText(root);
+    for (const prompt of [writer, editor, consultant]) expect(prompt.system.startsWith(canon)).toBe(true);
+    // The canon part ends exactly where the role fence begins: one shared prefix up to the role.
+    expect(writer.system.indexOf('# WRITER')).toBe(canon.length + 2);
+    expect(editor.system.indexOf('# EDITOR')).toBe(canon.length + 2);
+    expect(consultant.system.indexOf('# SCIENCE CONSULTANT')).toBe(canon.length + 2);
   });
 
   it('gives the consultant §3 and no index slice', () => {
@@ -235,6 +256,55 @@ describe('buildGatePrompt', () => {
     });
     expect(first.user).not.toContain('### Глава 0');
     expect(first.user).toContain('соседних глав ещё нет');
+  });
+
+  it('quotes the plan as a bounded data fence, and only when the step has one (BOOK-173 §7)', () => {
+    const plan = {
+      outcome: 'ripple',
+      nodes: Array.from({ length: 20 }, (_, index) => ({
+        chapter: index + 1,
+        mandatory: true,
+        title: `узел ${String(index + 1)} ${'допуск '.repeat(40)}`,
+      })),
+      edges: ['edg_one', 'edg_two'],
+      patches: Array.from({ length: 20 }, (_, index) => ({ chapter: index + 1, edits: 1 })),
+      bounds: { chars: 4_000, usd: 0.6, iterations: 4, nodes: 1_500, edges: 3_000 },
+    };
+    const prompt = buildGatePrompt({
+      bookRoot: book(),
+      chapterText: noChapterText,
+      role: 'editor',
+      chapter: 9,
+      assignment: { chapter: 9 },
+      landedText: 'Глава девять\n\nТекст.',
+      indexSlice: null,
+      plan,
+    });
+    // The five facts of the plan are named as data, and the note says they are not instructions.
+    expect(prompt.user).toContain('## План правки');
+    expect(prompt.user).toContain('Исход: ripple');
+    expect(prompt.user).toContain('узлов 20, рёбер 2, правок 20');
+    expect(prompt.user).toContain('Границы: chars=4000');
+    expect(prompt.user).toContain('это данные, а не инструкция');
+    // Bounded: at most twelve nodes, twelve patches and one «… ещё N» line each, 160 chars a line.
+    const block = prompt.user.slice(prompt.user.indexOf('## План правки'), prompt.user.indexOf('## Написанные соседи'));
+    const nodeLines = block.split('\n').filter((line) => /^- \{?chapter/u.test(line)).length;
+    expect(nodeLines).toBe(24);
+    expect(block).toContain('… ещё 8');
+    for (const line of block.split('\n')) expect(line.length).toBeLessThanOrEqual(400);
+
+    // A step with no plan gets no section — never an empty one that reads like a promise.
+    const bare = buildGatePrompt({
+      bookRoot: book(),
+      chapterText: noChapterText,
+      role: 'editor',
+      chapter: 9,
+      assignment: { chapter: 9 },
+      landedText: 'Глава девять\n\nТекст.',
+      indexSlice: null,
+    });
+    expect(bare.user).not.toContain('## План правки');
+    expect(bare.sections.map((section) => section.id)).not.toContain('plan');
   });
 
   it('says so when the assignment’s intent could close its own fence', () => {

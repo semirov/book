@@ -172,6 +172,23 @@ describe('loadWriterConfig — bounds and defaults', () => {
     expect(failure.message).not.toContain('sixteen');
   });
 
+  it('reads WRITER_MODE_DEFAULT strictly: patch (the default), rewrite, and nothing else', () => {
+    // The signed-off default: a filing on a sentence in a written chapter patches it.
+    expect(loadWriterConfig(env()).modeDefault).toBe('patch');
+    expect(loadWriterConfig(env({ WRITER_MODE_DEFAULT: 'patch' })).modeDefault).toBe('patch');
+    // The owner's kill switch, and it is printed redacted like every other resolved value.
+    const kill = loadWriterConfig(env({ WRITER_MODE_DEFAULT: 'rewrite' }));
+    expect(kill.modeDefault).toBe('rewrite');
+    expect(kill.redacted().modeDefault).toBe('rewrite');
+    // An unknown value is refused at boot, never silently defaulted.
+    for (const bad of ['PATCHY', 'no', '0', 'patch,rewrite']) {
+      const failure = refusalOf(env({ WRITER_MODE_DEFAULT: bad }));
+      expect(failure.code).toBe('CONFIG_INVALID');
+      expect(failure.message).toContain('WRITER_MODE_DEFAULT');
+      expect(failure.message).not.toContain(bad);
+    }
+  });
+
   it('lets the environment still set the per-pass guard', () => {
     expect(loadWriterConfig(env({ WRITER_MAX_TOKENS_PER_PASS: '60000' })).maxTokensPerPass).toBe(60_000);
     expect(refusalOf(env({ WRITER_MAX_TOKENS_PER_PASS: '0' })).message).toContain('WRITER_MAX_TOKENS_PER_PASS');

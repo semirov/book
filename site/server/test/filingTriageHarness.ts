@@ -80,7 +80,9 @@ function shim(control: FastifyInstance): FetchLike {
     const parsed = new URL(url);
     const headers = Object.fromEntries(Object.entries((init.headers ?? {}) as Record<string, string>));
     const answer = await control.inject({
-      method: 'POST',
+      // The client's GETs (`/internal/state`, `/internal/writer-state`) are the same app, so the
+      // method travels: a shim that always POSTed made those two doors look like a 500.
+      method: (init.method === 'GET' ? 'GET' : 'POST'),
       url: `${parsed.pathname}${parsed.search}`,
       headers,
       ...(typeof init.body === 'string' ? { payload: init.body } : {}),

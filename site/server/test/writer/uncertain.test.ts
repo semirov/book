@@ -22,6 +22,13 @@ import { EngineRefusalError } from '../../src/writer/client.ts';
 import { readerSentences } from '../../src/writer/reasons.ts';
 import { chapterAnswer, createHarness, type Harness } from './harness.ts';
 
+/**
+ * The seam these tests prove is the close and the way back, so they write a whole chapter:
+ * `WRITER_MODE_DEFAULT=rewrite` is the owner's switch, and the patch default has its own
+ * files (`patchPass.test.ts`, `noOpPass.test.ts`).
+ */
+const REWRITE = { env: { WRITER_MODE_DEFAULT: 'rewrite' } };
+
 const CHAPTER = 40;
 
 function revisions(harness: Harness): Array<{ rev: number; kind: string }> {
@@ -56,7 +63,7 @@ const lost = (): EngineRefusalError =>
 
 describe('a lost answer — the rows decide, never the missing response', () => {
   it('reads a lost `done` back: a closed step is the close, so nothing is taken back', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       harness.fixture.engine.enqueue({
         kind: 'operator',
@@ -90,7 +97,7 @@ describe('a lost answer — the rows decide, never the missing response', () => 
   });
 
   it('leaves the text standing when the close stays unknown: a restore would argue with the push', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       harness.fixture.engine.enqueue({
         kind: 'operator',
@@ -120,7 +127,7 @@ describe('a lost answer — the rows decide, never the missing response', () => 
 
   it('puts the text back when the read says the step is still open — the close is known missing', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       harness.fixture.engine.enqueue({
         kind: 'operator',
@@ -147,7 +154,7 @@ describe('a lost answer — the rows decide, never the missing response', () => 
   });
 
   it('reads a lost `land` back: a chapter that already serves the text is this pass’s landing', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       harness.fixture.engine.enqueue({
         kind: 'operator',

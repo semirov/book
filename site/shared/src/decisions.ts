@@ -36,6 +36,13 @@ export type MyDecisionOutcome =
    * never «внесено». It carries no waves, no chapters and no blocks, because nothing was written.
    */
   | 'registered'
+  /**
+   * BOOK-173 §5 — the rewrite came back byte for byte: the filing was considered, the money was
+   * spent, and **not one byte of the book moved**. It is not a landing and not a refusal: the
+   * reader's record says so in the same words the change page does («перепись не изменила ни
+   * одного байта»), never «внесена».
+   */
+  | 'no-op'
   | 'queued'
   | 'dropped'
   | 'superseded'

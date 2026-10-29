@@ -37,6 +37,9 @@ async function landedChange(harness: Harness, original: string): Promise<string>
     kind: 'operator',
     chapter: CHAPTER,
     intent: 'в главе 40 появляется документ о допуске',
+    // BOOK-173: this pass tests a landing/revert, so it says it is a whole-chapter change —
+    // a phrase-scope filing on a written chapter now takes the patch path instead.
+    scopeHint: 'chapter',
   });
   harness.script.push(chapterAnswer('Глава сорок', 'новый'), 'HOLDS', 'HOLDS');
   const result = await harness.run({ lanes: ['fwd'] });

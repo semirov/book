@@ -97,8 +97,12 @@ const TIME_RULES: Array<{ kind: TimeMarkerKind; re: RegExp }> = [
   { kind: 'daypart', re: word('утром|вечером|ночью|днём|днем|к утру|к вечеру') },
 ];
 
-/** The papers the index knows: a generic “документ” plus the office's own nouns. */
-const DOCUMENT_NOUNS = [
+/**
+ * The papers the index knows: a generic “документ” plus the office's own nouns. Exported because
+ * one closed list of document nouns is the index's, and a second copy elsewhere would let the
+ * search and the extraction disagree about what a paper is.
+ */
+export const DOCUMENT_NOUNS = [
   'служебная записка',
   'докладная записка',
   'постановление',

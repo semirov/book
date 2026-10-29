@@ -242,6 +242,9 @@ services:
       BOOK_BUDGET_BOOK_USD: ${BOOK_BUDGET_BOOK_USD:-1000}
       WRITER_MAX_PASSES_PER_DAY: ${BOOK_WRITER_MAX_PASSES_PER_DAY:-4}
       WRITER_PAUSE_MS: ${BOOK_WRITER_PAUSE_MS:-900000}
+      # The owner's mode switch (BOOK-173 §4): `patch` is the signed-off default, `rewrite` forces
+      # the whole-chapter path for every ordinary pass until the line is removed.
+      WRITER_MODE_DEFAULT: ${BOOK_WRITER_MODE_DEFAULT:-patch}
     # No healthcheck: the writer holds no port, and an idle lane is healthy while writing nothing
     # for WRITER_PAUSE_MS (15 min) — an mtime probe would mark it unhealthy and `up -d` would then
     # recreate a healthy process. Its liveness is the container state plus the engine's lease

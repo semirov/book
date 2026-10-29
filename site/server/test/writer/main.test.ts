@@ -35,7 +35,7 @@ function errorOf(argv: string[]): string {
 
 describe('parseArgs', () => {
   it('runs once by default', () => {
-    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null });
+    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null, changeId: null, audit: null });
     expect(cliOf(['--once'])).toMatchObject({ mode: 'run', once: true, loop: false });
   });
 
@@ -43,6 +43,15 @@ describe('parseArgs', () => {
     expect(cliOf(['--chapter', '20']).chapter).toBe(20);
     expect(cliOf(['--chapter=20']).chapter).toBe(20);
     expect(cliOf(['--dry-run', '--chapter', '1'])).toMatchObject({ dryRun: true, chapter: 1 });
+  });
+
+  it('takes the sample audit with an optional count, and runs nothing else beside it', () => {
+    // BOOK-DOC-80: `--audit-samples` alone takes the default (3), and `=N` names a count.
+    expect(cliOf(['--audit-samples'])).toMatchObject({ mode: 'audit', audit: null });
+    expect(cliOf(['--audit-samples=5'])).toMatchObject({ mode: 'audit', audit: 5 });
+    expect(cliOf(['--audit-samples', '7'])).toMatchObject({ mode: 'audit', audit: 7 });
+    expect(errorOf(['--audit-samples=0'])).toContain('positive integer');
+    expect(errorOf(['--audit-samples', '--chapter', '9'])).toContain('runs alone');
   });
 
   it('knows the revert and the loop', () => {
@@ -241,7 +250,13 @@ describe('main — --revert and --dry-run', () => {
     try {
       // A change over a chapter that already exists: the pass publishes revision 2, the revert
       // brings revision 1 back as revision 3 (BOOK-187).
-      harness.fixture.engine.enqueue({ kind: 'operator', chapter: 20, intent: 'в главе 20 появляется документ' });
+      // Whole-chapter scope: the pass rewrites, so the revert has a second revision to undo.
+      harness.fixture.engine.enqueue({
+        kind: 'operator',
+        chapter: 20,
+        intent: 'в главе 20 появляется документ',
+        scopeHint: 'chapter',
+      });
       harness.script.push(chapterAnswer('Глава двадцать', 'новый'), 'HOLDS', 'HOLDS');
       const first = await main({
         argv: ['--once'],
@@ -265,6 +280,39 @@ describe('main — --revert and --dry-run', () => {
       expect(harness.fixture.readChapter(20)).toBe(base);
       expect(lines.join('\n')).toContain('новая ревизия 3 (было 2)');
       expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('keeps the lane’s state in rows: writer_state and pass_transcripts, and no writer/ file', async () => {
+    const harness = await createHarness({ chapters: { 30: chapterAnswer('Глава тридцать', 'исходный') } });
+    try {
+      harness.fixture.engine.enqueue({
+        kind: 'operator',
+        chapter: 30,
+        intent: 'в главе 30 появляется документ',
+        scopeHint: 'chapter',
+      });
+      harness.script.push(chapterAnswer('Глава тридцать', 'новый'), 'HOLDS', 'HOLDS');
+      const code = await main({
+        argv: ['--once'],
+        env: harness.env,
+        provider: harness.provider,
+        now: () => harness.fixture.clock.now(),
+        log: () => undefined,
+      });
+      expect(code).toBe(0);
+      // The counter is a row (`writer_state`), written through the engine.
+      expect(harness.fixture.db.prepare('SELECT passes FROM writer_state WHERE id = 1').get()).toEqual({ passes: 1 });
+      // The receipt is rows (`pass_transcripts`), redacted at write.
+      const rows = harness.fixture.db
+        .prepare('SELECT role, content_redacted FROM pass_transcripts')
+        .all() as Array<{ role: string; content_redacted: string }>;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row.content_redacted).not.toContain('Глава тридцать');
+      // BOOK-187: the old homes — state.json, pre/ and transcripts/ — are gone, not moved.
+      expect(existsSync(join(harness.dataDir, 'writer'))).toBe(false);
     } finally {
       await harness.close();
     }

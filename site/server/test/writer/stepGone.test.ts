@@ -16,11 +16,18 @@ import { describe, expect, it } from 'vitest';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness } from './harness.ts';
 
+/**
+ * The seam these tests prove is the close and the way back, so they write a whole chapter:
+ * `WRITER_MODE_DEFAULT=rewrite` is the owner's switch, and the patch default has its own
+ * files (`patchPass.test.ts`, `noOpPass.test.ts`).
+ */
+const REWRITE = { env: { WRITER_MODE_DEFAULT: 'rewrite' } };
+
 const CHAPTER = 40;
 
 describe('a dead step', () => {
   it('answers `gone` when the lease is released under the pass, without a second park', async () => {
-    const harness = await createHarness();
+    const harness = await createHarness(REWRITE);
     try {
       harness.hooks.budget = null;
       // The engine closes the step while the pass is between calls: the next beat is refused
@@ -53,7 +60,7 @@ describe('a dead step', () => {
 
   it('puts the landed text back when the step wall closes the step after the draft', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       harness.fixture.engine.enqueue({
         kind: 'operator',

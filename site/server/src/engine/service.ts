@@ -25,7 +25,7 @@ import {
 import { appendEvent } from '../history/log.ts';
 import { ensureSlice } from '../index/store.ts';
 import { toIso } from '../util/time.ts';
-import { closeStep } from './close.ts';
+import { closeStep, openRippleStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
 import { type DraftLane } from './draft.ts';
 import {
@@ -33,6 +33,7 @@ import {
   blockingVerdict,
   missingVerdicts,
   openDispatch,
+  planEnvelopeOf,
   recordVerdict,
   survivedBlocker,
   type GateAssignment,
@@ -41,7 +42,7 @@ import {
 } from './gates.ts';
 import { blockHashes, changeForStep, measureDelta, preBlocksOf, safeJson, sameSequence } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
-import { normalizeProvenance, requirePipelineModel, type Provenance } from './model.ts';
+import { normalizeProvenance, requirePipelineModel } from './model.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
@@ -50,41 +51,18 @@ import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapterRows, readFrontRows, textViewsOf, type ChapterTextView } from './text.ts';
 import { writerAssignment } from './trace.ts';
-import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
+import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
 import { createRightsGate } from './rightsGate.ts';
 import { createFilingTriage } from './filingTriage.ts';
 import { ensureRightsScan } from './rightsScan.ts';
 import { createWriteOps } from './write.ts';
+import type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
 import { restoreRevision, type RestoreInput, type RestoreResult } from './restore.ts';
 
 export type { EnqueueInput } from './queue.ts';
-
-export type DoneOptions = {
-  seams: unknown;
-  note?: string;
-  /** ADR-038: required in the type, so `tsc` lists every caller of a close. */
-  model: string;
-  tokensIn?: number;
-  tokensOut?: number;
-  now?: number;
-  /** BOOK-117: `pipeline` (the lane, ADR-038 applies) or `operator` (a repair, its own model). */
-  provenance?: Provenance;
-};
-/** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
-export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
-
-/** ADR-038 §2: a stop reports the same triple; BOOK-117 adds `cause` (broken ≠ refused). */
-export type EscalateOptions = {
-  model?: string | null;
-  tokensIn?: number;
-  tokensOut?: number;
-  now?: number;
-  cause?: PremiseCause;
-  /** BOOK-219: a park after a paid call is priced too, and says if its numbers are estimated. */
-  provenance?: Provenance;
-};
+export type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
 
 export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
 
@@ -127,15 +105,15 @@ export function createEngine(deps: EngineDeps) {
       const existing = store.getDispatch(db, step.step_id, role);
       if (existing && existing.session !== session && existing.expires_at > iso()) continue;
       try {
-        // BOOK-18: an editor gets a slice of the derived index — this chapter and its
-        // neighbours. The consultant judges physics, not continuity, and gets none.
-        // BOOK-187: the slice is built from the rows of this connection, never from a file.
+        // BOOK-18/BOOK-187: the editor gets a slice built from this connection's rows; the
+        // consultant judges physics, not continuity, and gets none.
         const indexSlice =
           role === 'editor' && step.chapter !== null
             ? ensureSlice({ db, dataDir: config.dataDir }, step.chapter, (error) =>
                 reportIndexFailure(deps, step.step_id, error))
             : null;
-        return assignmentOf(step, openDispatch(deps, step, role, session), indexSlice);
+        const dispatch = openDispatch(deps, step, role, session);
+        return assignmentOf(step, dispatch, indexSlice, planEnvelopeOf(db, step));
       } catch (error) {
         if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'GATE_ANSWERED') {
           continue;
@@ -251,7 +229,14 @@ export function createEngine(deps: EngineDeps) {
     // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
     // is asked now, on the way out, so no step closes without B having been offered the step.
     const closing = ensureRightsScan(deps, step);
-    const missing = missingVerdicts(db, closing);
+    // BOOK-173, BOOK-DOC-80: a `local only` close is one the full pair never read. The local
+    // judge's `HOLDS` stands in for the two prose verdicts — the policy has already made sure that
+    // verdict exists and that the change was not at an edge or over a closure — and Gate B is
+    // **not** waived: a flagged scan still needs its answer.
+    // Only a `HOLDS` from the local judge stands in for the pair; anything else keeps the rule.
+    const localOnly =
+      options.verification?.gatesMode === 'local only' && options.verification.tier1Verdict === 'HOLDS';
+    const missing = missingVerdicts(db, closing).filter((role) => !(localOnly && role !== 'rights'));
     if (missing.length > 0) {
       // BOOK-61: Gate B's requirement has its own code — the operator must be able to tell a
       // prose gate that has not spoken from a law question that has not been answered.
@@ -324,6 +309,11 @@ export function createEngine(deps: EngineDeps) {
 
     // BOOK-76: precedence — the ending's GAP, then the physics pass, then a prose finding.
     const gateStop: 'ending' | 'science' | null = endingGap ? 'ending' : scienceBlocked ? 'science' : null;
+    // BOOK-173 §5, the silent no-op: a rewrite can return the chapter byte for byte (measured on
+    // ch03: 69 s, 10 010 tokens, nothing applied), and it used to close the change `applied` — the
+    // reader's record saying «внесено» about a chapter nobody moved. The measure is `unchanged`:
+    // the pre-image `start` captured (`step.start_sha`, `pre_blocks`) against what landed.
+    const noOp = unchanged && options.mode === 'rewrite';
     let outcome: StepOutcome = gateStop !== null ? 'escalated' : editorBlocked ? 'published_with_finding' : step.pass === 'ending' ? 'evaluated' : unchanged ? 'holds' : 'rewritten';
     let escalation: CascadeOutcome | null = gateStop === null ? null : gateStop === 'ending' ? 'escalated:ending' : 'escalated:science';
 
@@ -358,10 +348,18 @@ export function createEngine(deps: EngineDeps) {
         note: note ? note.slice(0, NOTE_MAX_CHARS) : null,
         model,
         provenance,
+        // A step without a plan (a draft) says how it wrote here; a change with a plan keeps it
+        // on `change_plans.mode`.
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
+        // BOOK-DOC-80: the gates record travels with the close, so `change_plans` learns which
+        // tiers judged the change in the same transaction that closes it.
+        ...(options.verification === undefined ? {} : { verification: options.verification }),
         // The writer's own tokens: each gate's verdict row is added once, by `closeStep`.
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,
-        changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
+        // A no-op is filed, paid for and not applied: `comments/acceptance.ts` keeps it out of
+        // LANDED_OUTCOMES, `rippleOutcomeFor` upgrades only `applied`, the cascade reads `holds`.
+        changeOutcome: noOp ? 'no-op' : change?.outcome === 'adapted' ? 'adapted' : 'applied',
         changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? FAILURE_LINES.ourFailure : null,
         escalation,
         expiredLeaseId: expired ? lease.id : null,
@@ -465,11 +463,12 @@ export function createEngine(deps: EngineDeps) {
 
   return {
     next,
+    // BOOK-206: the filing's own ledger — the writer holds the only model key, so triage rides with it.
     triage,
-    /** BOOK-117 §4: a named chapter's first pass — the same step, premise and lease the lane hands out. */
-    openChapterPass: (chapter: number, session: string): WriterAssignment | null => {
+    /** BOOK-117 §4 + BOOK-173 §7: a chapter's pass; with a `changeId`, one chapter of its ripple. */
+    openChapterPass: (chapter: number, session: string, changeId?: string): WriterAssignment | null => {
       if (!session || session.length > 64) refuse('INVALID_SESSION', 422, 'a session name is required');
-      return queue.openPass(session, chapter, deps.clock.now());
+      return changeId === undefined ? queue.openPass(session, chapter, deps.clock.now()) : openRippleStep(deps, { changeId, chapter, session });
     },
     start: write.start,
     land: write.land,

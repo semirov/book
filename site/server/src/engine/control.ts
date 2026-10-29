@@ -16,8 +16,11 @@ import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
 import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
-import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
+import { normalizeVerification, verificationSchema } from '../ledger/graph/verification.ts';
+import * as bodies from './bodySchemas.ts';
 import { registerTriageRoutes } from './filingTriage.ts';
+import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
+import { registerWriterDoors } from './writerDoors.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -59,8 +62,7 @@ export type ControlOptions = {
   transcriptRetentionDays?: number;
 };
 
-const session = z.string().min(1).max(64);
-const id = z.string().min(1).max(80);
+const { session, id } = bodies;
 
 /**
  * BOOK-187: the text now travels in the body, so one route needs more room than Fastify's 64 KB
@@ -69,8 +71,7 @@ const id = z.string().min(1).max(80);
  */
 const TEXT_CHARS_MAX = 60_000;
 const LAND_BODY_LIMIT = 512 * 1024;
-/** The most chapters one `/internal/text` call may ask for: the chapter, its two neighbours, and room. */
-const TEXT_CHAPTERS_MAX = 8;
+
 
 const nextBody = z
   .object({
@@ -101,17 +102,11 @@ const landBody = z.object({
   frontRaw: z.string().max(TEXT_CHARS_MAX).optional(),
   noWrite: z.boolean().optional(),
   rev: z.number().int().min(0).max(1_000_000).optional(),
-});
-
-/** The chapters a prompt may quote, by number: 1..8 of them, each a real chapter. */
-const textBody = z.object({
-  chapters: z.array(z.number().int().min(1).max(TOTAL_CHAPTERS)).min(1).max(TEXT_CHAPTERS_MAX),
-});
-
-/** `--revert`: the revision to bring back; omitted means the one before the current. */
-const restoreBody = z.object({
-  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
-  rev: z.number().int().min(0).max(1_000_000).optional(),
+  /** The patch this landing applies; absent for a rewrite, a draft or a front sheet. */
+  sentences: z.array(bodies.sentenceEdit).max(8).optional(),
+  /** BOOK-173 §4: the mode the pass ran, and the estimate it was opened with. */
+  mode: z.enum(['patch', 'rewrite']).optional(),
+  estimateUsd: z.number().min(0).max(100).optional(),
 });
 
 const verdictBody = z.object({
@@ -140,7 +135,16 @@ const doneBody = z.object({
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
-  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(), // BOOK-117, BOOK-219
+  /** BOOK-117/BOOK-219: `operator` closes on the model that answered; `pipeline-estimated` says the money was read off the text. */
+  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(),
+  /**
+   * BOOK-173 §4/§5: how the pass wrote. A `rewrite` whose text is byte-identical to the pre-image
+   * closes the change as `no-op` — the silent no-op of a rewrite must be a visible fact, not a
+   * success. A step with no plan (a draft) records the mode here, on its close.
+   */
+  mode: z.enum(['patch', 'rewrite']).optional(),
+  /** BOOK-DOC-80: which tiers judged the pass — the shape is the ledger's (`verification.ts`). */
+  verification: verificationSchema.optional(),
 });
 
 /** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
@@ -271,26 +275,14 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         frontRaw: body.frontRaw,
         noWrite: body.noWrite,
         rev: body.rev,
+        sentences: body.sentences,
+        mode: body.mode,
+        estimateUsd: body.estimateUsd,
       }),
     };
   });
-  /**
-   * BOOK-187: the text a prompt may quote, **from rows only** — the chapter the writer is on, its
-   * neighbours, and the landed text a gate judges. The body is canonical and carries no title
-   * line; the prompt prints the title itself.
-   */
-  app.post('/internal/text', async (request) => {
-    const body = textBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.text(body.chapters) };
-  });
-  /**
-   * BOOK-187 / ADR-043 §3 row 9: `--revert` is a **new** revision (`cause_kind = 'restore'`)
-   * published through the applier, never a file put back.
-   */
-  app.post('/internal/restore', async (request) => {
-    const body = restoreBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.restore({ chapter: body.chapter, rev: body.rev }) };
-  });
+  // BOOK-173/BOOK-187: the lane's three text doors, in their own module.
+  registerWriterDoors(app, { engine: options.engine });
   app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});
     if (body.role === 'rights') {
@@ -337,6 +329,8 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
         provenance: body.provenance,
+        mode: body.mode,
+        verification: normalizeVerification(body.verification),
       }),
     };
   });

@@ -32,6 +32,10 @@ export const TRANSCRIPT_ROLES = [
   'gate:editor',
   'gate:consultant',
   'gate:rights',
+  // BOOK-173 / BOOK-DOC-80: the causality judge and the local judge are model calls of a pass
+  // and are receipts like any other — a pass must be able to prove what it spent them on.
+  'judge',
+  'tier1',
 ] as const;
 
 export type TranscriptRole = (typeof TRANSCRIPT_ROLES)[number];

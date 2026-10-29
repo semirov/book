@@ -17,6 +17,13 @@ import { readerSentences } from '../../src/writer/reasons.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
+/**
+ * The seam these tests prove is the close and the way back, so they write a whole chapter:
+ * `WRITER_MODE_DEFAULT=rewrite` is the owner's switch, and the patch default has its own
+ * files (`patchPass.test.ts`, `noOpPass.test.ts`).
+ */
+const REWRITE = { env: { WRITER_MODE_DEFAULT: 'rewrite' } };
+
 const CHAPTER = 40;
 
 const spendRow = (harness: Harness, stepId: string): Record<string, unknown> | undefined =>
@@ -80,7 +87,7 @@ function refusing(method: 'restore' | 'reconcile'): (engine: EngineClient) => En
 
 describe('runPass — BOOK-219: an estimated close and the compensating revert', () => {
   it('closes when the gates answer without usage, and the ledger says the money is an estimate', async () => {
-    const harness = await createHarness();
+    const harness = await createHarness(REWRITE);
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       // The draft is measured; every gate answer arrives with prose and no usage at all.
@@ -114,7 +121,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
 
   it('puts the chapter back when the gate dies after the landing, and parks saying so', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const result = await deadGate(harness);
       expect(result.status).toBe('parked');
@@ -144,7 +151,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('reports the prompt of a failed call as money: a park after a paid request is not zero', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       const result = await deadGate(harness);
 
@@ -160,7 +167,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('says the text stands unverified when the way back itself fails, and names the revision', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       const result = await deadGate(harness, refusing('restore'));
 
@@ -180,7 +187,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('refuses a way back that returned another revision: the text is not proved, so it stands', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       const wrong = (engine: EngineClient): EngineClient =>
         new Proxy(engine, {
@@ -208,7 +215,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
 
   it('keeps the revert when only the reconcile mark is refused: the text is back either way', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const result = await deadGate(harness, refusing('reconcile'));
 
@@ -222,7 +229,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('puts a resumed step’s own re-landing back: the guard is this run, not the step', async () => {
-    const harness = await createHarness();
+    const harness = await createHarness(REWRITE);
     try {
       // A previous run landed this step's text and died at the gate; the row is open, `landed`.
       harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
@@ -258,7 +265,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('does not undo a resumed step’s text: it is not this run’s landing', async () => {
-    const harness = await createHarness();
+    const harness = await createHarness(REWRITE);
     try {
       // A previous run landed this step's text and died at the gate; the row is open, `landed`.
       harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');

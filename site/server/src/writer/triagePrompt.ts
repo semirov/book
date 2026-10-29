@@ -92,5 +92,7 @@ export function buildTriagePrompt(input: TriagePromptInput): BuiltPrompt {
     { id: 'role', chars: system.length, sha256: sha256Hex(system) },
     { id: 'filing', chars: user.length, sha256: sha256Hex(user) },
   ];
-  return { system, user, promptSha256: sha256Hex(`${system}\n\n${user}`), sections };
+  // BOOK-173 §5: the prefix hash is the cache's identity for one session — the `system` string,
+  // so a triage call is priced and receipted like every other prompt this lane builds.
+  return { system, user, prefixSha256: sha256Hex(system), promptSha256: sha256Hex(`${system}\n\n${user}`), sections };
 }

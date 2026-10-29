@@ -221,6 +221,72 @@ CREATE INDEX IF NOT EXISTS fact_dependency_to   ON fact_dependency("to", chapter
 `;
 
 /**
+ * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v33.
+ *
+ * The ripple's graph is `fact_dependency` (BOOK-185): this is the one table the ripple keeps of
+ * its own. `closure` is the plan without its patches, `patches` the list the writer produces per
+ * chapter, `bounds` the caps frozen at estimate, `iterations` the append-only journal of the
+ * fixpoint. The diff is deliberately absent: the readable before/after comes from `block_versions`
+ * by `blockId`, so the text keeps one home. `mode` and `price_usd` travel with the plan because a
+ * plan is what a change was written under: the mode the pass ran and the money it was estimated
+ * at, replaced by the actual at close.
+ *
+ * **One row per change, and the journal is the budget.** `UNIQUE (change_id)` is what makes the
+ * bounds cumulative per change rather than per plan: a re-land of the same step updates this row
+ * and appends to `iterations` instead of writing a second plan, so «what has this change already
+ * spent?» is one journal sum and a cap cannot be reset by planning again. The row is written in
+ * the landing's own transaction, so a crash lands neither the revision nor the plan.
+ *
+ * `parked_at`/`park_reason` are the one way a plan stops: `RIPPLE_REFUSED` after two refusals of
+ * the same node, `CLOSURE_UNSTABLE`, a `wide` outcome, or a verification that did not hold. The
+ * reason is a sentence for the author; `drainablePlans` excludes a parked row, so nothing retries
+ * a plan the book already gave up on. `claimed_at`/`claimed_by` are the lane claim of the process
+ * that is draining it, so two `--ripple` runs never take the same plan.
+ *
+ * **Growth.** One row per change and it is never pruned: the retire paths are the launch reset
+ * (which empties the book) and a backfill/rebuild, both of which delete the whole table. Expected
+ * rate is the lane's own: at most one row per filed change and one journal entry per chapter,
+ * tens a day at the `maxPassesPerDay` ceiling — a book-sized table is thousands of rows, not
+ * millions, which is why a pruner would be a second way to lose the budget.
+ */
+export const CHANGE_PLANS_SQL = `
+CREATE TABLE IF NOT EXISTS change_plans (
+  id           TEXT PRIMARY KEY,
+  change_id    TEXT NOT NULL REFERENCES changes(id),
+  chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  outcome      TEXT NOT NULL CHECK (outcome IN ('local','ripple','wide')),
+  -- BOOK-173 §4: how the change was written — the mode the pass ran, recorded with the plan so
+  -- the answer «did this patch or rewrite?» is a row and not a log line. Null for a plan written
+  -- before v33; a change with no plan at all records its mode on the close (step.closed).
+  mode         TEXT CHECK (mode IN ('patch','rewrite')),
+  -- BOOK-173 §4: the estimate frozen at planning, replaced by the pass's actual at close. Null
+  -- means «never priced», never «free» — the same rule cost_priced follows (BOOK-23).
+  price_usd    REAL,
+  -- BOOK-173, BOOK-DOC-80: the record of the verification a «local only» change got. gates_mode
+  -- says whether the full pair read the chapter («full») or only the local judge did — and the
+  -- sample's own word changes it to «local_only_rechecked» when the editor later disagreed, so the
+  -- row never keeps claiming a clean read it no longer has. tier1_usd is the judge's own price
+  -- (null = not priced); sample_requested / sampled_at / sample_verdict are the safeguard's queue.
+  tier1_verdict    TEXT CHECK (tier1_verdict IN ('HOLDS','GAP','UNSURE','TIER1_UNPARSED')),
+  tier1_usd        REAL,
+  gates_mode       TEXT CHECK (gates_mode IN ('local only','full','local_only_rechecked')),
+  sample_requested INTEGER NOT NULL DEFAULT 0,
+  sampled_at       TEXT,
+  sample_verdict   TEXT CHECK (sample_verdict IN ('ok','gap','error')),
+  closure      TEXT NOT NULL,
+  patches      TEXT NOT NULL,
+  bounds       TEXT NOT NULL,
+  iterations   TEXT NOT NULL DEFAULT '[]',
+  parked_at    TEXT,
+  park_reason  TEXT,
+  claimed_at   TEXT,
+  claimed_by   TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS change_plans_change ON change_plans(change_id);
+`;
+
+/**
  * The ordinary tables of the ledger, their indexes and the one guard the decision names.
  * Order matters only for readability: `extraction_runs` comes first (both `facts` and
  * `fact_dependency` reference it), then `facts` and `threads`, which `fact_dependency`,
@@ -294,7 +360,7 @@ CREATE TABLE IF NOT EXISTS literals (
   end          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS literals_value ON literals(literal, chapter);
-`;
+${CHANGE_PLANS_SQL}`;
 
 /**
  * The full-text mirror `searchBlocks` reads. `content='blocks'` keeps the prose in one place
@@ -328,6 +394,7 @@ export const LEDGER_REQUIRED_TABLES = [
   'mentions',
   'literals',
   'blocks_fts',
+  'change_plans',
 ] as const;
 
 /**

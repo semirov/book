@@ -8,18 +8,12 @@
  * replaying the rows replays the cascade.
  */
 
-import {
-  parseSeams,
-  type CascadeOutcome,
-  type CascadeStatus,
-  type ChangeOutcome,
-  type ChangeStatus,
-} from '@book/shared';
+import { type CascadeOutcome, type CascadeStatus, type ChangeOutcome, type ChangeStatus } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordAcceptance } from '../comments/acceptance.ts';
 import { recordImpact } from '../history/impact.ts';
-import { recordCloseSpend, spendOfClose } from '../budget.ts';
+import { passUsdOf, recordCloseSpend, spendOfClose } from '../budget.ts';
 import { budgetFromConfig } from './budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
@@ -27,83 +21,27 @@ import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
-import {
-  closeReason,
-  planCascade,
-  type CascadeFacts,
-  type CascadeStepFact,
-  type CloseCopyKey,
-} from './cascade.ts';
+import { planCascade, type CascadeFacts } from './cascade.ts';
 import { changeForStep } from './helpers.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { stepProvenance } from './model.ts';
 import { settleDraftPremise } from './premise.ts';
+import { pricePlanAfterPass } from '../ledger/graph/plan.ts';
+import { closeVerification } from '../ledger/graph/verification.ts';
+import { rippleOutcomeFor } from './ripple.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { writtenChaptersOf } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
+/** The ripple's own door: `service.ts` has one import for both ways a step opens. */
+export { openRippleStep } from './ripple.ts';
+
 // ── small readers ────────────────────────────────────────────────────────────
 
-export function changeOutcomeOf(cascade: CascadeOutcome): ChangeOutcome {
-  if (!cascade.startsWith('escalated:')) return 'applied';
-  const reason = cascade.slice('escalated:'.length);
-  if (
-    reason === 'budget' || reason === 'oscillation' || reason === 'origin' || reason === 'delta' ||
-    reason === 'finding' || reason === 'ending' || reason === 'science' || reason === 'rights' ||
-    reason === 'gate_timeout'
-  ) {
-    return reason;
-  }
-  return 'origin';
-}
+import { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
-const ESCALATION_COPY: Record<string, CloseCopyKey> = {
-  budget: 'budget',
-  oscillation: 'oscillation',
-  origin: 'origin',
-  delta: 'delta',
-  ending: 'ending',
-  finding: 'finding',
-  // BOOK-76: a stop by the physics pass reads «не входит в книгу», not «правка опубликована».
-  science: 'science',
-  // BOOK-61: Gate B's stop reads «не принято» — never the prose gates' two outcomes.
-  rights: 'rights',
-  gate_timeout: 'gate',
-};
-
-/** The public reason for a stop, in the words the stop table uses (§6A.6). */
-export function escalationCopy(outcome: CascadeOutcome): string {
-  const suffix = outcome.startsWith('escalated:') ? outcome.slice('escalated:'.length) : 'origin';
-  return closeReason(ESCALATION_COPY[suffix] ?? 'origin');
-}
-
-export function currentRev(db: Db, chapter: number): number {
-  const row = db.prepare('SELECT rev FROM chapters WHERE n = ?').get(chapter) as { rev: number } | undefined;
-  return row?.rev ?? 0;
-}
-
-export function stepFacts(row: store.StepRow): CascadeStepFact {
-  return {
-    seq: row.seq,
-    pass: row.pass,
-    chapter: row.chapter,
-    lane: row.lane,
-    wave: row.wave,
-    outcome: row.outcome,
-    seamsIn: parseSeams(safeJson(row.seams_in)),
-    seamsOut: parseSeams(safeJson(row.seams_out)),
-  };
-}
-
-function safeJson(raw: string | null): unknown {
-  if (raw === null) return null;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
+export { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
 // ── change close ─────────────────────────────────────────────────────────────
 
@@ -120,6 +58,8 @@ export function closeChange(
   reason: string | null,
   now: number,
 ): void {
+  // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied`; the plan is evidence.
+  const settled = rippleOutcomeFor(deps.db, change.id, outcome) as ChangeOutcome;
   // Tokens and the model are frozen here, once (§6D.5); cost stays the placeholder zero and the
   // row is not priced, so BOOK-23 reads it as «not measured» (`measuredRub`), never as free.
   const steps = store.stepsOfChange(deps.db, change.id);
@@ -128,7 +68,7 @@ export function closeChange(
   const writerModel = steps.find((step) => step.pass === 'change' && step.model !== null)?.model ?? null;
   store.updateChange(deps.db, change.id, {
     status,
-    outcome,
+    outcome: settled,
     reason,
     finished_at: toIso(now),
     tokens_in: tokensIn,
@@ -139,14 +79,14 @@ export function closeChange(
   // record is written here, once, from the change's own outcome (`recordAcceptance` is silent
   // for anything that did not land, and for a change that is not a reader's).
   recordAcceptance(deps.db, change.id, toIso(now));
-  appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome, reason }, now);
+  appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome: settled, reason }, now);
   appendEvent(
     deps.db,
     {
       kind: 'change.decided',
       changeId: change.id,
       cascadeId: change.cascade_id,
-      payload: { status, outcome, reason },
+      payload: { status, outcome: settled, reason },
     },
     now,
   );
@@ -390,27 +330,35 @@ export function closeStep(
       fromHseq: number | null;
     };
     const cascadeRow = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
+    const closedChangeId = cascadeRow?.change_id ?? lease?.change_id ?? null;
+    const verificationRefused = closeVerification(db, closedChangeId, step.chapter, step.step_id, input.verification, toIso(now));
     const hseq = appendEvent(
       db,
       {
         kind: 'step.closed',
         stepId: step.step_id,
         cascadeId: step.cascade_id,
-        changeId: cascadeRow?.change_id ?? lease?.change_id ?? null,
+        changeId: closedChangeId,
         chapter: step.chapter,
         isFront: step.pass === 'front',
         payload: {
           pass: step.pass,
           outcome: input.outcome,
           gates: gateRows.map((row) => ({ role: row.role, verdict: row.verdict })),
+          // BOOK-173 §4: how the pass wrote — the word a draft step has no plan to carry.
+          ...(input.mode == null ? {} : { mode: input.mode }),
           ...(input.expiredLeaseId ? { expiredClose: true } : {}),
+          ...(verificationRefused === null ? {} : { verificationRefused }),
         },
       },
       now,
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
     // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
-    recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: spend.model, tokensIn: spend.tokensIn, tokensOut: spend.tokensOut, provenance: spend.provenance });
+    recordCloseSpend(db, { step, changeId: closedChangeId, now, model: spend.model, tokensIn: spend.tokensIn, tokensOut: spend.tokensOut, provenance: spend.provenance });
+    // BOOK-173 §4: the plan froze an estimate; this same transaction replaces it with the actual.
+    const actualUsd = closedChangeId === null ? null : passUsdOf(db, step.step_id);
+    if (closedChangeId !== null && actualUsd !== null) pricePlanAfterPass(db, closedChangeId, actualUsd);
 
     // BOOK-189/BOOK-219: the landing is announced here, at the close, never at `land` — there the
     // text may still be taken back (a rights refusal, a gate that never answered). A step that

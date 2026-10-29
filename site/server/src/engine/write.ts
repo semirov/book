@@ -23,14 +23,13 @@ import {
   REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
   type Relevance,
+  type WriteMode,
 } from '@book/shared';
 
-import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
-import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
 import { frameIntact } from '../ingest/frameGuard.ts';
-import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
-import { parseFront } from '../ingest/parseFront.ts';
 import { getFrontRow } from '../db/repo/front.ts';
+import type { RipplePlan } from '../ledger/graph/plan.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
@@ -38,9 +37,10 @@ import { closeStep, currentRev } from './close.ts';
 import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
+import { chapterTarget, frontTarget, ingestLanding, type IngestOutcome } from './landing.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
-import { isWrittenChapter, readChapterRows, readFrontRows, type ChapterText, type FrontText } from './text.ts';
+import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export type StartOptions = {
@@ -63,6 +63,16 @@ export type LandOptions = {
   noWrite?: boolean;
   rev?: number;
   now?: number;
+  /**
+   * BOOK-173 §2: the patch this landing applies, as one character edit per block — what lets the
+   * ingest keep sentence ids across the write (`sentences/transform.ts`). Absent for a rewrite, a
+   * draft or a front sheet: none of them knows where inside a paragraph the text moved.
+   */
+  sentences?: ReadonlyArray<SentencePatchEdit>;
+  /** BOOK-173 §4: the mode the pass ran, recorded with the plan (or, with no plan, on the close). */
+  mode?: WriteMode;
+  /** BOOK-173 §4: the pass's estimate, frozen with the plan and replaced by the actual at close. */
+  estimateUsd?: number;
 };
 
 export type LandResult = {
@@ -72,78 +82,16 @@ export type LandResult = {
   changed: boolean;
   deltaRatio: number;
   blocksTouched: number;
+  /**
+   * BOOK-173: the change's ripple plan, computed here because the ledger lives here (§3, §7).
+   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
+   */
+  plan?: RipplePlan | null;
 };
 
-/**
- * BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest reads the
- * file, and the ingest reads it again; the letter of the answer never changes.
- */
+/** BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest, and the
+ * ingest again; the letter of the answer never changes. */
 const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой главы не меняется — правка остаётся бумагой';
-
-/** What the ingest published for a landing — and whether it refused the frame outright. */
-type IngestOutcome = { rev: number | null; changed: boolean; frameRejected: boolean };
-
-/**
- * §6F.1: a landing is a revision, and a revision exists in the same transaction as its log
- * entry. `land` therefore publishes the text it validated through the same applier the
- * one-shot import uses — one choke point, so a writer's landing and an observed write cannot
- * disagree. The ingest is idempotent by sha: a second landing of the same text returns
- * `unchanged` and publishes nothing.
- */
-function ingestLanding(
-  deps: EngineDeps,
-  step: store.StepRow,
-  at: number,
-  raw: string,
-): IngestOutcome {
-  const dataDir = deps.config.dataDir;
-  if (step.pass === 'front') {
-    const result: ApplyFrontResult = applyFrontFile({
-      db: deps.db,
-      dataDir,
-      raw,
-      mtimeMs: at,
-      nowMs: at,
-    });
-    return { rev: result.rev, changed: result.status !== 'unchanged', frameRejected: false };
-  }
-  if (step.chapter === null) return { rev: null, changed: false, frameRejected: false };
-  const result: ApplyChapterResult = applyChapterFile({
-    db: deps.db,
-    dataDir,
-    n: step.chapter,
-    raw,
-    mtimeMs: at,
-    nowMs: at,
-  });
-  // BOOK-137: the applier's own read is weaker than the guard's. Nothing was published, and the
-  // caller must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
-  if (result.status === 'frame-rejected') return { rev: null, changed: false, frameRejected: true };
-  if (result.status === 'created' || result.status === 'revised') {
-    return { rev: result.rev, changed: true, frameRejected: false };
-  }
-  // `empty`/`emptied`: an empty write between two saves publishes no revision either.
-  return { rev: null, changed: false, frameRejected: false };
-}
-
-/**
- * The target of a landing. With a text in the request it is that text, parsed exactly as the
- * applier will parse it; without one it is the rows, so a repeated call re-lands what the site
- * already serves. `exists: false` only when neither holds anything.
- */
-function chapterTarget(db: EngineDeps['db'], n: number, supplied: string | undefined): ChapterText {
-  if (supplied === undefined) return readChapterRows(db, n);
-  const raw = normalizeChapterText(supplied);
-  // A supplied (even empty) text is a target: an empty one fails `isWrittenChapter` as
-  // `NOT_WRITTEN`, which is the answer an empty file gave before BOOK-187.
-  return { ...parseChapter(n, raw), exists: true, raw };
-}
-
-function frontTarget(db: EngineDeps['db'], supplied: string | undefined): FrontText {
-  if (supplied === undefined) return readFrontRows(db);
-  const raw = normalizeChapterText(supplied);
-  return { ...parseFront(raw), exists: true, raw };
-}
 
 export function createWriteOps(deps: EngineDeps) {
   const { db } = deps;
@@ -397,8 +345,8 @@ export function createWriteOps(deps: EngineDeps) {
     // re-applying the rows' own canonical text would invent a second one for the same prose.
     const ingested: IngestOutcome =
       supplied !== undefined && changedFromStart
-        ? ingestLanding(deps, step, at, target.raw)
-        : { rev: null, changed: false, frameRejected: false };
+        ? ingestLanding(deps, step, at, target.raw, options)
+        : { rev: null, changed: false, frameRejected: false, planned: null };
     // BOOK-137, second read: the guard above read the text once and the applier reads it again,
     // so a text that moved in between publishes nothing. The guard's question is asked of the
     // target as it stands now — the detail says whether it already flipped back — and the step
@@ -449,6 +397,7 @@ export function createWriteOps(deps: EngineDeps) {
       changed: changedFromStart,
       deltaRatio: measured.ratio,
       blocksTouched: measured.touched,
+      ...(ingested.planned === null ? {} : { plan: ingested.planned.plan }),
     };
   }
 

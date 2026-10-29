@@ -99,7 +99,28 @@ const MAX_CHARS = 200;
  * BOOK-218: the sentences themselves live in `@book/shared`'s `stateWords.ts` — this table only
  * names the key each code maps to.
  */
-export const readerSentences: Readonly<Record<Exclude<StopReason, 'stopped' | 'gate'>, string>> = {
+/** BOOK-173 — the ripple's own stops: codes the shared register does not name yet. */
+type RippleStopKey =
+  | 'notARipple'
+  | 'planMissing'
+  | 'notPlanned'
+  | 'neighbourMissing'
+  | 'invalidChapter'
+  | 'wideNeedsAuthor'
+  | 'rippleRefused'
+  | 'chapterRefused'
+  | 'closureUnstable'
+  | 'closureBound'
+  | 'closureDrift'
+  | 'irreversibleLost'
+  | 'laneLost'
+  | 'judgeVeto'
+  | 'tier0Failed'
+  | 'triageRequired';
+
+export const readerSentences: Readonly<
+  Record<Exclude<StopReason, 'stopped' | 'gate'> | RippleStopKey, string>
+> = {
   shape: STOP_REASONS.shape,
   modelTimeout: STOP_REASONS.modelTimeout,
   modelDown: STOP_REASONS.modelDown,
@@ -119,6 +140,30 @@ export const readerSentences: Readonly<Record<Exclude<StopReason, 'stopped' | 'g
   closeReverted: STOP_REASONS.closeReverted,
   closeStanding: STOP_REASONS.closeStanding,
   closeUncertain: STOP_REASONS.closeUncertain,
+  /**
+   * BOOK-173: the ripple's own refusals, keyed by code in `sentenceFor`. The codes are the closed
+   * list of the ripple's doors (the engine's, the drainer's, the judge's); the sentence is the
+   * register's one stop line — BOOK-218's rule is that a stop reads the same wherever it happened,
+   * and a ripple stop is our failure, never a verdict about the reader's edit.
+   */
+  notARipple: STOP_REASONS.stopped,
+  planMissing: STOP_REASONS.stopped,
+  notPlanned: STOP_REASONS.stopped,
+  neighbourMissing: STOP_REASONS.stopped,
+  invalidChapter: STOP_REASONS.stopped,
+  wideNeedsAuthor: STOP_REASONS.stopped,
+  rippleRefused: STOP_REASONS.stopped,
+  chapterRefused: STOP_REASONS.stopped,
+  closureUnstable: STOP_REASONS.stopped,
+  closureBound: STOP_REASONS.stopped,
+  closureDrift: STOP_REASONS.stopped,
+  irreversibleLost: STOP_REASONS.stopped,
+  laneLost: STOP_REASONS.stopped,
+  judgeVeto: STOP_REASONS.stopped,
+  /** BOOK-DOC-80: the countable checks refused the patch; the codes live in the log. */
+  tier0Failed: STOP_REASONS.stopped,
+  /** BOOK-206 + BOOK-173 §4: the filing the patch would be written from has not been read yet. */
+  triageRequired: STOP_REASONS.stopped,
 };
 
 /**
@@ -134,8 +179,30 @@ export const readerFallbacks = {
 
 function sentenceFor(code: string): string | null {
   const key = stopReasonKey(code);
-  if (key === null || key === 'stopped' || key === 'gate') return null;
-  return readerSentences[key];
+  if (key !== null && key !== 'stopped' && key !== 'gate') return readerSentences[key];
+  // BOOK-173: the ripple's own refusals — codes the shared register does not name yet. Each has
+  // its sentence above, so no code word reaches a note, a stage summary or `change_plans.park_reason`.
+  if (code === 'NOT_A_RIPPLE') return readerSentences.notARipple;
+  if (code === 'PLAN_MISSING') return readerSentences.planMissing;
+  if (code === 'NOT_PLANNED') return readerSentences.notPlanned;
+  if (code === 'NEIGHBOUR_MISSING') return readerSentences.neighbourMissing;
+  if (code === 'INVALID_CHAPTER') return readerSentences.invalidChapter;
+  if (code === 'WIDE_NEEDS_AUTHOR') return readerSentences.wideNeedsAuthor;
+  if (code === 'RIPPLE_REFUSED') return readerSentences.rippleRefused;
+  if (code === 'CHAPTER_REFUSED') return readerSentences.chapterRefused;
+  if (code === 'CLOSURE_UNSTABLE') return readerSentences.closureUnstable;
+  if (code === 'CLOSURE_BOUND') return readerSentences.closureBound;
+  if (code === 'CLOSURE_DRIFT' || code === 'FACT_DANGLING' || code === 'CAUSE_UNSUPPORTED') {
+    return readerSentences.closureDrift;
+  }
+  if (code === 'IRREVERSIBLE_LOST') return readerSentences.irreversibleLost;
+  if (code === 'LANE_LOST') return readerSentences.laneLost;
+  if (code === 'JUDGE_VETO') return readerSentences.judgeVeto;
+  // BOOK-DOC-80: the countable tier refused the patch; no model was asked after it.
+  if (code === 'TIER0_FAILED') return readerSentences.tier0Failed;
+  // BOOK-206: the patch waits for the filing's own read — the writer buys it, nobody else can.
+  if (code === 'TRIAGE_REQUIRED') return readerSentences.triageRequired;
+  return null;
 }
 
 /** The reader's sentence for a code; `fallback` for anything that has none. */

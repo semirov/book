@@ -154,8 +154,9 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     );
 
     // The cursor goes to the head of the build, not to 22: v23 (the author marker), v25 (the
-    // sentence), v26 (the push tables), v27 (the disposition chain) and v28 (BOOK-187's own
-    // state) run on the same upgrade.
+    // sentence), v26 (the push tables), v27 (the disposition chain), v28 (BOOK-187's own state)
+    // and v29 (the ripple's graph and the plan) run on the same upgrade and touch none of the
+    // rows this file asserts about.
     expect(migrate(db)).toEqual({ from: 21, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect((db.pragma('table_info(block_versions)') as Array<{ name: string }>).map((c) => c.name)).toEqual(

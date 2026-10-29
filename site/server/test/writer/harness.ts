@@ -89,6 +89,12 @@ export type Harness = {
   env: NodeJS.ProcessEnv;
   tokenFile: string;
   provider: PassDeps['provider'];
+  /**
+   * BOOK-187: a chapter is rows, and the fixture published them at creation. `ingest(n)` is the
+   * old «the site serves this file» step kept for the tests that say it out loud: it publishes
+   * the chapter the harness was created with, and is a no-op when the row is already there.
+   */
+  ingest(chapter: number): void;
   assignment(chapter: number, session?: string): WriterAssignment;
   premised(chapter: number, intent: string): string;
   /**
@@ -103,6 +109,31 @@ export type Harness = {
   }): Promise<PassResult>;
   close(): Promise<void>;
 };
+
+/**
+ * BOOK-187 AC7: a pass's receipt as the rows it is now — the call rows in order, and the pass's
+ * own facts, which travel on the last row (`pass_transcripts.content_redacted`).
+ */
+export function receiptsOf(
+  harness: Harness,
+  passId: string,
+): {
+  rows: Array<{ seq: number; role: string; tokensIn: number; tokensOut: number; facts: Record<string, unknown> }>;
+  pass: Record<string, unknown>;
+} {
+  const rows = harness.fixture.db
+    .prepare('SELECT seq, role, tokens_in, tokens_out, content_redacted FROM pass_transcripts WHERE pass_id = ? ORDER BY seq')
+    .all(passId) as Array<{ seq: number; role: string; tokens_in: number; tokens_out: number; content_redacted: string }>;
+  const parsed = rows.map((row) => ({
+    seq: row.seq,
+    role: row.role,
+    tokensIn: row.tokens_in,
+    tokensOut: row.tokens_out,
+    facts: JSON.parse(row.content_redacted) as Record<string, unknown>,
+  }));
+  const pass = (parsed.at(-1)?.facts.pass ?? {}) as Record<string, unknown>;
+  return { rows: parsed, pass };
+}
 
 /** The engine's own state, read straight from the fixture's database. */
 export function stepRow(fixture: Fixture, stepId: string): Record<string, unknown> | undefined {
@@ -199,6 +230,10 @@ export async function createHarness(options: { chapters?: Record<number, string>
     env: writerEnv,
     tokenFile,
     provider,
+    ingest: (chapter: number) => {
+      const text = (options.chapters ?? {})[chapter];
+      if (text !== undefined && fixture.readChapter(chapter) === null) fixture.seedChapter(chapter, text);
+    },
     assignment: (chapter, session = 'writer-test') => fixture.engine.openChapterPass(chapter, session) as WriterAssignment,
     premised: (chapter, intent) => {
       // The owner's intervention on an empty slot: base_rev 0, no anchor, no FIFO lane (BOOK-7).

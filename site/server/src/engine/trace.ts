@@ -21,8 +21,9 @@ import type {
   WriterAssignment,
 } from '@book/shared';
 import {
-  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, parseSeams } from '@book/shared';
+  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, normalizeScopeHint, parseSeams } from '@book/shared';
 
+import { findLiveSentence } from '../sentences/store.ts';
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
 import { premiseOfStep } from './premise.ts';
@@ -170,6 +171,43 @@ export function readTrace(deps: EngineDeps, identifier: string): TraceResult | n
   };
 }
 
+/**
+ * BOOK-173 §3: does this change's anchor point at a sentence the book still holds? The anchor is
+ * the JSON `changes` has always carried (`{blockIds, quote, prefix, suffix}`), and v25 added the
+ * `sentenceIds` the filing was anchored to. One live row is enough: a quote that no longer matches
+ * keeps its block anchor and reads `false` here, which is the honest answer — the pass rewrites.
+ */
+function hasLiveSentenceAnchor(db: EngineDeps['db'], raw: string | null): boolean {
+  const anchor = json<{ sentenceIds?: unknown } | null>(raw, null);
+  const ids = anchor?.sentenceIds;
+  if (!Array.isArray(ids)) return false;
+  return ids.some((id) => typeof id === 'string' && id.length > 0 && findLiveSentence(db, id) !== null);
+}
+
+/**
+ * BOOK-206 (ADR-045): the filing's own read, from the newest attempt of the comment a change
+ * names (`changes.source_comment`). `awaitingRead` is the one state the patch path must never run
+ * in — the attempt is `submitted` and no verdict is stored, so the reading is either in flight or
+ * not yet bought. A settled attempt with no verdict is **not** that state: an operator's own
+ * decision, or a row written before BOOK-206, is the read.
+ */
+function triageOf(
+  db: EngineDeps['db'],
+  change: store.ChangeRow,
+): { verdict: 'FITS' | 'OFF' | null; awaitingRead: boolean } {
+  const commentId = change.source_comment;
+  if (commentId === null || commentId === undefined) return { verdict: null, awaitingRead: false };
+  const row = db
+    .prepare(`SELECT outcome, verdict FROM comment_attempts WHERE comment_id = ? ORDER BY n DESC LIMIT 1`)
+    .get(commentId) as { outcome: string | null; verdict: string | null } | undefined;
+  if (row === undefined) return { verdict: null, awaitingRead: false };
+  const stored = row.verdict === null ? null : json<{ verdict?: unknown }>(row.verdict, {}).verdict;
+  return {
+    verdict: stored === 'FITS' || stored === 'OFF' ? stored : null,
+    awaitingRead: row.outcome === 'submitted' && row.verdict === null,
+  };
+}
+
 /** The writer's assignment, derived from the step (never a stored prompt, §6B.2). */
 export function writerAssignment(
   deps: EngineDeps,
@@ -201,6 +239,16 @@ export function writerAssignment(
           },
     expectation: step.pass === 'draft' ? { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } } : null,
     intent: change ? { value: change.intent, untrusted: true } : null,
+    // BOOK-173: the filing's own width, from the change row; a step without a change has none.
+    scopeHint: change === undefined ? null : normalizeScopeHint(change.scope_hint),
+    // BOOK-173 §3: does the address the filing was made at still exist? `changes.anchor` names the
+    // block ids and, from v25, the sentence ids (ADR-044 §5) — «live» is a row, never a string: an
+    // id whose sentence has been erased since is history, and a patch aimed at history would
+    // re-key the very sentences the filing was about.
+    sentenceAnchor: change !== undefined && hasLiveSentenceAnchor(deps.db, change.anchor),
+    // BOOK-206: the filing's own read travels with the assignment, so the patch path can ask
+    // «has anyone judged these words?» from a fact rather than assuming the site's order.
+    triage: change === undefined ? { verdict: null, awaitingRead: false } : triageOf(deps.db, change),
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.
     interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),

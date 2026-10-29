@@ -20,6 +20,13 @@ import { readerSentences } from '../../src/writer/reasons.ts';
 import { accept, seed } from '../engine/premiseHelpers.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
+/**
+ * The seam these tests prove is the close and the way back, so they write a whole chapter:
+ * `WRITER_MODE_DEFAULT=rewrite` is the owner's switch, and the patch default has its own
+ * files (`patchPass.test.ts`, `noOpPass.test.ts`).
+ */
+const REWRITE = { env: { WRITER_MODE_DEFAULT: 'rewrite' } };
+
 const CHAPTER = 40;
 const AT = '2026-10-25T09:00:00Z';
 
@@ -78,7 +85,7 @@ function claims(harness: Harness): Array<{ chapter: number; kind: string }> {
 describe('a pass closes `done` or puts the chapter back', () => {
   it('takes the refused text back when the rights gate refuses it', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const changeId = filed(harness);
       harness.script.push(quotedAnswer(), 'HOLDS', 'HOLDS', 'REFUSED RIGHTS-QUOTE');
@@ -107,7 +114,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
   it('puts the chapter back when the close is refused after the gates answered', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const changeId = filed(harness);
       harness.script.push(chapterAnswer('Глава сорок', 'новый'), 'HOLDS', 'HOLDS');
@@ -133,7 +140,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
   });
 
   it('announces the landing once, at the close — never at `land`', async () => {
-    const harness = await createHarness({ chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       filed(harness);
       harness.script.push(chapterAnswer('Глава сорок', 'новый'), 'HOLDS', 'HOLDS');
@@ -164,7 +171,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
   it('puts the chapter back when the gate’s revision never validates', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       filed(harness);
       harness.script.push(
@@ -190,7 +197,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
   it('puts the chapter back when a gate answer never parses', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       filed(harness);
       // A flagged scan asks the copyright question; both answers break its shape.
@@ -212,7 +219,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
   it('puts the chapter back when a thrown failure follows the landing', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
-    const harness = await createHarness({ chapters: { [CHAPTER]: original } });
+    const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       filed(harness);
       harness.script.push(

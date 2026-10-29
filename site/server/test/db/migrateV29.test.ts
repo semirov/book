@@ -211,7 +211,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
   it('builds the same shape on a fresh and on a migrated install, and keeps every v28 column', () => {
     const fresh = openDatabase(':memory:');
     migrate(fresh);
-    expect(SCHEMA_VERSION).toBe(32);
+    expect(SCHEMA_VERSION).toBe(33);
     const freshShape = {
       facts: info(fresh, 'facts'),
       dependency: info(fresh, 'fact_dependency'),
@@ -249,8 +249,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
     expect(migrate(db)).toEqual({ from: 28, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
-    // The property: the upgraded tables are the fresh ones, column for column (name, type,
-    // NOT NULL, default, key position), index for index, reference for reference.
+    // The property: the upgraded tables are the fresh ones — column for column, index for index.
     expect(info(db, 'facts')).toEqual(freshShape.facts);
     expect(info(db, 'fact_dependency')).toEqual(freshShape.dependency);
     expect(info(db, 'threads')).toEqual(freshShape.threads);

@@ -80,6 +80,26 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
     expect(line.tone).toBe('done');
   });
 
+  it('files a rewrite that moved no byte under the register’s «рассмотрено», never «внесена» (BOOK-173 §5)', () => {
+    // The key is mandatory: `MyDecisionOutcome` carries `no-op`, so the record table must name it.
+    // Its copy is the register's own word for a filing that wrote nothing (`STATE_WORDS.registered`).
+    const line = decisionLine(
+      applied({
+        outcome: 'no-op',
+        reason: null,
+        chapters: [],
+        waves: null,
+        blocks: null,
+        intent: null,
+        shareAtDecision: null,
+      }),
+      0.004,
+    );
+    expect(line.text).toBe(STATE_WORDS.registered);
+    expect(line.text).not.toContain('внесена');
+    expect(line.tone).toBe('done');
+  });
+
   it('counts one changed paragraph in Russian, not «изменилось 1 абзацев»', () => {
     expect(blocksCopy(1)).toBe('изменился 1 абзац');
     expect(blocksCopy(2)).toBe('изменилось 2 абзаца');

@@ -84,6 +84,32 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
     expect(readerReason(null, 'а'.repeat(500)).length).toBe(200);
   });
 
+  it('gives every BOOK-173 refusal a sentence, and never the code', () => {
+    // The closed list of the ripple's refusals (BOOK-173 review, 8b): the engine's door, the
+    // drainer's stops and the judge. A code that reaches a note is a bug, so the mapping is pinned.
+    const codes = [
+      'NOT_A_RIPPLE',
+      'PLAN_MISSING',
+      'NOT_PLANNED',
+      'NEIGHBOUR_MISSING',
+      'INVALID_CHAPTER',
+      'WIDE_NEEDS_AUTHOR',
+      'RIPPLE_REFUSED',
+      'CLOSURE_UNSTABLE',
+      'CLOSURE_DRIFT',
+      'IRREVERSIBLE_LOST',
+      'LANE_LOST',
+      'JUDGE_VETO',
+    ];
+    for (const code of codes) {
+      const sentence = readerReason(code, 'запасная фраза');
+      expect(sentence).not.toBe('запасная фраза');
+      expect(sentence).not.toMatch(CODE_TOKEN);
+      expect(sentence).not.toContain(code);
+      expect(sentence.length).toBeGreaterThan(10);
+    }
+  });
+
   it('never promises a queue: a parked pass is a stopped change (BOOK-219, audit B2/B5)', () => {
     for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
       // An escalated change is terminal (`rejected`); nothing retries it and the reader has no

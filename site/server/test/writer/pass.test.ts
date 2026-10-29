@@ -80,8 +80,7 @@ describe('runPass — one pass, end to end', () => {
       // 2. The step is closed with the pinned model and the summed tokens (writer + both gates).
       const step = stepRow(harness.fixture, result.stepId ?? '');
       expect(step).toMatchObject({ outcome: 'rewritten', model: 'deepseek/deepseek-v4-pro', cycle: 0 });
-      expect(step?.tokens_in).toBe(3_000);
-      expect(step?.tokens_out).toBe(600);
+      expect({ in: step?.tokens_in, out: step?.tokens_out }).toEqual({ in: 3_000, out: 600 });
 
       const spend = spendRow(harness, result.stepId ?? '');
       expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
@@ -112,7 +111,7 @@ describe('runPass — one pass, end to end', () => {
       expect(landed?.span).toHaveLength(1);
       expect(landed?.span?.[0]?.blockId).toBeNull();
       expect(landed?.span?.[0]?.before).toBe('');
-      expect(landed?.span?.[0]?.after.startsWith('служебный абзац')).toBe(true);
+      expect(landed?.span?.[0]?.after.startsWith((written ?? '').split('\n\n')[1]?.slice(0, 20) ?? '—')).toBe(true);
       expect(landed?.tokens).toEqual({ in: 3_000, out: 600 });
       expect(landed?.costUsd).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
       expect(landed?.costUsd).toBeGreaterThan(0);
@@ -143,7 +142,7 @@ describe('runPass — one pass, end to end', () => {
 
       // 8. One log line per stage, each with the stage's own summary — never the prompt.
       expect(harness.logs.filter((line) => line.includes('queued'))).toHaveLength(1);
-      expect(harness.logs.join('\n')).not.toContain('служебный абзац');
+      expect(harness.logs.join('\n')).not.toContain('Труд стена');
       expect(harness.calls).toHaveLength(3);
     } finally {
       await harness.close();
@@ -257,7 +256,7 @@ describe('runPass — one pass, end to end', () => {
       // The first draft (start + return) and two continuations, each (start + return).
       expect(drafting).toHaveLength(6);
       expect(drafting[2]?.summary).toContain('продолжение');
-      expect(harness.calls[1]?.messages.at(-1)?.content).toContain('Продолжи прозу ровно с этого места.');
+      expect(harness.calls[1]?.messages.at(-1)?.content).toContain('Продолжи прозу ровно с того места, где она остановилась.');
       const written = harness.fixture.readChapter(CHAPTER);
       expect(written).toContain('Дописанный абзац.');
       expect(written).toContain('Дописанный абзац продолжается');
@@ -307,19 +306,20 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle for a day whose cap the estimate would cross, and opens nothing', async () => {
     const harness = await createHarness();
     try {
-      // $9.99 of $10 spent: a pass costs a few cents before the prompt is built, so it does not fit.
-      harness.hooks.budget = budgetOf({ daySpent: 9.99 });
+      harness.hooks.budget = budgetOf({ daySpent: 9.99 }); // $9.99 of $10: a pass cannot fit
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('idle');
       expect(result.reason).toBe(PAUSE_LINE);
-      // No job was asked for: the guard ran on `state` alone.
-      expect(harness.engineCalls).toEqual(['state']);
+      expect(harness.engineCalls).toEqual(['state']); // the guard ran on `state` alone
       expect(harness.calls).toHaveLength(0);
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
-      // The estimate is printed with the day and the book; the cents follow the prompt's size.
-      expect(harness.logs.some((line) => /оценка прохода \$0,[1-9]\d{3} \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u.test(line))).toBe(true);
+      // BOOK-173: guard, patch figure, mode, ledger.
+      const printed = harness.logs.find((line) => line.includes('оценка прохода')) ?? '';
+      expect(printed).toMatch(
+        /перепись \$0,\d{4} \/ правка \$0,\d{4} · режим: ещё не выбран \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u,
+      );
     } finally {
       await harness.close();
     }

@@ -202,6 +202,12 @@ export function seedBook(target: Fixture): string {
   if (sentence !== undefined) {
     touchSentence(db, { sentenceId: sentence.id, changeId: 'chg_one', kind: 'born', at: AT });
   }
+  // BOOK-173: one plan. A reset must remove it before the change it priced, or the wipe commits
+  // a dangling reference.
+  db.prepare(
+    `INSERT INTO change_plans (id, change_id, chapter, outcome, closure, patches, bounds, iterations, created_at)
+     VALUES ('pln_seed', 'chg_one', 8, 'ripple', '{}', '[]', '{}', '[]', ?)`,
+  ).run(AT);
   const rate = db.prepare('INSERT INTO rate_events (key, ts) VALUES (?, ?)');
   rate.run(`edit:id:${owner}`, 1_760_000_000_000);
   rate.run('edit:ip:hash-one', 1_760_000_000_000);
@@ -255,6 +261,8 @@ export const CONTENT_KEYS = [
   // the reset deleted.
   'sentences',
   'sentence_touches',
+  // BOOK-173: the frozen plans of the ripple.
+  'change_plans',
   'overwrites',
   'contributions',
   'contribution_history',
@@ -303,6 +311,7 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     literals: 1,
     sentences: seededSentences(db),
     sentence_touches: 1,
+    change_plans: 1,
     overwrites: 0,
     contributions: 1,
     contribution_history: 1,

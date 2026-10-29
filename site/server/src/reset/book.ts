@@ -195,6 +195,8 @@ const WIPE_TABLES = [
   'comment_events',
   // ADR-044: a touch names a sentence, so the ledger goes before the rows it describes.
   'sentence_touches',
+  // BOOK-173: a plan names the change it priced, so it leaves before the change does.
+  'change_plans',
   'comments',
   'changes',
   'feedback_batches',

@@ -7,7 +7,8 @@
  *
  *  · `GET /internal/writer-state?day=…` — the lane's counter as the caller's day sees it;
  *  · `POST /internal/writer-state` — count one pass, in one transaction, and answer the row;
- *  · `POST /internal/transcript` — a pass's redacted receipt, pruned on write.
+ *  · `POST /internal/transcript` — a pass's redacted receipt, pruned on write;
+ *  · `POST /internal/writer-boot` — the process's boot marker for the sample queue (BOOK-DOC-80).
  *
  * Shape validation lives here, next to the body limits it depends on; the storage rules live in
  * `db/repo/writerState.ts` and `db/repo/transcripts.ts`. A control app built without a database (a
@@ -26,6 +27,8 @@ import {
   insertTranscripts,
 } from '../db/repo/transcripts.ts';
 import { isIsoDay, readWriterState, recordWriterState } from '../db/repo/writerState.ts';
+import { markWriterBoot } from '../ledger/graph/verification.ts';
+import { ulid } from '../util/ulid.ts';
 
 /**
  * Sixteen receipts of at most 4 KB each are 64 KB of content before any JSON around them, which
@@ -131,5 +134,17 @@ export function registerLaneStoreRoutes(app: FastifyInstance, deps: LaneStoreDep
         retentionDays,
       }),
     };
+  });
+
+  /**
+   * BOOK-DOC-80: the marker a writer process writes once per boot. `INSERT OR IGNORE` on one `meta`
+   * key, so a second process booting under a standing marker writes nothing and answers the same.
+   */
+  app.post('/internal/writer-boot', async (_request, reply) => {
+    if (db === null) {
+      return reply.code(503).send({ code: 'WRITER_BOOT_UNAVAILABLE', message: 'the writer-state store is not attached' });
+    }
+    markWriterBoot(db, ulid());
+    return { ok: true, data: { marked: true } };
   });
 }

@@ -108,6 +108,11 @@ describe('the thread’s two lines', () => {
     expect(progressLine(paperwork)).toBe('принято → рассмотрено');
     expect(stampCopy(paperwork)).toBe('рассмотрено');
     expect(outcomeCopy('registered')).toBe('рассмотрено');
+    // BOOK-173 (merge note): the vocabulary register (BOOK-218) has no line for `ripple`/`no-op`
+    // yet, so `outcomeCopy` falls through to the running word. The cards' own wording for the two
+    // new outcomes is the register owner's to add — this file does not spell one of its own.
+    expect(outcomeCopy('ripple')).toBe(STATE_WORDS.reading);
+    expect(outcomeCopy('no-op')).toBe(STATE_WORDS.reading);
   });
 
   it('always states why a change was dropped', () => {

@@ -25,12 +25,14 @@ import { PASS_STOPS, type WriterAssignment } from '@book/shared';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient } from './client.ts';
 import type { WriterConfig } from './config.ts';
+import type { WriteMode } from './mode.ts';
 import type { Lane, PassResult } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { putBack } from './putBack.ts';
 import { failureOf, isTransportFailure, readerFallbacks, readerSentences, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { stageSummary } from './stages.ts';
+import type { GatesRecord } from './verify/run.ts';
 
 export type ClosePassInput = {
   lane: Lane;
@@ -48,6 +50,10 @@ export type ClosePassInput = {
   started: { rev: number | null; sha: string };
   landing: { rev: number; sha: string } | null;
   landed: boolean;
+  /** BOOK-173 §4: the mode the pass wrote in — `rewrite` on unchanged text closes `no-op`. */
+  mode?: WriteMode | null;
+  /** BOOK-DOC-80: which tiers judged the pass — recorded with the plan on the close. */
+  gates?: GatesRecord | null;
   log: (line: string) => void;
   now: () => number;
 };
@@ -72,6 +78,19 @@ export async function closePass(input: ClosePassInput): Promise<PassResult> {
       tokensIn: lane.writerTokens().in,
       tokensOut: lane.writerTokens().out,
       seams: [],
+      // BOOK-173 §4: how this pass wrote — the one thing the engine cannot state itself.
+      ...(input.mode === null || input.mode === undefined ? {} : { mode: input.mode }),
+      // BOOK-DOC-80: which tiers judged it, so `change_plans` and the sample queue learn it.
+      ...(input.gates === null || input.gates === undefined
+        ? {}
+        : {
+            verification: {
+              gatesMode: input.gates.gatesMode,
+              why: input.gates.why,
+              tier1Verdict: input.gates.tier1Verdict,
+              tier1Usd: input.gates.tier1Usd,
+            },
+          }),
       // BOOK-219: the close names the estimate, so the ledger row is priced *and* honest.
       provenance: estimated ? 'pipeline-estimated' : 'pipeline',
     });
@@ -155,6 +174,8 @@ export async function closePass(input: ClosePassInput): Promise<PassResult> {
       blocks: parsed.blocks.length,
       tokensIn: usage.in,
       tokensOut: usage.out,
+      tokensCachedIn: usage.cachedIn,
+      gates: input.gates === null || input.gates === undefined ? null : input.gates.word,
       costUsd: passCost,
       estimated,
     }),
