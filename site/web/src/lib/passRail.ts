@@ -5,21 +5,16 @@ import { passSpanOf, type PassSpan } from './passDiff.ts';
 /**
  * The live block: what a running pass is writing, as the page paints it.
  *
- * This module used to carry the reader's pass rail as well — five stage words, a duration and a
- * token receipt. That was the workshop's log on a reader's page, and the rail is gone: the
- * strip now says one plain sentence, and the stage vocabulary, durations and costs live only in
- * the operator's console (`bin/admin.mjs`). What remains is the one thing the prose needs: which
- * block a pass is writing and from when.
+ * What remains after BOOK-207 is the one thing the prose needs: which block a pass is writing
+ * and from when. The rail, the strip and the ledger are gone; the stage vocabulary, durations
+ * and costs live only in the operator's console (`bin/admin.mjs`).
  */
 
 const byStage = (left: PassStageEvent, right: PassStageEvent): number =>
   left.at - right.at || left.stageSeq - right.stageSeq;
 
 /** The chapter's log, narrowed to one pass, in stage order. */
-export function eventsOfPass(
-  events: readonly PassStageEvent[],
-  passId: string,
-): PassStageEvent[] {
+function eventsOfPass(events: readonly PassStageEvent[], passId: string): PassStageEvent[] {
   return events.filter((event) => event.passId === passId).sort(byStage);
 }
 

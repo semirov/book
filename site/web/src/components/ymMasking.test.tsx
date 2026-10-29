@@ -4,7 +4,6 @@ import type {
   ChangeDto,
   CommentDto,
   HistoryRecordDto,
-  MyTraceDto,
   ParagraphChainDto,
 } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -72,16 +71,6 @@ const AUTHORS: AuthorsDto = {
   sum: 1,
 };
 
-const OWN_TRACE: MyTraceDto = {
-  label: SENTINEL.name,
-  edits: 2,
-  chars: 400,
-  share: 0.004,
-  series: [],
-  hidden: false,
-  isAuthor: false,
-  survivedRevisions: 4,
-};
 
 const COMMENT: CommentDto = {
   attempt: null,
@@ -188,16 +177,17 @@ const CHAIN: ParagraphChainDto = {
 };
 
 describe('the reader’s name and words are masked from Webvisor', () => {
-  it('masks the authors list, including the reader’s own trace in it', () => {
+  it('masks the authors list; the reader’s own trace left for its own masked page', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} ownTrace={OWN_TRACE} live />,
+      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} live />,
     );
     expectMasked(html, SENTINEL.name, '.authors');
-    // Two rows carry the same name (the list and «ваш след»): both are under the mask.
     expect(html).toContain('ym-hide-content');
-    // And the identity rows are out of the clickmap as well.
+    // The identity rows are out of the clickmap as well.
     expect(html).toContain('authors-row ym-disable-clickmap');
-    expect(html).toContain('own-trace ym-disable-clickmap');
+    // BOOK-207: `#след` owns the trace and carries its own mask; this block keeps one row.
+    expect(html).toContain('href="#след"');
+    expect(html).not.toContain('own-trace');
   });
 
   it('masks the record’s change section: the filing’s quote and the author’s words', () => {

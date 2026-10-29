@@ -7,20 +7,20 @@ import { ChapterHeader } from '../src/components/ChapterHeader.tsx';
 import { Colophon } from '../src/components/Colophon.tsx';
 import { Discussion } from '../src/components/Discussion.tsx';
 import { FilingCard } from '../src/components/FilingCard.tsx';
+import { FollowWord } from '../src/components/FollowWord.tsx';
 import { Header } from '../src/components/Header.tsx';
 import { LegalPage } from '../src/components/LegalPage.tsx';
 import { MarginNote } from '../src/components/MarginNote.tsx';
 import { MomentControl } from '../src/components/MomentControl.tsx';
 import { NoticeTicket } from '../src/components/Notice.tsx';
 import { Offline } from '../src/components/Offline.tsx';
-import { OwnDecisions } from '../src/components/OwnDecisions.tsx';
-import { PassStrip } from '../src/components/PassStrip.tsx';
 import { PhoneStrip } from '../src/components/PhoneStrip.tsx';
 import { PremiseRow } from '../src/components/PremiseRow.tsx';
 import { FilingBody, RowsList } from '../src/components/RecordParts.tsx';
 import { RecordRow } from '../src/components/RecordRow.tsx';
 import { TableOfContents } from '../src/components/TableOfContents.tsx';
 import { TitleSheet } from '../src/components/TitleSheet.tsx';
+import { TrailPage } from '../src/components/TrailPage.tsx';
 
 import {
   AUTHORS,
@@ -30,12 +30,10 @@ import {
   COMMENT,
   COMMENT_TWO,
   COMMENTS,
-  DECISIONS,
   ENTRY,
   FIXED_NOW,
   FRONT,
   IMPRINT,
-  PASS_EVENTS,
   PASS_RECORD,
   PREMISE,
   READER_RECORD,
@@ -71,13 +69,14 @@ import '../src/styles/ribbon.css';
 import '../src/styles/chronicle.css';
 import '../src/styles/seam.css';
 import '../src/styles/pass-live.css';
-import '../src/styles/pass-strip.css';
 import '../src/styles/panels.css';
 import '../src/styles/seam-form.css';
 import '../src/styles/marginalia.css';
 import '../src/styles/reader.css';
 import '../src/styles/record.css';
 import '../src/styles/record-change.css';
+import '../src/styles/follow.css';
+import '../src/styles/trail.css';
 import '../src/styles/foot-jumps.css';
 import '../src/styles/first-load.css';
 
@@ -127,7 +126,7 @@ function Gallery() {
   return (
     <div className="canvas harness-canvas">
       <Line id=".top-in / .top-row">
-        <Header state={STATE} ribbon={null} catalog={CATALOG} markers={[]} onOpenChange={noop} live={false} />
+        <Header state={STATE} ribbon={null} catalog={CATALOG} markers={[]} onOpenChange={noop} live={false} reading={{ n: 1, page: 1 }} />
       </Line>
       <Line id=".top-row (all four registers)">
         <HeadRow />
@@ -201,20 +200,26 @@ function Gallery() {
       <Line id=".past-ch summary">
         <PastChapterSummary />
       </Line>
-      <Line id=".pass-strip-head / .pass-strip-heading">
-        <PassStrip chapter={1} events={PASS_EVENTS} onClose={noop} />
-      </Line>
       <Line id=".rec-change-row / .rec-change-facts / .rec-change-step">
         <ChangeSection change={CHANGE} before="была одна лампа" after="лампа погасла" />
+      </Line>
+      <Line id=".follow-word">
+        <FollowWord
+          changeId="chg_lines"
+          wings={{
+            down: { frontier: 8, wave: 1, state: 'moving', reached: [8] },
+            up: { frontier: 21, wave: 2, state: 'moving', reached: [21] },
+          }}
+        />
+      </Line>
+      <Line id=".sled-head / .sled-line">
+        <TrailPage viewer={{ signedIn: false, displayName: null }} />
       </Line>
       <Line id=".premise-row / .premise-meta">
         <PremiseRow row={PREMISE} onOpen={noop} onRevise={noop} />
       </Line>
       <Line id=".authors-row">
-        <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt="2026-10-27T09:20:00Z" live decisions={DECISIONS} />
-      </Line>
-      <Line id=".own-decision-meta">
-        <OwnDecisions decisions={DECISIONS} />
+        <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt="2026-10-27T09:20:00Z" live />
       </Line>
       <Line id=".colophon .row">
         <Colophon state={STATE} imprint={IMPRINT} />

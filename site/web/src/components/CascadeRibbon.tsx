@@ -1,6 +1,7 @@
 import type { EscalationMarker, Ribbon, RibbonWing, Wing } from '../lib/cascade.ts';
 import { WING_WORDS, ribbonSummary, rippleIsLive, wingLine } from '../lib/cascade.ts';
 import { boundaryLabel } from '../lib/changeStatus.ts';
+import { FollowWord } from './FollowWord.tsx';
 
 /**
  * The cascade ribbon (ARCHITECTURE §11.7, BOOK-DOC-4): the change's consequence as two wings.
@@ -58,6 +59,8 @@ export function CascadeRibbon({
           <WingColumn side="up" wing={ribbon.wings.up} />
         </div>
       )}
+
+      {ribbon === null ? null : <FollowWord changeId={ribbon.changeId} wings={ribbon.wings} />}
 
       {rippleLive ? (
         <span className="ribbon-rings" aria-hidden="true">

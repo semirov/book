@@ -5,6 +5,7 @@ import { track } from '../lib/analytics.ts';
 import { changeNumber } from '../lib/changeStatus.ts';
 import { changeView } from '../lib/changeView.ts';
 
+import { FollowWord } from './FollowWord.tsx';
 import { SectionHeader } from './RecordParts.tsx';
 
 /**
@@ -66,6 +67,9 @@ export function ChangeSection({
           ))}
         </ol>
       )}
+      {/* BOOK-207 — the section's last line: the reader reads what the change is, then decides
+          to wait for it. No direction on the record, no control. */}
+      <FollowWord changeId={change.id} wings={change.cascade?.wings ?? null} />
     </div>
   );
 }

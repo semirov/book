@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import type { MyDecisionsDto } from '@book/shared';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,13 +6,11 @@ import type { Place } from '../lib/place.ts';
 import { currentFiling } from '../lib/useFiling.ts';
 import { ChronicleRecords } from './Chronicle.tsx';
 import { Discussion } from './Discussion.tsx';
-import { OwnDecisions } from './OwnDecisions.tsx';
 import { PlaceLink } from './PlaceLink.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import {
   CHAPTER_TOP,
   OFFSET_TOP,
-  OWN_BLOCK_TOP,
   answer,
   closePlacePage,
   comment,
@@ -25,8 +22,9 @@ import {
 } from './placeStub.ts';
 
 /**
- * BOOK-168 — one door, four surfaces: the register's quote, the reader's own intent, the
- * chronicle's place cell, and a place whose chapter is not on this page at all.
+ * BOOK-168 — one door on every surface that quotes the book: the register's quote, the
+ * chronicle's place cell, and a place whose chapter is not on this page at all. BOOK-207 moved
+ * the reader's own intent to `#след`, whose rows use the same `PlaceLink`.
  *
  * The landing's arithmetic is proved in `placeLink.dom.test.tsx`; this file proves what each
  * surface does with it — and, for the chronicle, that a door which cannot land anywhere still
@@ -68,53 +66,6 @@ describe('the same door on every surface that quotes the book', () => {
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(currentFiling()?.comment?.id).toBe('cmt_1');
     expect(panel()).not.toBeNull();
-  });
-
-  it('the reader’s own intent is the door, read by id and landed on the block', async () => {
-    mountPage();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        answer(
-          comment({
-            id: 'cmt_A',
-            chapter: 8,
-            anchor: { blockId: 'ch08#b2', blockIndex: 2, quote: '— Заявителем лично.', prefix: null, suffix: null, resolved: true },
-          }),
-        ),
-      ),
-    );
-    const decisions: MyDecisionsDto = {
-      items: [
-        {
-          commentId: 'cmt_A',
-          changeId: 'chg_A',
-          chapter: 8,
-          intent: 'внести документ о регистрации сенсора',
-          premise: false,
-          outcome: 'applied',
-          reason: null,
-          chapters: [8],
-          waves: 1,
-          blocks: 3,
-          shareAtDecision: null,
-          decidedAt: '2026-10-25T12:30:00Z',
-        },
-      ],
-      open: [],
-      share: 0.004,
-    };
-    await page.render(<OwnDecisions decisions={decisions} />);
-    const link = linkOf();
-
-    expect(link.getAttribute('href')).toBe('#ch-8');
-    expect(link.closest('.own-decision-intent')).not.toBeNull();
-    await act(async () => { link.click(); });
-    await page.settle();
-    // The DTO carries no anchor: one read by id, then the paragraph it names.
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/comments/cmt_A', expect.anything());
-    expect(scrollTo).toHaveBeenCalledWith({ top: OWN_BLOCK_TOP - OFFSET_TOP, behavior: 'auto' });
-    expect(currentFiling()?.comment?.id).toBe('cmt_A');
   });
 
   it('the record’s place cell is the door: the filing by id, else the change card', async () => {

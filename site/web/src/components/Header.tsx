@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
-import { useReading } from '../lib/pageTrack.ts';
 import type { Stages } from '../lib/useStages.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { HeadStatus } from './HeadStatus.tsx';
@@ -39,8 +38,8 @@ function titleOf(catalog: readonly CatalogEntry[], n: number | null): string | n
  * present only while a pass is in flight, so the reading surface says the one thing a reader
  * looking up from the prose needs and nothing else.
  *
- * BOOK-104: the head names the chapter at the reading line and the folio prints its page —
- * one `useReading`, one model, both from the same commit.
+ * BOOK-104 / BOOK-207: the head names the chapter at the reading line and the folio prints its
+ * page — one model, resolved once in `App` and handed down.
  */
 export function Header({
   state,
@@ -51,6 +50,7 @@ export function Header({
   live,
   stages,
   nowMs,
+  reading,
 }: {
   state: StateSnapshot;
   ribbon: Ribbon | null;
@@ -63,9 +63,14 @@ export function Header({
   stages?: Stages;
   /** A fixed clock for a test; a page hands none in. */
   nowMs?: number;
+  /**
+   * BOOK-104 / BOOK-207: the chapter the reader is in and the page it opens. The page's one
+   * `useReading` now lives in `App`, so the landing notice goes to the same chapter this head
+   * names — the header is a reader of the model, not its owner.
+   */
+  reading: { n: number | null; page: number | null };
 }) {
-  // BOOK-104: the chapter the reader is in and the page it opens — one resolution, two slots.
-  const { n, page } = useReading(catalog);
+  const { n, page } = reading;
   const title = titleOf(catalog, n);
   const slot = useRef<HTMLSpanElement>(null);
   /** The sticky head's own box: the anchor contract measures it (BOOK-155, owner 2026-10-28). */

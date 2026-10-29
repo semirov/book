@@ -1,5 +1,5 @@
 /**
- * BOOK-156 — the grip's clock and its door, as pure state.
+ * BOOK-156 — the grip's clock, as pure state.
  *
  * The grip is the page's foot: one 24 px band, one hairline, three words (BOOK-156 #3801).
  * Everything that has a number in it lives here, so the thresholds are tested without a DOM,
@@ -15,21 +15,16 @@
  *     the honesty is in the states, not in the transitions (#3797 §5). The dwell is not a
  *     transition: 3 200 ms of quiet stay 3 200 ms.
  *
- * The third item's three states are `passDoor`: the word never changes (owner's rule, #3802
- * §2), only the meta line under it and whether the item is a link at all.
+ * BOOK-207 removed the door half: the third item is a plain `след` link, and no state table,
+ * no watch and no veil remain.
  */
-
-import { changeHref } from '@book/shared';
-
-import { formatDayMonth } from './format.ts';
 
 export const GRIP = {
   /** --dur-ui: arriving may take a beat. */
   enterMs: 220,
   /** Leaving is a favour to the reader: shorter, and without hesitating (--ease-in). */
   exitMs: 160,
-  /** --dur-tick: the meta line's cross-fade and the veil's in and out, the rail's own
-   *  state-change length. */
+  /** --dur-tick: the row's own state-change length (the sheet reads it too). */
   tickMs: 120,
   /** The door commits its cut here, measured from the tap. */
   commitMs: 120,
@@ -42,91 +37,6 @@ export const GRIP = {
   holdMs: 100,
   commitGapMs: 320,
 } as const;
-
-/** The visible word of the third item — one label in every state (§3802 §2). */
-export const PASS_LABEL = 'каретки';
-/** The door's name while the reader is inside the pass: the entrance is the exit. */
-export const PASS_WATCHING = 'каретки — вернуться к месту чтения';
-/** The one state word an inert item may print (owner, 2026-10-28: never «проход»). */
-export const PASS_SILENT = 'пока не писалась';
-/** The running pass's one word; the cell never names the machinery. */
-export const PASS_LIVE = 'пишется';
-/** The ended pass's lead word; its day follows it. */
-export const PASS_WROTE = 'писалась';
-
-// ── the door's three states ───────────────────────────────────────────────────
-
-export type PassState = 'live' | 'record' | 'silent' | 'absent';
-
-export type PassFacts = {
-  /** `state.queue.processing !== null` — the engine is inside a change now. */
-  processing: boolean;
-  /** any `revising[n].active` — a block carries the ochre rule now. */
-  revising: boolean;
-  /** `state.history.live` — the book has a past to point at. */
-  historyLive: boolean;
-  /** `changes[0]`, the row the register prints first; `null` when there is none. */
-  change: { id: string; decidedAt: string | null; enqueuedAt: string } | null;
-};
-
-export type PassDoor = {
-  state: PassState;
-  /** `#pass` while a pass runs, the record's own hash when one is behind, `null` when inert. */
-  href: string | null;
-  /** The line under `каретки` when the row is open; `null` for a live pass. */
-  meta: string | null;
-  /** The visible word — never a second name for the control. */
-  label: string;
-  /** WCAG 2.5.3: the visible word is always inside the accessible name. */
-  name: string;
-};
-
-/**
- * Which of the three states the third item is in. Live wins over everything (a pass that
- * runs is what the carets show); with no history the item is absent, not silent — there
- * never was a pass to name (#3802 §2).
- */
-export function passStateOf(facts: PassFacts): PassState {
-  if (facts.processing || facts.revising) return 'live';
-  if (!facts.historyLive) return 'absent';
-  return facts.change === null ? 'silent' : 'record';
-}
-
-/**
- * The third item's target, its meta line and its accessible name.
- *
- * Live: `#pass` — the reader watches the block being printed. Record: `?change=<changeId>` —
- * the record's `правка` section at the sentence the change touched; a pass has no page of its
- * own. Silent: no target at all, and the item says so. The visible word never changes; the meta
- * line is the only thing the state rewrites.
- */
-export function passDoor(facts: PassFacts & { watching?: boolean }): PassDoor {
-  const state = passStateOf(facts);
-  if (state === 'live') {
-    const meta = PASS_LIVE;
-    return {
-      state,
-      href: '#pass',
-      meta,
-      label: PASS_LABEL,
-      name: facts.watching === true ? PASS_WATCHING : `${PASS_LABEL} · ${meta}`,
-    };
-  }
-  if (state === 'absent') {
-    return { state: 'absent', href: null, meta: null, label: PASS_LABEL, name: PASS_LABEL };
-  }
-  if (facts.change === null) {
-    return { state: 'silent', href: null, meta: PASS_SILENT, label: PASS_LABEL, name: `${PASS_LABEL} · ${PASS_SILENT}` };
-  }
-  const meta = `${PASS_WROTE} · ${formatDayMonth(facts.change.decidedAt ?? facts.change.enqueuedAt)}`;
-  return {
-    state: 'record',
-    href: changeHref(facts.change.id),
-    meta,
-    label: PASS_LABEL,
-    name: `${PASS_LABEL} · ${meta}`,
-  };
-}
 
 // ── the row's clock ──────────────────────────────────────────────────────────
 
@@ -163,9 +73,8 @@ export type GripEvent =
   | { type: 'timer'; atMs: number }
   | { type: 'scroll'; atMs: number; dy: number };
 
-/** Every duration the row and the door use; all zero under reduced motion. */
-/** Every duration the row and the door use; all zero under reduced motion — except the dwell,
- *  which is the reader's quiet time and not a transition (BOOK-156 fix). */
+/** Every duration the row uses; all zero under reduced motion — except the dwell, which is the
+ *  reader's quiet time and not a transition (BOOK-156 fix). */
 export type GripTiming = {
   enterMs: number;
   exitMs: number;
@@ -217,22 +126,6 @@ export const isFling = (velocity: number): boolean => Math.abs(velocity) >= GRIP
 
 /** Under 120 px/s: the momentum is spent, and an entrance may land after `holdMs` of it. */
 export const isCalm = (velocity: number): boolean => Math.abs(velocity) < GRIP.settlePxPerSec;
-
-/**
- * The chapter the door belongs to. A revising block's key is a chapter number, so the first
- * active block names the chapter even when the queue reports nothing (a cascade step); else
- * the processing change's chapter; else there is no live pass to open. `#3802 §4` — the door
- * must find the pass's chapter from either fact, not from `queue.processing` alone.
- */
-export function liveChapter(
-  processingChapter: number | null,
-  revising: Readonly<Record<number, { active: boolean }>>,
-): number | null {
-  for (const [chapter, block] of Object.entries(revising)) {
-    if (block.active) return Number(chapter);
-  }
-  return processingChapter;
-}
 
 /** One commit, with the row's clocks reset: the 48 px and the 3 200 ms start again. */
 function commit(state: GripState, open: boolean, atMs: number, motion: GripMotion): GripState {
