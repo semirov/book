@@ -29,6 +29,7 @@ import { lastHseq } from '../../history/events.ts';
 import { readImpact } from '../../history/impact.ts';
 import { readContributors, readDiff, readParagraphChain } from '../../history/query.ts';
 import { readRecord } from '../../history/record.ts';
+import { ageGateRefusal } from '../ageGate.ts';
 import type { RouteDeps } from '../deps.ts';
 
 const chapterParams = {
@@ -94,6 +95,11 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
     '/api/history/chapters/:n',
     { schema: { params: chapterParams } },
     async (request, reply) => {
+      // BOOK-225 — this answer carries the chapter's blocks, i.e. its prose: the same refusal
+      // as `/api/chapters/:n`, before the moment is resolved. The timeline, the diff and the
+      // paragraph chain stay open — they name hashes and moments, not sentences.
+      const refused = ageGateRefusal(request, reply, deps.now);
+      if (refused !== null) return refused;
       const n = Number(request.params.n);
       if (!isChapterNumber(n)) return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such chapter' });
       const hseq = resolveMoment(db, request.query.at ?? null);

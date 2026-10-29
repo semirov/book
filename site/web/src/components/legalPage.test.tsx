@@ -125,6 +125,15 @@ describe('/rules', () => {
     expect(text).toContain('тоска, холод, процедура вместо чуда, без утешения');
   });
 
+  // BOOK-225 — the rating, stated once, in one short section: the same fact the footer carries
+  // and the gate asks with, so a reader who came for the rules learns what the book is.
+  it('states the rating in one short section, in the same words as the footer', () => {
+    const section = /<section><h2>кому это читать<\/h2><p>([\s\S]*?)<\/p><\/section>/u.exec(html);
+    expect(section?.[1]).toBe('Книге 18+. Внутри — насилие, кровь и взрослые темы: это жанр, и текст не смягчается.');
+    // One print of the rating, and nothing about the reader's age in law.
+    expect([html.split('18+').length, /возрастн|несовершеннолетн|cookie/iu.test(html)]).toEqual([2, false]);
+  });
+
   it('defines the intervention once and puts it before the note', () => {
     // One definition on one screen: the premise carries it, the section below does not repeat it.
     expect(text.split('факт мира')).toHaveLength(2);

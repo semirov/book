@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { getChapterRow, listBlocks } from '../../db/repo/chapters.ts';
 import { frameBlockOf, frameOf } from '../../db/repo/frame.ts';
 import { chapterEtag } from '../../util/etag.ts';
+import { ageGateRefusal } from '../ageGate.ts';
 import { checkFrameDrift, framePositionOf, frameSource } from '../frameDrift.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -31,6 +32,13 @@ const loggedDrift = new Map<string, string>();
 
 export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get<{ Params: { n: number } }>('/api/chapters/:n', { schema: { params: paramsSchema } }, async (request, reply) => {
+    // BOOK-225 — the gate sits at the top of the handler, before any row is read: a request
+    // without a live acknowledgement is refused here, so neither a written chapter nor a basis
+    // sentence (ch01/ch42) can be handed out by asking harder. The same refusal guards the
+    // history's chapter and `/book.fb2` (`http/ageGate.ts`); the catalog, the front and the
+    // state stay open — the book must remain discoverable while gated.
+    const refused = ageGateRefusal(request, reply, deps.now);
+    if (refused !== null) return refused;
     const n = Number(request.params.n);
     if (!isChapterNumber(n)) {
       return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such chapter' });

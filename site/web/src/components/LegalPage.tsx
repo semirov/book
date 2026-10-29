@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { track } from '../lib/analytics.ts';
 import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 import type { StaticPage } from '../lib/route.ts';
 import { ScreenExit } from './ScreenExit.tsx';
 import {
@@ -134,6 +135,14 @@ function Rules() {
         факт мира — один из четырёх: {INTERVENTION_KIND_LIST}. Сначала проверяют, укладывается ли
         это в книгу: тоска, холод, процедура вместо чуда, без утешения. Только потом пишут.
       </p>
+
+      {/* BOOK-225 — the rating, one short section before the rules of the intervention: a reader
+          who came here to learn what the site asks of them also learns what the book is. The
+          words are the footer's fact in a sentence (`AGE_WORDS`, BOOK-218), said once, not moralised. */}
+      <section>
+        <h2>{AGE_WORDS.rulesHeading}</h2>
+        <p>{AGE_WORDS.rulesBody}</p>
+      </section>
 
       <section>
         <h2>Что вы вносите</h2>

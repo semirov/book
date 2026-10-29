@@ -27,7 +27,7 @@ import { checkFrameDrift, framePositionOf, frameSource } from '../src/http/frame
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { sha256Hex } from '../src/util/hash.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from './helpers.ts';
 
 const roots: string[] = [];
 let fixture: Fixture | null = null;
@@ -153,7 +153,7 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     const log = await bootLogged();
     setFirstBlock(WRONG);
 
-    const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     expect(response.statusCode).toBe(200);
     expect(response.json().blocks[0].text).toBe(WRONG);
     await settle();
@@ -169,7 +169,7 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     // The fixture's own ch01 block: the canon sentence, then the paragraph beside it.
     expect(fixture!.db.prepare('SELECT text FROM blocks WHERE chapter = 1 AND idx = 0').get()).toEqual({ text: FRAME_BLOCK });
 
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).statusCode).toBe(200);
     await settle();
     expect(log.lines.filter((line) => line.includes('FRAME_DRIFT'))).toEqual([]);
   });
@@ -179,26 +179,26 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
 
     // A projection that stays wrong is one line, not one per reader page view.
     setFirstBlock(WRONG);
-    await app!.inject({ method: 'GET', url: '/api/chapters/1' });
-    await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
+    await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(1);
 
     // A different drift is news: the stored signature is the pair of texts, not a flag.
     setFirstBlock(WRONG_AGAIN);
-    await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);
     expect(driftLines(log)[1]).toMatchObject({ served: WRONG_AGAIN, stored: FRAME_FIRST_SENTENCE });
 
     // Agreement clears the memory, so the same drift returning later is reported again.
     setFirstBlock(FRAME_BLOCK);
-    await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);
 
     setFirstBlock(WRONG);
-    await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(3);
   });
@@ -208,8 +208,8 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     // A volume whose seed never ran (a pre-v28 database) has no row to compare against.
     fixture!.db.prepare('DELETE FROM book_frame WHERE chapter = 1').run();
 
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).statusCode).toBe(200);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).statusCode).toBe(200);
     await settle();
 
     const unreadable = log.records().filter((record) => record.msg === 'FRAME_DRIFT unreadable');

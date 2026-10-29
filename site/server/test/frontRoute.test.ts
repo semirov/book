@@ -10,7 +10,7 @@ import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from './helpers.ts';
 
 /**
  * `GET /api/front` — page 1's one call (§9, BOOK-24).
@@ -208,7 +208,7 @@ describe('GET /api/front', () => {
     expect(front.revision).toBeGreaterThanOrEqual(0);
     expect(front.revision).toBeLessThanOrEqual(4_503_599_627_370_495);
 
-    const file = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const file = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(file.statusCode).toBe(200);
     const version = /<version>(\d+)<\/version>/u.exec(file.body)?.[1];
     expect(Number(version)).toBe(front.revision);

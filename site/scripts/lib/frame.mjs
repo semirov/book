@@ -31,6 +31,9 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, OPENING_CHAPTER, TOTAL_CHAPTERS } from '../../shared/src/book.ts';
+// BOOK-225 — the check asks as a reader who has answered the rating: the prose route refuses
+// anyone else, and «what a reader gets» is only answered past that door.
+import { AGE_COOKIE, ageDateOf } from '../../shared/src/age.ts';
 
 /** The two sentences, under the names the checks use. */
 export const FRAME = {
@@ -239,7 +242,11 @@ async function fetchChapter(baseUrl, n, fetchImpl, deadline, now) {
   const url = `${baseUrl.replace(/\/+$/u, '')}/api/chapters/${String(n)}`;
   let response;
   try {
-    response = await fetchImpl(url, { signal: AbortSignal.timeout(Math.min(CHAPTER_TIMEOUT_MS, remaining)) });
+    response = await fetchImpl(url, {
+      // BOOK-225: one acknowledged reader, so the answer is the one the page would get.
+      headers: { cookie: `${AGE_COOKIE}=${ageDateOf(new Date())}` },
+      signal: AbortSignal.timeout(Math.min(CHAPTER_TIMEOUT_MS, remaining)),
+    });
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
     if (timedOut) return { error: 'timeout' };

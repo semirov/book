@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
-import { createFixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture } from './helpers.ts';
 
 /**
  * F023 — support-file containment (ARCHITECTURE.md §13.4, §6E.3).
@@ -81,7 +81,7 @@ describe('F023 — no support file is served (§6E.3)', () => {
   it('still serves the book through the API, so containment is not a blackout', async () => {
     try {
       const running = await boot();
-      const chapter = await running.inject({ method: 'GET', url: '/api/chapters/1' });
+      const chapter = await running.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
       expect(chapter.statusCode).toBe(200);
       expect(chapter.body).toContain('Тестовая глава');
       expect(chapter.body).toContain(MANUSCRIPT_CANARY);

@@ -11,7 +11,7 @@ import { buildControl } from '../src/engine/control.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { listUngated } from '../src/integrity/ungated.ts';
 import { createEngineFixture } from './engine/helpers.ts';
-import { createFixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture } from './helpers.ts';
 
 const exec = promisify(execFile);
 
@@ -132,7 +132,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
         logger: false,
       });
       try {
-        const served = await app.inject({ method: 'GET', url: '/api/chapters/9' });
+        const served = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/9' });
         expect(served.statusCode).toBe(200);
         expect(served.json()).toMatchObject({ n: 9, title: null });
       } finally {

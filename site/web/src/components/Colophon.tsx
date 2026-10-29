@@ -2,6 +2,7 @@ import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot, type ViewerDto } fro
 import { useState } from 'react';
 
 import { useCounterConfigured } from '../lib/analytics.ts';
+import { AGE_WORDS } from '../lib/marginalia.ts';
 import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
@@ -46,6 +47,7 @@ export function Colophon({
   viewer = { signedIn: false, displayName: null },
   donateUrl = null,
   exportBytes = null,
+  gated = false,
   reload,
 }: {
   state: StateSnapshot;
@@ -67,6 +69,12 @@ export function Colophon({
    * states the verb alone.
    */
   exportBytes?: number | null;
+  /**
+   * BOOK-225 — while the gate stands, the footer still prints (the book is discoverable), but
+   * its download row does not: the file is the whole book, the route refuses it without the
+   * acknowledgement, and a visible link that can only answer `403` is a lie.
+   */
+  gated?: boolean;
   /** Test seam only — jsdom cannot navigate; the page reloads into a guest session. */
   reload?: (url: string) => void;
 }) {
@@ -94,6 +102,13 @@ export function Colophon({
         <div className="row row-print">
           <span>печатается по ходу письма</span>
           <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
+        </div>
+        {/* BOOK-225 — the rating, a fact of the book in its own row: what is inside, said once,
+            in the same quiet mark as the imprint. It is not a badge, not a colour and not a
+            warning about the reader; the words live in `AGE_WORDS` (BOOK-218) so they cannot drift from the
+            gate and `/rules`. */}
+        <div className="row">
+          <span className="age-line">{AGE_WORDS.colophon}</span>
         </div>
         {analyticsConfigured ? (
           // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader
@@ -137,10 +152,14 @@ export function Colophon({
         {/* BOOK-138: the file, in the footer's own register, straight after the imprint and
             before the gift: a reader who came to take the book away finds it without
             scrolling to the end matter, and a reader who stayed meets it where the page says
-            what it is. One row, one anchor, no counter and no script. */}
-        <div className="row">
-          <ExportLink exportBytes={exportBytes} />
-        </div>
+            what it is. One row, one anchor, no counter and no script.
+            BOOK-225: while the gate stands the file is refused by the server, so the row is
+            not there — a way out that can only answer `403` is not a way out. */}
+        {gated ? null : (
+          <div className="row">
+            <ExportLink exportBytes={exportBytes} />
+          </div>
+        )}
         {/* BOOK-126: the gift row — one outbound link and nothing else. A gift between
             individuals, not a payment and not a payment platform: no script, no iframe, no
             widget, no pixel, so the reader stays unknown to us and the CSP is untouched. It

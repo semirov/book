@@ -115,6 +115,39 @@ describe('the colophon', () => {
     expect(html).toContain('href="/rules"');
   });
 
+  // BOOK-225 — the rating, in the footer's own voice: one row, the fact and what it means in
+  // the book's words, printed once and never as a badge or a colour.
+  it('states the book’s rating in a row of its own', () => {
+    stubDocument();
+    const html = renderToStaticMarkup(
+      <Colophon state={state} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />,
+    );
+    const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
+    expect(footer).toContain('<span class="age-line">18+ · насилие, кровь и взрослые темы</span>');
+    expect(footer.match(/class="age-line"/gu) ?? []).toHaveLength(1);
+    // Its own row: the rating is not crammed into the imprint's sentence or the counts'.
+    const ownRow = [...footer.matchAll(/<div class="row">([\s\S]*?)<\/div>/gu)].filter((match) =>
+      (match[1] ?? '').includes('age-line'),
+    );
+    expect(ownRow).toHaveLength(1);
+    expect(ownRow[0]?.[1]).not.toContain('imprint-line');
+    // Lowercase register, no exclamation, and no sentence about the reader.
+    expect(footer).not.toContain('18+!');
+    expect(footer).not.toMatch(/возрастн|несовершеннолетн/iu);
+  });
+
+  it('prints no download row while the gate stands (BOOK-225)', () => {
+    stubDocument();
+    const imprint = { author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT };
+    // The footer is still the footer — the book stays discoverable — but the file it offers is
+    // refused by the server while gated, so the row is not printed at all.
+    const gated = renderToStaticMarkup(<Colophon state={state} imprint={imprint} gated />);
+    expect(gated).toContain('class="imprint-line"');
+    expect(gated).not.toContain('export-link');
+    // A reader past the gate keeps the way to take the book away.
+    expect(renderToStaticMarkup(<Colophon state={state} imprint={imprint} />)).toContain('export-link');
+  });
+
   it('states the empty book as a sentence, never as a count of nothing (BOOK-70)', () => {
     stubDocument();
     const html = renderToStaticMarkup(

@@ -1,0 +1,80 @@
+/* ============================================================================
+   AGE — the rating (BOOK-225): the footer's row, and the gate before the prose.
+
+   The gate is a **page**, not a layer: it takes the column from `.page` (it is a register, and
+   the layout guard reads it as one), states no width of its own, and stands where the chapters
+   would — the same sheet, the same left edge as the book it asks about. Nothing here is fixed,
+   nothing floats, nothing is painted: the words and the column do the work. Both doors are the
+   marks' face (mono 12, underlined), the forward one the ink of the page's own actions and the
+   way out the quiet ink — no filled button, no accent colour, no badge.
+
+   The rating itself is a mark too: one row of the colophon, the same mono 12 as the imprint it
+   follows, so the footer states what the book is in the footer's own voice.
+   ============================================================================ */
+
+.gate {
+  /* Block-only: the canvas owns the gutters, and the gate is the column like every register. */
+  padding: 72px 0 96px;
+}
+.gate .gate-kicker {
+  margin: 0 0 8px;
+}
+.gate .gate-title {
+  margin: 0 0 24px;
+}
+/* The one sentence about what is inside. A copy cap, not a box: the gate's own column already
+   holds it, and the line is read, not scanned. */
+.gate-line {
+  max-width: min(100%, 52ch);
+  margin: 0 0 40px;
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.gate-doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 28px;
+  margin: 0;
+}
+.gate-go,
+.gate-leave {
+  display: inline-block;
+  min-height: 44px;
+  padding: 12px 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+}
+.gate-go:hover,
+.gate-go:focus-visible,
+.gate-leave:hover,
+.gate-leave:focus-visible {
+  text-decoration-color: var(--ink);
+}
+.gate-go:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* The rating's row in the footer: the imprint's quiet ink, one step below it. */
+.colophon .age-line {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+/* The phone: the gate still fits one screen — the air narrows, the words do not. */
+@media (max-width: 599px) {
+  .gate {
+    padding: 48px 0 64px;
+  }
+}

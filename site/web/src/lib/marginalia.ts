@@ -37,7 +37,7 @@ import {
 
 /** BOOK-218 — the reader's words, re-exported from `@book/shared` (one copy, no drift). */
 export {
-  DROPPED_LINES, FAILED_ATTEMPT_LINE, FILING_LINES, HEAD_WORDS, LOCK_LINES, NOTE_SAVED_LINE,
+  AGE_WORDS, DROPPED_LINES, FAILED_ATTEMPT_LINE, FILING_LINES, HEAD_WORDS, LOCK_LINES, NOTE_SAVED_LINE,
   OWN_WAITING_LINE, PREMISE_LINES, STATE_LINES, STATE_WORDS,
   WAITING_FOR_CHAPTER_LINE, chapterLine, draftingLine, droppedLine, landedSentence, landedTail,
   lockTail, ordinalWord, queueLine, registrationLine, turnLine, waitingLine,

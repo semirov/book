@@ -3,6 +3,7 @@ import {
   directionOf,
   partOf,
   TOTAL_CHAPTERS,
+  ageDateOf,
   type CatalogEntry,
   type CommentDto,
   type FrontDto,
@@ -228,6 +229,9 @@ beforeEach(() => {
   filing = ACCEPTED;
   requests = [];
   sockets = [];
+  // BOOK-225 — this page is read by a reader who already answered the rating: the gate is not
+  // what this file is about, and the chapter flow must mount for the record to move at all.
+  document.cookie = `book_age=${ageDateOf(new Date())}; path=/`;
   vi.stubGlobal('fetch', fetchStub());
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal('IntersectionObserver', IdleObserver);

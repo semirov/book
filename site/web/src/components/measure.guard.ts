@@ -106,6 +106,8 @@ export const REGISTER_COMPONENTS = [
   { file: './LegalPage.tsx', register: 'legal' },
   { file: './ConsentBanner.tsx', register: 'consent' },
   { file: './Chronicle.tsx', register: 'chronicle' },
+  // BOOK-225: the gate is a page of the reading column, not an overlay.
+  { file: './AgeGate.tsx', register: 'gate' },
 ] as const;
 
 /**

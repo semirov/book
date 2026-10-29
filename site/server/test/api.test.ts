@@ -12,7 +12,7 @@ import { applyFrontFile } from '../src/ingest/applyFront.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { sha256Hex } from '../src/util/hash.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const ABOUT =
@@ -109,7 +109,7 @@ describe('GET /api/state', () => {
       [1, FRAME_FIRST_SENTENCE],
       [TOTAL_CHAPTERS, FRAME_LAST_SENTENCE],
     ] as const) {
-      const response = await app!.inject({ method: 'GET', url: `/api/chapters/${n}` });
+      const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${n}` });
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body).toMatchObject({ n, title: null, chars: 0, basis: true });
@@ -150,7 +150,7 @@ describe('GET /api/state', () => {
       { n: TOTAL_CHAPTERS, rev: 0, block_count: 1, chars: 0, basis: 1 },
     ]);
 
-    const chapter = (await app!.inject({ method: 'GET', url: '/api/chapters/1' })).json();
+    const chapter = (await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).json();
     expect(chapter.blocks).toHaveLength(1);
     expect(chapter.blocks[0].text).toBe(FRAME_FIRST_SENTENCE);
   });
@@ -220,7 +220,7 @@ describe('GET /api/state', () => {
 describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () => {
   it('changes when a written chapter is emptied to its basis sentence', async () => {
     const fixture = await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
-    const before = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const before = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     expect(before.statusCode).toBe(200);
     expect(before.headers.etag).toBe('"ch01-r1-b0"');
     expect(before.json().basis).toBe(false);
@@ -232,7 +232,7 @@ describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () =
     const stale = await app!.inject({
       method: 'GET',
       url: '/api/chapters/1',
-      headers: { 'if-none-match': before.headers.etag as string },
+      headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': before.headers.etag as string },
     });
     // A browser holding the old prose must be given the frame, never a 304.
     expect(stale.statusCode).toBe(200);
@@ -244,7 +244,7 @@ describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () =
     const fresh = await app!.inject({
       method: 'GET',
       url: '/api/chapters/1',
-      headers: { 'if-none-match': stale.headers.etag as string },
+      headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': stale.headers.etag as string },
     });
     expect(fresh.statusCode).toBe(200);
   });
@@ -267,7 +267,7 @@ describe('GET /api/chapters', () => {
 describe('GET /api/chapters/:n', () => {
   it('returns the prose with an ETag and the title line', async () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
-    const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     expect(response.statusCode).toBe(200);
     expect(response.headers.etag).toBe('"ch01-r1-b0"');
     const body = response.json();
@@ -280,11 +280,11 @@ describe('GET /api/chapters/:n', () => {
 
   it('answers a matching If-None-Match with the prose, never a 304 (BOOK-109)', async () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
-    const first = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const first = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     const second = await app!.inject({
       method: 'GET',
       url: '/api/chapters/1',
-      headers: { 'if-none-match': first.headers.etag as string },
+      headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': first.headers.etag as string },
     });
     expect(second.statusCode).toBe(200);
     expect(second.headers.etag).toBe(first.headers.etag);
@@ -292,7 +292,7 @@ describe('GET /api/chapters/:n', () => {
 
   it('still publishes a chapter without a title line: F022 is a commit gate, not a reader gate', async () => {
     await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': UNTITLED } });
-    const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.title).toBeNull();
@@ -307,15 +307,15 @@ describe('GET /api/chapters/:n', () => {
 
   it('answers 404 for an unwritten slot — the normal case at launch', async () => {
     await boot();
-    const response = await app!.inject({ method: 'GET', url: '/api/chapters/40' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/40' });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({ code: 'NOT_WRITTEN' });
   });
 
   it('answers 400 for a number outside the book and for a non-number', async () => {
     await boot();
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/43' })).statusCode).toBe(400);
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/abc' })).statusCode).toBe(400);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/43' })).statusCode).toBe(400);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/abc' })).statusCode).toBe(400);
   });
 });
 

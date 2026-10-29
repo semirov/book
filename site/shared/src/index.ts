@@ -21,6 +21,7 @@ export * from './intent.ts';
 export * from './stage.ts';
 export * from './sentences.ts';
 export * from './push.ts';
+export * from './age.ts';
 
 /**
  * The validator is used by the site's integrity panel and by the commit gate, so the parts

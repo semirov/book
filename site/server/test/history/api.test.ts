@@ -10,7 +10,7 @@ import { appendEvent } from '../../src/history/log.ts';
 import { lastHseq } from '../../src/history/events.ts';
 import { readRecord } from '../../src/history/record.ts';
 import { publicAlias } from '../../src/util/alias.ts';
-import { createFixture, longProse, type Fixture } from '../helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from '../helpers.ts';
 import { ingest, releaseLease, seedChange } from './helpers.ts';
 
 let fixture: Fixture | null = null;
@@ -124,7 +124,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
       'Девятая\n\nПервый абзац девятой главы: служебный текст.\n\nВторой абзац появился позже.',
     );
 
-    const then = await app!.inject({ method: 'GET', url: `/api/history/chapters/9?at=${before}` });
+    const then = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/history/chapters/9?at=${before}` });
     expect(then.statusCode).toBe(200);
     const thenBody = then.json() as { rev: number; blocks: Array<{ text: string }>; title: string };
     expect(thenBody.rev).toBe(1);
@@ -138,18 +138,18 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     const cached = await app!.inject({
       method: 'GET',
       url: `/api/history/chapters/9?at=${before}`,
-      headers: { 'if-none-match': String(etag) },
+      headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': String(etag) },
     });
     expect(cached.statusCode).toBe(200);
     expect(cached.headers.etag).toBe(etag);
     expect(cached.headers['cache-control']).toBe('no-store');
     expect((cached.json() as { blocks: unknown[] }).blocks).toHaveLength(1);
 
-    const missing = await app!.inject({ method: 'GET', url: '/api/history/chapters/9?at=0' });
+    const missing = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/history/chapters/9?at=0' });
     expect(missing.statusCode).toBe(404);
     expect((missing.json() as { code: string }).code).toBe('NOT_WRITTEN_THEN');
 
-    const invalid = await app!.inject({ method: 'GET', url: '/api/history/chapters/99' });
+    const invalid = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/history/chapters/99' });
     expect(invalid.statusCode).toBe(400);
   });
 
@@ -279,7 +279,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     // The emptying writes no revision: the last revision is still 22 628 characters of prose.
     ingest(local, 'ch01.md', FRAME_FIRST_SENTENCE);
 
-    const chapter = await app!.inject({ method: 'GET', url: '/api/history/chapters/1?at=now' });
+    const chapter = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/history/chapters/1?at=now' });
     expect(chapter.statusCode).toBe(200);
     const body = chapter.json() as { rev: number; chars: number; title: string | null; blocks: Array<{ text: string }> };
     expect(body.chars).toBe(0);

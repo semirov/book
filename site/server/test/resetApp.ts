@@ -17,7 +17,7 @@ import { loadConfig } from '../src/config.ts';
 import type { Db } from '../src/db/db.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
-import { createFixture, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, type Fixture } from './helpers.ts';
 import { bookFiles, seedBook } from './resetSeed.ts';
 
 export const TOKEN = 'panel-token';
@@ -82,7 +82,9 @@ export function createResetHarness(): ResetHarness {
 
     get(url: string): Promise<LightMyRequestResponse> {
       if (app === null) throw new Error('no app: call live() first');
-      return app.inject({ method: 'GET', url });
+      // BOOK-225 — the operator's read is an acknowledged reader's read: the suites that use
+      // this harness are about what a reset leaves behind, not about the rating.
+      return app.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
     },
 
     readonlyDir(dir: string): void {

@@ -24,7 +24,7 @@ import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const CHAPTER_LAST = longProse(['Последний абзац книги.'], 'Последняя глава');
@@ -95,7 +95,7 @@ describe('the API is never cached (BOOK-109)', () => {
       '/api/changes',
     ];
     for (const url of urls) {
-      const response = await app!.inject({ method: 'GET', url });
+      const response = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       expect(response.statusCode, url).toBe(200);
       expect(response.headers['cache-control'], url).toBe('no-store');
     }
@@ -103,7 +103,7 @@ describe('the API is never cached (BOOK-109)', () => {
     // The tags stay: they name the projection, a proxy log still reads them, and a client may
     // compare them — they just never licence a reuse.
     for (const url of ['/api/chapters/1', '/api/chapters/42', '/api/state', '/api/front', '/api/cost']) {
-      const response = await app!.inject({ method: 'GET', url });
+      const response = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       expect(response.headers.etag, url).toBeTruthy();
     }
   });
@@ -119,7 +119,7 @@ describe('the API is never cached (BOOK-109)', () => {
       `/api/history/chapters/1?at=${hseq}`,
     ];
     for (const url of urls) {
-      const first = await app!.inject({ method: 'GET', url });
+      const first = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       expect(first.statusCode, url).toBe(200);
       const etag = String(first.headers.etag);
       expect(etag, url).not.toBe('undefined');
@@ -128,7 +128,7 @@ describe('the API is never cached (BOOK-109)', () => {
       const again = await app!.inject({
         method: 'GET',
         url,
-        headers: { 'if-none-match': etag, 'cache-control': 'no-cache' },
+        headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': etag, 'cache-control': 'no-cache' },
       });
       expect(again.statusCode, url).toBe(200);
       expect(again.headers.etag, url).toBe(etag);
@@ -140,7 +140,7 @@ describe('the API is never cached (BOOK-109)', () => {
 
   it('marks a chapter 404 and an unknown API path no-store too', async () => {
     await boot();
-    const notWritten = await app!.inject({ method: 'GET', url: '/api/chapters/40' });
+    const notWritten = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/40' });
     expect(notWritten.statusCode).toBe(404);
     expect(notWritten.json()).toMatchObject({ code: 'NOT_WRITTEN' });
     expect(notWritten.headers['cache-control']).toBe('no-store');
@@ -155,7 +155,7 @@ describe('HTML is never cached (BOOK-109)', () => {
   it('serves the shell, the two static pages and an unknown path as no-store text/html', async () => {
     await boot();
     for (const url of ['/', '/privacy', '/rules', '/ch-8']) {
-      const response = await app!.inject({ method: 'GET', url });
+      const response = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       expect(response.statusCode, url).toBe(200);
       expect(String(response.headers['content-type']), url).toContain('text/html');
       // The static layer's own `public, max-age=0` (and the not-found handler's `no-cache`)
@@ -221,7 +221,7 @@ describe('the prose-free static files keep revalidation (BOOK-109 review)', () =
     // Each of these is fetched before the first paint on every load; their tags follow their
     // bytes, so revalidating is a real saving and cannot keep stale prose alive.
     for (const url of ['/theme.js', '/fonts/troll-regular.woff2', '/favicon.svg']) {
-      const first = await app!.inject({ method: 'GET', url });
+      const first = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       expect(first.statusCode, url).toBe(200);
       expect(first.headers.etag, url).toBeTruthy();
       // BOOK-119 leaves these alone: `max-age=0` + ETag, so the pre-paint script and the fonts
@@ -237,7 +237,7 @@ describe('the prose-free static files keep revalidation (BOOK-109 review)', () =
 
     // The prose surfaces are unchanged by that exception: a conditional request gets the body.
     for (const url of ['/api/state', '/']) {
-      const first = await app!.inject({ method: 'GET', url });
+      const first = await app!.inject({ method: 'GET', url, headers: { cookie: AGE_ACK_COOKIE } });
       const conditional = await app!.inject({
         method: 'GET',
         url,
@@ -275,7 +275,7 @@ describe('the API statuses are never stored (BOOK-109 review)', () => {
 describe('the FB2 export revalidates, and only because its tag is its content (BOOK-60, BOOK-138)', () => {
   it('answers a matching If-None-Match with a 304, no build and no export date', async () => {
     await boot();
-    const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const first = await app!.inject({ method: 'GET', url: '/book.fb2', headers: { cookie: AGE_ACK_COOKIE } });
     expect(first.statusCode).toBe(200);
     // BOOK-138: the export states its own policy — `no-store`, like the rest of the book, so
     // the browser keeps nothing. The tag stays, so this explicit revalidation is still truthful.
@@ -285,7 +285,7 @@ describe('the FB2 export revalidates, and only because its tag is its content (B
     const conditional = await app!.inject({
       method: 'GET',
       url: '/book.fb2',
-      headers: { 'if-none-match': first.headers.etag as string },
+      headers: { cookie: AGE_ACK_COOKIE, 'if-none-match': first.headers.etag as string },
     });
     expect(conditional.statusCode).toBe(304);
     expect(conditional.headers.etag).toBe(first.headers.etag);

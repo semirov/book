@@ -47,6 +47,7 @@ export function Opening({
   stages,
   socket,
   reading,
+  gated,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -71,6 +72,12 @@ export function Opening({
   socket?: HeadSocket;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
+  /**
+   * BOOK-225: the age gate stands where the chapters would. The way into the chronicle is a
+   * way into the book's record, and its past chapters are text — so the switch waits for the
+   * same answer the chapters wait for, and the opening is one screen of book matter.
+   */
+  gated?: boolean;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -96,7 +103,8 @@ export function Opening({
         socket={socket}
         reading={reading}
       />
-      <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
+      {/* BOOK-225 — a gated page has no second mode: the record's past chapters are prose. */}
+      {gated === true ? null : <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />}
     </>
   );
 }

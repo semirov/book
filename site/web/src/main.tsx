@@ -17,6 +17,9 @@ import './styles/head-status.css';
 import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';
+// BOOK-225 — the rating's row and the gate that stands in place of the chapters; after the
+// book, whose colophon it refines, and before the sheets that lay surfaces over the page.
+import './styles/age.css';
 import './styles/skeleton.css';
 import './styles/live.css';
 import './styles/capacity.css';

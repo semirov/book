@@ -3,6 +3,7 @@ import {
   directionOf,
   partOf,
   TOTAL_CHAPTERS,
+  ageDateOf,
   type CatalogEntry,
   type FrontDto,
   type HistoryTimelineDto,
@@ -203,6 +204,10 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   requests = [];
   sockets = [];
+  // BOOK-225 — a reader who already answered the rating: the reading page mounts its chapter
+  // flow (and the «книга · хроника» switch) only after that answer, which is another file's
+  // subject (`ageGate.dom.test.tsx`).
+  document.cookie = `book_age=${ageDateOf(new Date())}; path=/`;
   vi.stubGlobal('fetch', fetchStub());
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal('IntersectionObserver', IdleObserver);
