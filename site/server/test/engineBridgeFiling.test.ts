@@ -220,7 +220,7 @@ describe('BOOK-219/BOOK-206 B2 — a close reaches the filing, not only the chan
         reason: 'в главе уже одно упоминание — второе убрано',
         changeId: 'chg_dropped',
       });
-      expect(JSON.stringify(decisions)).not.toContain('в очереди');
+      expect(JSON.stringify(decisions)).not.toContain('ждёт');
 
       // One frame per transition: the drain cursor has already passed both rows.
       const seen = frames.length;

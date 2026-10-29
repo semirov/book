@@ -15,8 +15,11 @@ import * as store from '../../src/engine/store.ts';
 import { toIso } from '../../src/util/time.ts';
 import { createEngineFixture, type Fixture } from './helpers.ts';
 
-/** Two hours: `STEP_WALL_MS` is 45 minutes, so a wall measured from the opening has passed. */
-const PAST_THE_WALL = 2 * 60 * 60 * 1000;
+/**
+ * Past the wall, whatever it is: BOOK-DOC-84 §10.8 widened `STEP_WALL_MS` so five attempts fit
+ * one wall, so the test derives the span instead of naming a number that ages.
+ */
+const PAST_THE_WALL = 6 * 60 * 60 * 1000;
 
 /** A chapter drafted, landed and escalated — the only state `reopen` accepts. */
 function landedThenEscalated(fixture: Fixture): WriterAssignment {

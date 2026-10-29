@@ -337,7 +337,7 @@ describe('the reader’s state words', () => {
 
   it('finds a planted word, and ignores the same word in a comment', () => {
     // The matcher is not a stub: this is what it must refuse…
-    expect(offence('правка в очереди на запись')).toBe('очеред');
+    expect(offence('правка в очереди')).toBe('очеред');
     expect(offence('правка в триаже')).toBe('триаж');
     expect(offence('вердикт не пришёл')).toBe('вердикт');
     expect(offence('состояние accepted')).toBe('accepted');

@@ -1,7 +1,7 @@
 {
-  "capturedAt": "2026-10-29T17:27:29.937Z",
+  "capturedAt": "2026-10-29T18:47:17.931Z",
   "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum",
-  "browser": "ws://127.0.0.1:9334/devtools/browser/a12b03b7-cfd6-44d0-a748-1347ffcf9e56",
+  "browser": "ws://127.0.0.1:9334/devtools/browser/3820cbc5-3e06-4128-8c74-1074d6226807",
   "contract": {
     "sampleMs": 50,
     "writeGapMs": 1200,
@@ -48,34 +48,29 @@
       "writes": [
         {
           "rev": 2,
-          "at": "2026-10-29T17:24:40.620Z",
+          "at": "2026-10-29T18:44:28.661Z",
           "phrase": "Она походила на мою",
           "replacement": "Она походила на мою подпись, как тень на человека"
         },
         {
           "rev": 3,
-          "at": "2026-10-29T17:24:41.820Z",
+          "at": "2026-10-29T18:44:29.861Z",
           "phrase": "как тень на человека",
           "replacement": "как тень на человека, брошенная на снег"
         }
       ],
       "chain": {
         "writeGapMs": 1200,
-        "insertGapMs": 1409,
-        "firstSettleAt": 1793294682027,
-        "secondFirstInkAt": 1793294682498,
-        "firstSettleToSecondInkMs": 471,
+        "insertGapMs": 1320,
+        "firstSettleAt": 1793299469980,
+        "secondFirstInkAt": 1793299470152,
+        "firstSettleToSecondInkMs": 172,
         "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
       },
       "printed": true,
       "contract": {
-        "printingSamples": 19,
+        "printingSamples": 14,
         "caretCounts": [
-          1,
-          1,
-          1,
-          1,
-          1,
           1,
           1,
           1,
@@ -91,12 +86,12 @@
           1,
           1
         ],
-        "caretTopFirst": 549.54,
+        "caretTopFirst": 579.78,
         "caretTopLast": 579.78,
-        "caretTravelPx": 30.2,
-        "caretAdvancePx": 29.2,
-        "revealedFirst": 5,
-        "revealedLast": 30,
+        "caretTravelPx": 0,
+        "caretAdvancePx": 20.1,
+        "revealedFirst": 10,
+        "revealedLast": 29,
         "planTotal": 30,
         "worstPlanDelta": 0,
         "boxShiftPx": 0,
@@ -109,7 +104,7 @@
       "frameShape": "patchTruncated false, span 1, patch 1",
       "serverProbe": null,
       "caretWindow": {
-        "printingSamples": 19,
+        "printingSamples": 14,
         "caretCounts": [
           1,
           1,
@@ -118,33 +113,6 @@
           1,
           1,
           1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1
-        ],
-        "caretTopFirst": 549.54,
-        "caretTopLast": 579.78,
-        "caretTravelPx": 30.2,
-        "caretAdvancePx": 29.2,
-        "revealedFirst": 5,
-        "revealedLast": 30,
-        "planTotal": 30,
-        "worstPlanDelta": 0,
-        "boxShiftPx": 0,
-        "goneAtSettle": true
-      },
-      "secondWindow": {
-        "printingSamples": 7,
-        "caretCounts": [
           1,
           1,
           1,
@@ -156,8 +124,36 @@
         "caretTopFirst": 579.78,
         "caretTopLast": 579.78,
         "caretTravelPx": 0,
-        "caretAdvancePx": 12.1,
-        "revealedFirst": 14,
+        "caretAdvancePx": 20.1,
+        "revealedFirst": 10,
+        "revealedLast": 29,
+        "planTotal": 30,
+        "worstPlanDelta": 0,
+        "boxShiftPx": 0,
+        "goneAtSettle": true
+      },
+      "secondWindow": {
+        "printingSamples": 13,
+        "caretCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "caretTopFirst": 579.78,
+        "caretTopLast": 579.78,
+        "caretTravelPx": 0,
+        "caretAdvancePx": 24.9,
+        "revealedFirst": 2,
         "revealedLast": 19,
         "planTotal": 19,
         "worstPlanDelta": 0,
@@ -166,77 +162,21 @@
       },
       "samples": [
         {
-          "t": 1793294681000,
-          "pass": true,
-          "beat": "type",
-          "revealed": 5,
-          "expected": 5,
-          "carets": 1,
-          "caretTop": 549.54,
-          "passNodes": 5,
+          "t": 1793299469170,
+          "pass": false,
+          "beat": null,
+          "revealed": -1,
+          "expected": null,
+          "carets": 0,
+          "caretTop": null,
+          "passNodes": 27,
           "rect": {
             "top": 247.14,
-            "height": 454.52
+            "height": 423.28
           }
         },
         {
-          "t": 1793294681057,
-          "pass": true,
-          "beat": "type",
-          "revealed": 7,
-          "expected": 7,
-          "carets": 1,
-          "caretTop": 549.54,
-          "passNodes": 5,
-          "rect": {
-            "top": 247.14,
-            "height": 454.52
-          }
-        },
-        {
-          "t": 1793294681109,
-          "pass": true,
-          "beat": "type",
-          "revealed": 8,
-          "expected": 8,
-          "carets": 1,
-          "caretTop": 549.54,
-          "passNodes": 5,
-          "rect": {
-            "top": 247.14,
-            "height": 454.52
-          }
-        },
-        {
-          "t": 1793294681162,
-          "pass": true,
-          "beat": "type",
-          "revealed": 9,
-          "expected": 9,
-          "carets": 1,
-          "caretTop": 549.54,
-          "passNodes": 5,
-          "rect": {
-            "top": 247.14,
-            "height": 454.52
-          }
-        },
-        {
-          "t": 1793294681216,
-          "pass": true,
-          "beat": "type",
-          "revealed": 9,
-          "expected": 9,
-          "carets": 1,
-          "caretTop": 549.54,
-          "passNodes": 5,
-          "rect": {
-            "top": 247.14,
-            "height": 454.52
-          }
-        },
-        {
-          "t": 1793294681269,
+          "t": 1793299469235,
           "pass": true,
           "beat": "type",
           "revealed": 10,
@@ -250,10 +190,10 @@
           }
         },
         {
-          "t": 1793294681323,
+          "t": 1793299469288,
           "pass": true,
           "beat": "type",
-          "revealed": 12,
+          "revealed": 11,
           "expected": 12,
           "carets": 1,
           "caretTop": 579.78,
@@ -264,7 +204,7 @@
           }
         },
         {
-          "t": 1793294681375,
+          "t": 1793299469340,
           "pass": true,
           "beat": "type",
           "revealed": 13,
@@ -278,7 +218,7 @@
           }
         },
         {
-          "t": 1793294681429,
+          "t": 1793299469394,
           "pass": true,
           "beat": "type",
           "revealed": 14,
@@ -292,7 +232,7 @@
           }
         },
         {
-          "t": 1793294681482,
+          "t": 1793299469447,
           "pass": true,
           "beat": "type",
           "revealed": 15,
@@ -306,7 +246,21 @@
           }
         },
         {
-          "t": 1793294681535,
+          "t": 1793299469500,
+          "pass": true,
+          "beat": "type",
+          "revealed": 17,
+          "expected": 17,
+          "carets": 1,
+          "caretTop": 579.78,
+          "passNodes": 5,
+          "rect": {
+            "top": 247.14,
+            "height": 454.52
+          }
+        },
+        {
+          "t": 1793299469555,
           "pass": true,
           "beat": "type",
           "revealed": 18,
@@ -320,11 +274,11 @@
           }
         },
         {
-          "t": 1793294681588,
+          "t": 1793299469608,
           "pass": true,
           "beat": "type",
-          "revealed": 18,
-          "expected": 19,
+          "revealed": 20,
+          "expected": 20,
           "carets": 1,
           "caretTop": 579.78,
           "passNodes": 5,
@@ -334,10 +288,10 @@
           }
         },
         {
-          "t": 1793294681641,
+          "t": 1793299469660,
           "pass": true,
           "beat": "type",
-          "revealed": 20,
+          "revealed": 21,
           "expected": 21,
           "carets": 1,
           "caretTop": 579.78,
@@ -348,11 +302,11 @@
           }
         },
         {
-          "t": 1793294681694,
+          "t": 1793299469712,
           "pass": true,
           "beat": "type",
-          "revealed": 22,
-          "expected": 22,
+          "revealed": 23,
+          "expected": 23,
           "carets": 1,
           "caretTop": 579.78,
           "passNodes": 5,
@@ -362,11 +316,11 @@
           }
         },
         {
-          "t": 1793294681748,
+          "t": 1793299469766,
           "pass": true,
           "beat": "type",
           "revealed": 24,
-          "expected": 24,
+          "expected": 25,
           "carets": 1,
           "caretTop": 579.78,
           "passNodes": 5,
@@ -376,24 +330,10 @@
           }
         },
         {
-          "t": 1793294681801,
+          "t": 1793299469818,
           "pass": true,
           "beat": "type",
-          "revealed": 25,
-          "expected": 26,
-          "carets": 1,
-          "caretTop": 579.78,
-          "passNodes": 5,
-          "rect": {
-            "top": 247.14,
-            "height": 454.52
-          }
-        },
-        {
-          "t": 1793294681855,
-          "pass": true,
-          "beat": "type",
-          "revealed": 27,
+          "revealed": 26,
           "expected": 27,
           "carets": 1,
           "caretTop": 579.78,
@@ -404,11 +344,11 @@
           }
         },
         {
-          "t": 1793294681908,
+          "t": 1793299469872,
           "pass": true,
           "beat": "type",
-          "revealed": 29,
-          "expected": 29,
+          "revealed": 28,
+          "expected": 28,
           "carets": 1,
           "caretTop": 579.78,
           "passNodes": 5,
@@ -418,10 +358,10 @@
           }
         },
         {
-          "t": 1793294681961,
+          "t": 1793299469926,
           "pass": true,
           "beat": "type",
-          "revealed": 30,
+          "revealed": 29,
           "expected": 30,
           "carets": 1,
           "caretTop": 579.78,
@@ -432,7 +372,7 @@
           }
         },
         {
-          "t": 1793294682027,
+          "t": 1793299469980,
           "pass": false,
           "beat": null,
           "revealed": -1,
@@ -446,17 +386,17 @@
           }
         }
       ],
-      "secondSamples": 8,
+      "secondSamples": 14,
       "stored": [
         {
           "rev": 3,
-          "at": "2026-10-29T17:24:41.820Z",
+          "at": "2026-10-29T18:44:29.861Z",
           "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
           "snapshot": "versions/ch12/05a04ae842060882a106a174e787e072f9b8b9830bebf3350c09eb1d8407cabd.md"
         },
         {
           "rev": 2,
-          "at": "2026-10-29T17:24:40.620Z",
+          "at": "2026-10-29T18:44:28.661Z",
           "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
           "snapshot": "versions/ch12/728e7115435f81489bca685e0faffb2eb6790bc57810cdb51c1cdb37bbbaf5d0.md"
         },
@@ -482,76 +422,76 @@
       "console": [],
       "reduced": {
         "rev": 4,
-        "frameAt": 1793294683023,
-        "samples": 22,
-        "staticSamples": 21,
-        "strikeSamples": 21,
+        "frameAt": 1793299471104,
+        "samples": 21,
+        "staticSamples": 19,
+        "strikeSamples": 19,
         "ghostStruck": true,
         "carets": 0,
         "beats": [
-          "static",
-          null
+          null,
+          "static"
         ],
         "shot": "site/shots/live/one-caret/1440-reduced.png"
       },
       "arrivals": {
         "rev": 5,
-        "frameAt": 1793294683981,
-        "printMs": 4960,
+        "frameAt": 1793299472107,
+        "printMs": 4883,
         "samples": 88,
         "rows": [
           {
             "share": 0.3,
-            "backdateMs": 1488,
+            "backdateMs": 1465,
             "rev": 6,
-            "appliedAt": 1793294687349,
-            "frameAt": 1793294688998,
-            "elapsedAtFirstSightMs": 1703,
-            "heardAtMs": 1649,
+            "appliedAt": 1793299475473,
+            "frameAt": 1793299477116,
+            "elapsedAtFirstSightMs": 1696,
+            "heardAtMs": 1643,
             "revealedAtFirstSight": 40,
             "planIndexAtFirstSight": 40,
-            "observedShare": 0.314,
+            "observedShare": 0.302,
             "joined": true,
-            "settledAt": 1793294692764,
+            "settledAt": 1793299481084,
             "shot": "site/shots/live/one-caret/1440-arrival-30.png"
           },
           {
             "share": 0.7,
-            "backdateMs": 3472,
+            "backdateMs": 3418,
             "rev": 7,
-            "appliedAt": 1793294689293,
-            "frameAt": 1793294693010,
-            "elapsedAtFirstSightMs": 3771,
-            "heardAtMs": 3717,
-            "revealedAtFirstSight": 90,
-            "planIndexAtFirstSight": 90,
-            "observedShare": 0.702,
+            "appliedAt": 1793299477667,
+            "frameAt": 1793299481130,
+            "elapsedAtFirstSightMs": 3515,
+            "heardAtMs": 3463,
+            "revealedAtFirstSight": 80,
+            "planIndexAtFirstSight": 80,
+            "observedShare": 0.639,
             "joined": true,
-            "settledAt": 1793294694664,
+            "settledAt": 1793299483165,
             "shot": "site/shots/live/one-caret/1440-arrival-70.png"
           },
           {
             "share": 0.95,
-            "backdateMs": 4710,
+            "backdateMs": 4633,
             "rev": 8,
-            "appliedAt": 1793294689955,
-            "frameAt": 1793294695013,
+            "appliedAt": 1793299478533,
+            "frameAt": 1793299483634,
             "elapsedAtFirstSightMs": null,
-            "heardAtMs": 5058,
+            "heardAtMs": 5101,
             "revealedAtFirstSight": null,
             "planIndexAtFirstSight": null,
             "observedShare": null,
             "joined": false,
-            "settledAt": 1793294736678,
+            "settledAt": 1793299525309,
             "shot": "site/shots/live/one-caret/1440-arrival-95.png"
           }
         ]
       },
       "late": {
         "rev": 9,
-        "appliedAt": 1793294730179,
-        "frameAt": 1793294737130,
-        "samples": 38,
+        "appliedAt": 1793299518811,
+        "frameAt": 1793299525767,
+        "samples": 39,
         "passSeen": false,
         "dataPassSeen": false,
         "shot": "site/shots/live/one-caret/1440-late.png"
@@ -566,13 +506,13 @@
       "writes": [
         {
           "rev": 5,
-          "at": "2026-10-29T17:25:40.615Z",
+          "at": "2026-10-29T18:45:28.829Z",
           "phrase": "В два ноль четыре окно открылось.",
           "replacement": "В два ноль четыре окно открылось, и я поднялся."
         },
         {
           "rev": 6,
-          "at": "2026-10-29T17:25:41.815Z",
+          "at": "2026-10-29T18:45:30.029Z",
           "phrase": "окно открылось, и я поднялся.",
           "replacement": "окно открылось, и я поднялся к самому стеклу."
         }
@@ -580,22 +520,15 @@
       "chain": {
         "writeGapMs": 1200,
         "insertGapMs": 1200,
-        "firstSettleAt": 1793294741485,
-        "secondFirstInkAt": 1793294741756,
-        "firstSettleToSecondInkMs": 271,
+        "firstSettleAt": 1793299529745,
+        "secondFirstInkAt": 1793299529800,
+        "firstSettleToSecondInkMs": 55,
         "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
       },
       "printed": true,
       "contract": {
-        "printingSamples": 15,
+        "printingSamples": 8,
         "caretCounts": [
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           1,
           1,
           1,
@@ -608,9 +541,9 @@
         "caretTopFirst": 414.14,
         "caretTopLast": 442.7,
         "caretTravelPx": 28.6,
-        "caretAdvancePx": 19.4,
-        "revealedFirst": 0,
-        "revealedLast": 14,
+        "caretAdvancePx": 20.2,
+        "revealedFirst": 5,
+        "revealedLast": 13,
         "planTotal": 14,
         "worstPlanDelta": 0,
         "boxShiftPx": 0,
@@ -618,7 +551,7 @@
       },
       "twoPlaces": {
         "rev": 16,
-        "frameAt": 1793294799329,
+        "frameAt": 1793299587414,
         "order": [
           {
             "id": "ch05#291e140f",
@@ -634,36 +567,36 @@
           }
         ],
         "twoAtOnce": 0,
-        "samples": 167,
+        "samples": 170,
         "shot": "site/shots/live/one-caret/390-one-caret.png"
       },
       "perf": {
         "rev": 17,
-        "frameAt": 1793294804846,
+        "frameAt": 1793299592939,
         "shot": "site/shots/live/one-caret/390-perf-27000.png",
         "out": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/one-caret",
         "chars": 28528,
         "blocks": 15,
         "blocksSeen": 1,
         "blockChars": 1900,
-        "blockPlanMs": 90820.95302368763,
+        "blockPlanMs": 91018.47197492799,
         "blockArithmeticMs": 83898,
         "chapterArithmeticMs": 1259554,
-        "measuredCps": 21,
-        "windowMs": 25092,
-        "frames": 2954,
-        "p50": 13.4,
-        "p95": 25.6,
+        "measuredCps": 20.9,
+        "windowMs": 25071,
+        "frames": 2966,
+        "p50": 13.3,
+        "p95": 26.5,
         "passNodes": [
           6,
           5
         ],
         "documentNodes": {
-          "first": 7328,
-          "last": 7320
+          "first": 7330,
+          "last": 7322
         },
         "samples": 100,
-        "revealedAtWindowEnd": 531,
+        "revealedAtWindowEnd": 528,
         "follow": {
           "on": true,
           "samples": 99,
@@ -676,15 +609,8 @@
       "frameShape": "patchTruncated false, span 1, patch 1",
       "serverProbe": null,
       "caretWindow": {
-        "printingSamples": 15,
+        "printingSamples": 8,
         "caretCounts": [
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           1,
           1,
           1,
@@ -697,17 +623,18 @@
         "caretTopFirst": 414.14,
         "caretTopLast": 442.7,
         "caretTravelPx": 28.6,
-        "caretAdvancePx": 19.4,
-        "revealedFirst": 0,
-        "revealedLast": 14,
+        "caretAdvancePx": 20.2,
+        "revealedFirst": 5,
+        "revealedLast": 13,
         "planTotal": 14,
         "worstPlanDelta": 0,
         "boxShiftPx": 0,
         "goneAtSettle": true
       },
       "secondWindow": {
-        "printingSamples": 16,
+        "printingSamples": 17,
         "caretCounts": [
+          1,
           1,
           1,
           1,
@@ -728,9 +655,9 @@
         "caretTopFirst": 414.14,
         "caretTopLast": 442.7,
         "caretTravelPx": 28.6,
-        "caretAdvancePx": 21.9,
+        "caretAdvancePx": 21.1,
         "revealedFirst": 0,
-        "revealedLast": 16,
+        "revealedLast": 15,
         "planTotal": 16,
         "worstPlanDelta": 0,
         "boxShiftPx": 0,
@@ -738,119 +665,7 @@
       },
       "samples": [
         {
-          "t": 1793294740677,
-          "pass": true,
-          "beat": "hold",
-          "revealed": 0,
-          "expected": 0,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740732,
-          "pass": true,
-          "beat": "hold",
-          "revealed": 0,
-          "expected": 0,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740786,
-          "pass": true,
-          "beat": "hold",
-          "revealed": 0,
-          "expected": 0,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740839,
-          "pass": true,
-          "beat": "hold",
-          "revealed": 0,
-          "expected": 1,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740891,
-          "pass": true,
-          "beat": "type",
-          "revealed": 1,
-          "expected": 1,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740945,
-          "pass": true,
-          "beat": "type",
-          "revealed": 1,
-          "expected": 2,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294740998,
-          "pass": true,
-          "beat": "type",
-          "revealed": 3,
-          "expected": 3,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294741052,
-          "pass": true,
-          "beat": "type",
-          "revealed": 4,
-          "expected": 4,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793294741105,
+          "t": 1793299529311,
           "pass": true,
           "beat": "type",
           "revealed": 5,
@@ -864,7 +679,21 @@
           }
         },
         {
-          "t": 1793294741159,
+          "t": 1793299529365,
+          "pass": true,
+          "beat": "type",
+          "revealed": 6,
+          "expected": 6,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793299529417,
           "pass": true,
           "beat": "type",
           "revealed": 7,
@@ -878,11 +707,11 @@
           }
         },
         {
-          "t": 1793294741211,
+          "t": 1793299529471,
           "pass": true,
           "beat": "type",
           "revealed": 8,
-          "expected": 8,
+          "expected": 9,
           "carets": 1,
           "caretTop": 414.14,
           "passNodes": 5,
@@ -892,10 +721,10 @@
           }
         },
         {
-          "t": 1793294741264,
+          "t": 1793299529525,
           "pass": true,
           "beat": "type",
-          "revealed": 9,
+          "revealed": 10,
           "expected": 10,
           "carets": 1,
           "caretTop": 414.14,
@@ -906,7 +735,7 @@
           }
         },
         {
-          "t": 1793294741318,
+          "t": 1793299529581,
           "pass": true,
           "beat": "type",
           "revealed": 11,
@@ -920,13 +749,13 @@
           }
         },
         {
-          "t": 1793294741372,
+          "t": 1793299529636,
           "pass": true,
           "beat": "type",
-          "revealed": 12,
-          "expected": 12,
+          "revealed": 13,
+          "expected": 13,
           "carets": 1,
-          "caretTop": 414.14,
+          "caretTop": 442.7,
           "passNodes": 5,
           "rect": {
             "top": 271.34,
@@ -934,10 +763,10 @@
           }
         },
         {
-          "t": 1793294741425,
+          "t": 1793299529691,
           "pass": true,
           "beat": "type",
-          "revealed": 14,
+          "revealed": 13,
           "expected": 14,
           "carets": 1,
           "caretTop": 442.7,
@@ -948,7 +777,7 @@
           }
         },
         {
-          "t": 1793294741485,
+          "t": 1793299529745,
           "pass": false,
           "beat": null,
           "revealed": -1,
@@ -966,13 +795,13 @@
       "stored": [
         {
           "rev": 6,
-          "at": "2026-10-29T17:25:41.815Z",
+          "at": "2026-10-29T18:45:30.029Z",
           "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
           "snapshot": "versions/ch05/d09125b0660a5dffe53bede7301dec2e10de92ff1704847796334121980303fc.md"
         },
         {
           "rev": 5,
-          "at": "2026-10-29T17:25:40.615Z",
+          "at": "2026-10-29T18:45:28.829Z",
           "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
           "snapshot": "versions/ch05/6f4696e8939f643854ff2bb4e040b3b81853953eb142c2d577b6856596541228.md"
         },
@@ -1016,10 +845,10 @@
       "console": [],
       "reduced": {
         "rev": 7,
-        "frameAt": 1793294743146,
-        "samples": 22,
-        "staticSamples": 21,
-        "strikeSamples": 21,
+        "frameAt": 1793299530801,
+        "samples": 24,
+        "staticSamples": 23,
+        "strikeSamples": 23,
         "ghostStruck": true,
         "carets": 0,
         "beats": [
@@ -1030,61 +859,61 @@
       },
       "arrivals": {
         "rev": 8,
-        "frameAt": 1793294744158,
-        "printMs": 4189,
+        "frameAt": 1793299531784,
+        "printMs": 4047,
         "samples": 73,
         "rows": [
           {
             "share": 0.3,
-            "backdateMs": 1257,
+            "backdateMs": 1214,
             "rev": 9,
-            "appliedAt": 1793294746906,
-            "frameAt": 1793294748676,
-            "elapsedAtFirstSightMs": 1811,
-            "heardAtMs": 1770,
-            "revealedAtFirstSight": 36,
-            "planIndexAtFirstSight": 36,
-            "observedShare": 0.407,
+            "appliedAt": 1793299534395,
+            "frameAt": 1793299535792,
+            "elapsedAtFirstSightMs": 1424,
+            "heardAtMs": 1397,
+            "revealedAtFirstSight": 29,
+            "planIndexAtFirstSight": 29,
+            "observedShare": 0.332,
             "joined": true,
-            "settledAt": 1793294751353,
+            "settledAt": 1793299538683,
             "shot": "site/shots/live/one-caret/390-arrival-30.png"
           },
           {
             "share": 0.7,
-            "backdateMs": 2932,
+            "backdateMs": 2833,
             "rev": 10,
-            "appliedAt": 1793294748424,
-            "frameAt": 1793294751682,
-            "elapsedAtFirstSightMs": 3290,
-            "heardAtMs": 3258,
-            "revealedAtFirstSight": 68,
-            "planIndexAtFirstSight": 68,
-            "observedShare": 0.811,
+            "appliedAt": 1793299535851,
+            "frameAt": 1793299538798,
+            "elapsedAtFirstSightMs": 2973,
+            "heardAtMs": 2947,
+            "revealedAtFirstSight": 60,
+            "planIndexAtFirstSight": 60,
+            "observedShare": 0.737,
             "joined": true,
-            "settledAt": 1793294752481,
+            "settledAt": 1793299539883,
             "shot": "site/shots/live/one-caret/390-arrival-70.png"
           },
           {
             "share": 0.95,
-            "backdateMs": 3939,
+            "backdateMs": 3797,
             "rev": 11,
-            "appliedAt": 1793294748543,
-            "frameAt": 1793294752685,
+            "appliedAt": 1793299536086,
+            "frameAt": 1793299540309,
             "elapsedAtFirstSightMs": null,
-            "heardAtMs": 4142,
+            "heardAtMs": 4223,
             "revealedAtFirstSight": null,
             "planIndexAtFirstSight": null,
             "observedShare": null,
             "joined": false,
-            "settledAt": 1793294794280,
+            "settledAt": 1793299581915,
             "shot": "site/shots/live/one-caret/390-arrival-95.png"
           }
         ]
       },
       "late": {
         "rev": 12,
-        "appliedAt": 1793294787782,
-        "frameAt": 1793294794311,
+        "appliedAt": 1793299575415,
+        "frameAt": 1793299582396,
         "samples": 39,
         "passSeen": false,
         "dataPassSeen": false,
@@ -1098,7 +927,7 @@
       "width": 1440,
       "text": "следить",
       "folioText": "74",
-      "frameAt": 1793294797320,
+      "frameAt": 1793299585406,
       "word": {
         "left": 610,
         "right": 660.4,
@@ -1120,7 +949,7 @@
       "width": 768,
       "text": "следить",
       "folioText": "97",
-      "frameAt": 1793294797818,
+      "frameAt": 1793299585908,
       "word": {
         "left": 319,
         "right": 369.4,
@@ -1142,7 +971,7 @@
       "width": 390,
       "text": "следить",
       "folioText": "80",
-      "frameAt": 1793294798319,
+      "frameAt": 1793299586409,
       "word": {
         "left": 84,
         "right": 134.4,
@@ -1166,11 +995,11 @@
       "width": 1440,
       "chapter": 16,
       "rev": 1,
-      "frameAt": 1793294831422,
+      "frameAt": 1793299619522,
       "blocks": 1,
       "chars": 183,
-      "ms": 7371,
-      "cps": 24.8,
+      "ms": 7353,
+      "cps": 24.9,
       "samples": 73,
       "before": {
         "numeral": null,
@@ -1179,7 +1008,7 @@
         "ink": []
       },
       "firstWidths": [
-        3
+        2
       ],
       "lastWidths": [
         183
@@ -1188,14 +1017,14 @@
       "full": true,
       "hashes": true,
       "plan": {
-        "startAt": 1793294831254,
-        "firstInkMs": 1793294831474,
-        "appliedAt": 1793294831254
+        "startAt": 1793299619363,
+        "firstInkMs": 1793299619583,
+        "appliedAt": 1793299619363
       },
       "firstSample": {
-        "chars": 3,
-        "atMs": 350,
-        "clockChars": 13,
+        "chars": 2,
+        "atMs": 325,
+        "clockChars": 12,
         "delta": -10
       },
       "shot": "site/shots/live/one-caret/1440-new-chapter.png"
@@ -1204,11 +1033,11 @@
       "width": 390,
       "chapter": 17,
       "rev": 1,
-      "frameAt": 1793294831422,
+      "frameAt": 1793299619522,
       "blocks": 1,
       "chars": 183,
-      "ms": 8179,
-      "cps": 22.4,
+      "ms": 8192,
+      "cps": 22.3,
       "samples": 83,
       "before": {
         "numeral": null,
@@ -1217,7 +1046,7 @@
         "ink": []
       },
       "firstWidths": [
-        3
+        2
       ],
       "lastWidths": [
         183
@@ -1226,15 +1055,15 @@
       "full": true,
       "hashes": true,
       "plan": {
-        "startAt": 1793294840762,
-        "firstInkMs": 1793294840982,
-        "appliedAt": 1793294840762
+        "startAt": 1793299628898,
+        "firstInkMs": 1793299629118,
+        "appliedAt": 1793299628898
       },
       "firstSample": {
-        "chars": 3,
-        "atMs": 398,
-        "clockChars": 13,
-        "delta": -10
+        "chars": 2,
+        "atMs": 331,
+        "clockChars": 11,
+        "delta": -9
       },
       "shot": "site/shots/live/one-caret/390-new-chapter.png"
     }
@@ -1253,32 +1082,32 @@
     {
       "name": "one/1440 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "19 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "14 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/1440 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "19 lit samples, top travel 30.2 px (549.54 → 579.78), largest same-line x step 29.2 px"
+      "detail": "14 lit samples, top travel 0 px (579.78 → 579.78), largest same-line x step 20.1 px"
     },
     {
       "name": "reveal/1440 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "19 samples, 30 of 30 graphemes revealed"
+      "detail": "14 samples, 29 of 30 graphemes revealed"
     },
     {
       "name": "clock/1440 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "19 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 17 ms behind the write's clock"
+      "detail": "14 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 24 ms behind the write's clock"
     },
     {
       "name": "layout/1440 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "19 samples, largest shift 0 px"
+      "detail": "14 samples, largest shift 0 px"
     },
     {
       "name": "chain/1440 the first print mounts and settles",
       "ok": true,
-      "detail": "19 pass samples, settle 1407 ms after the write"
+      "detail": "14 pass samples, settle 1319 ms after the write"
     },
     {
       "name": "carets/1440 gone at settle",
@@ -1288,62 +1117,62 @@
     {
       "name": "chain/1440 the second print opens after the first settles, ≤ 1500 ms",
       "ok": true,
-      "detail": "471 ms between the settle and the next print"
+      "detail": "172 ms between the settle and the next print"
     },
     {
       "name": "one/1440·2 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "7 printing samples; caret counts [1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "13 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/1440·2 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "7 lit samples, top travel 0 px (579.78 → 579.78), largest same-line x step 12.1 px"
+      "detail": "13 lit samples, top travel 0 px (579.78 → 579.78), largest same-line x step 24.9 px"
     },
     {
       "name": "reveal/1440·2 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "7 samples, 19 of 19 graphemes revealed"
+      "detail": "13 samples, 19 of 19 graphemes revealed"
     },
     {
       "name": "clock/1440·2 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "7 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 18 ms behind the write's clock"
+      "detail": "13 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 13 ms behind the write's clock"
     },
     {
       "name": "layout/1440·2 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "7 samples, largest shift 0 px"
+      "detail": "13 samples, largest shift 0 px"
     },
     {
       "name": "reduced/1440 static text, a struck ghost, no caret and no ink",
       "ok": true,
-      "detail": "21 static samples, strike 21, caret elements 0, beats [\"static\",null]"
+      "detail": "19 static samples, strike 19, caret elements 0, beats [null,\"static\"]"
     },
     {
       "name": "arrival/1440 a print to arrive into",
       "ok": true,
-      "detail": "4960 ms from the write to the settle"
+      "detail": "4883 ms from the write to the settle"
     },
     {
       "name": "arrival/1440 at 30 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "1703 ms of ink already painted: 40 graphemes, the plan says 40"
+      "detail": "1696 ms of ink already painted: 40 graphemes, the plan says 40"
     },
     {
       "name": "arrival/1440 at 70 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3771 ms of ink already painted: 90 graphemes, the plan says 90"
+      "detail": "3515 ms of ink already painted: 80 graphemes, the plan says 80"
     },
     {
       "name": "arrival/1440 at 95 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "4710 ms back-dated of a 4960 ms print, heard at 5058 ms: the print had already ended, and nothing replayed"
+      "detail": "4633 ms back-dated of a 4883 ms print, heard at 5101 ms: the print had already ended, and nothing replayed"
     },
     {
       "name": "late/1440 after 6 s no .p-pass, no data-pass",
       "ok": true,
-      "detail": "38 samples over 2 s: pass false, data-pass false"
+      "detail": "39 samples over 2 s: pass false, data-pass false"
     },
     {
       "name": "store/390 the pre-image snapshot is readable and is the served text",
@@ -1358,32 +1187,32 @@
     {
       "name": "one/390 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "15 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "8 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/390 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "15 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 19.4 px"
+      "detail": "8 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 20.2 px"
     },
     {
       "name": "reveal/390 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "15 samples, 14 of 14 graphemes revealed"
+      "detail": "8 samples, 13 of 14 graphemes revealed"
     },
     {
       "name": "clock/390 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "15 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 18 ms behind the write's clock"
+      "detail": "8 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 21 ms behind the write's clock"
     },
     {
       "name": "layout/390 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "15 samples, largest shift 0 px"
+      "detail": "8 samples, largest shift 0 px"
     },
     {
       "name": "chain/390 the first print mounts and settles",
       "ok": true,
-      "detail": "15 pass samples, settle 870 ms after the write"
+      "detail": "8 pass samples, settle 916 ms after the write"
     },
     {
       "name": "carets/390 gone at settle",
@@ -1393,57 +1222,57 @@
     {
       "name": "chain/390 the second print opens after the first settles, ≤ 1500 ms",
       "ok": true,
-      "detail": "271 ms between the settle and the next print"
+      "detail": "55 ms between the settle and the next print"
     },
     {
       "name": "one/390·2 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "16 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "17 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/390·2 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "16 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 21.9 px"
+      "detail": "17 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 21.1 px"
     },
     {
       "name": "reveal/390·2 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "16 samples, 16 of 16 graphemes revealed"
+      "detail": "17 samples, 15 of 16 graphemes revealed"
     },
     {
       "name": "clock/390·2 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "16 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 0 ms behind the write's clock"
+      "detail": "17 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 0 ms behind the write's clock"
     },
     {
       "name": "layout/390·2 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "16 samples, largest shift 0 px"
+      "detail": "17 samples, largest shift 0 px"
     },
     {
       "name": "reduced/390 static text, a struck ghost, no caret and no ink",
       "ok": true,
-      "detail": "21 static samples, strike 21, caret elements 0, beats [\"static\",null]"
+      "detail": "23 static samples, strike 23, caret elements 0, beats [\"static\",null]"
     },
     {
       "name": "arrival/390 a print to arrive into",
       "ok": true,
-      "detail": "4189 ms from the write to the settle"
+      "detail": "4047 ms from the write to the settle"
     },
     {
       "name": "arrival/390 at 30 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "1811 ms of ink already painted: 36 graphemes, the plan says 36"
+      "detail": "1424 ms of ink already painted: 29 graphemes, the plan says 29"
     },
     {
       "name": "arrival/390 at 70 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3290 ms of ink already painted: 68 graphemes, the plan says 68"
+      "detail": "2973 ms of ink already painted: 60 graphemes, the plan says 60"
     },
     {
       "name": "arrival/390 at 95 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3939 ms back-dated of a 4189 ms print, heard at 4142 ms: the print had already ended, and nothing replayed"
+      "detail": "3797 ms back-dated of a 4047 ms print, heard at 4223 ms: the print had already ended, and nothing replayed"
     },
     {
       "name": "late/390 after 6 s no .p-pass, no data-pass",
@@ -1488,12 +1317,12 @@
     {
       "name": "perf/390 a 27000-character chapter prints at the device rate, not a compressed one",
       "ok": true,
-      "detail": "28528 chars: the first 1900-character block plans 91 s against 84 s of arithmetic; the chapter's arithmetic is 21 min at 26 cps; measured 21 cps"
+      "detail": "28528 chars: the first 1900-character block plans 91 s against 84 s of arithmetic; the chapter's arithmetic is 21 min at 26 cps; measured 20.9 cps"
     },
     {
       "name": "perf/390 the DOM node count does not follow the character count",
       "ok": true,
-      "detail": "the printing block holds [6,5] nodes over 100 samples (a short print's block: 5); the document 7328 → 7320"
+      "detail": "the printing block holds [6,5] nodes over 100 samples (a short print's block: 5); the document 7330 → 7322"
     },
     {
       "name": "follow/390 «следить» keeps the caret on the 45 % line (±40 px + a sample)",
@@ -1503,12 +1332,12 @@
     {
       "name": "perf/390 p95 frame time stays under two frames",
       "ok": true,
-      "detail": "2954 frames, p50 13.4 ms, p95 25.6 ms"
+      "detail": "2966 frames, p50 13.3 ms, p95 26.5 ms"
     },
     {
       "name": "chapter/1440 the plan's zero is appliedAt, and the first reveal is only what that clock could have inked",
       "ok": true,
-      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 3 chars at +350 ms, clock ceiling 13 → delta -10; 183 chars over 7.4 s → 24.8 cps; monotone true, ends on the served text true, block hashes true"
+      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 2 chars at +325 ms, clock ceiling 12 → delta -10; 183 chars over 7.4 s → 24.9 cps; monotone true, ends on the served text true, block hashes true"
     },
     {
       "name": "chapter/1440 the slot shows «глава N» and the title with no skeleton",
@@ -1523,7 +1352,7 @@
     {
       "name": "chapter/390 the plan's zero is appliedAt, and the first reveal is only what that clock could have inked",
       "ok": true,
-      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 3 chars at +398 ms, clock ceiling 13 → delta -10; 183 chars over 8.2 s → 22.4 cps; monotone true, ends on the served text true, block hashes true"
+      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 2 chars at +331 ms, clock ceiling 11 → delta -9; 183 chars over 8.2 s → 22.3 cps; monotone true, ends on the served text true, block hashes true"
     },
     {
       "name": "chapter/390 the slot shows «глава N» and the title with no skeleton",

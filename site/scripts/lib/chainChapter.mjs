@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { openDb, waitFrame } from './chainPrint.mjs';
+import { AGE_COOKIE, ageDateOf } from '../../shared/src/age.ts';
 
 const round = (value) => (value === null || value === undefined ? null : Math.round(value * 10) / 10);
 /** The device's rate, the same two numbers the engine prints at. */
@@ -194,7 +195,9 @@ export async function newChapter({ cdp, run, dir, stepId, check, log, shot, pars
     if (done || Date.now() - started > 30_000) break;
     await sleep(100);
   }
-  const served = await (await fetch(`${String(run.api)}/api/chapters/${String(chapter)}`)).json();
+  // BOOK-225 — an acknowledged reader reads the prose route; the harness is one reader.
+  const age = { headers: { cookie: `${AGE_COOKIE}=${ageDateOf(new Date())}` } };
+  const served = await (await fetch(`${String(run.api)}/api/chapters/${String(chapter)}`, age)).json();
   const printed = samples.filter((state) => state.found === true && state.widths.some((width) => width > 0));
   const first = printed[0] ?? null;
   /** The slot's head as it stands in the print's first frame: numeral, title, no bars. */

@@ -95,7 +95,7 @@ describe('§10.8 — the ladder on the pass frame', () => {
         revBefore: 1,
         at: new Date(T0).toISOString(),
       });
-      updateStep(fixture.db, 'stp_widened', { widened: 'wider-edit', mode: 'rewrite' });
+      updateStep(fixture.db, 'stp_widened', { widened: 'wider-edit' });
       // Two leases = the second attempt (the first session died); §10.8 names it.
       for (const [id, at] of [
         ['lea_w1', T0],

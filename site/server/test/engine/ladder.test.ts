@@ -44,16 +44,16 @@ describe('§10.8 — five attempts, a widening at three, a desperate sixth', () 
         const next = failAttempt(fixture, attempt);
         if (next !== null) assignment = next;
       }
-      const step = fixture.db.prepare('SELECT widened, mode FROM steps WHERE step_id = ?').get(first.stepId) as {
+      // The widening is the step's fact; the mode it implies is BOOK-173's (a widened attempt is
+      // a rewrite), and the step carries no second copy of it.
+      const step = fixture.db.prepare('SELECT widened FROM steps WHERE step_id = ?').get(first.stepId) as {
         widened: string | null;
-        mode: string | null;
       };
-      expect(step).toEqual({ widened: 'wider-edit', mode: 'rewrite' });
+      expect(step).toEqual({ widened: 'wider-edit' });
       // The fourth claim is the first one under the widened requirements.
       expect(assignment.attempt).toBe(4);
       expect(assignment.widened).toEqual({ code: 'wider-edit', sentence: 'правим шире: не строку, а абзац' });
       expect(assignment.desperate).toBe(false);
-      expect(assignment.mode).toBe('rewrite');
       expect(assignment.maxAttempts).toBe(5);
       // §10.8's scope widening: the change is no longer a phrase but a chapter.
       expect(fixture.db.prepare('SELECT scope_hint FROM changes WHERE id = ?').get(change.id)).toEqual({

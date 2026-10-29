@@ -6,7 +6,7 @@
  * path's to answer.
  */
 
-import { LOCK_LINES, READING_RESCHEDULED_LINE } from '@book/shared';
+import { LOCK_LINES } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { TRIAGE_BACKOFF_MS, TRIAGE_MAX_TRIES } from '../src/comments/attempts.ts';

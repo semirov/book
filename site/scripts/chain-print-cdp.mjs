@@ -63,6 +63,7 @@ import { join, relative, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
+import { AGE_COOKIE, ageDateOf } from '../shared/src/age.ts';
 import { chromiumBinary, Cdp, killTree, launchChromium, portIsFree, spawnLogged, waitForUrl } from './lib/cdp.mjs';
 import {
   ensureLatestSnapshot,
@@ -155,7 +156,14 @@ async function openPage(cdp, run) {
 
 /** The run's facts before the page opens: the block the anchor names, unique in the chapter. */
 async function prepareRun(run) {
-  const chapter = await (await fetch(`${API}/api/chapters/${String(run.chapter)}`)).json();
+  // BOOK-225 — the prose route refuses a reader without the rating's answer.
+  const answer = await fetch(`${API}/api/chapters/${String(run.chapter)}`, {
+    headers: { cookie: `${AGE_COOKIE}=${ageDateOf(new Date())}` },
+  });
+  const chapter = await answer.json();
+  if (!Array.isArray(chapter.blocks)) {
+    throw new Error(`chapter ${run.chapter} answered ${String(answer.status)}: ${JSON.stringify(chapter).slice(0, 200)}`);
+  }
   const matches = chapter.blocks.filter((block) => block.text.includes(run.anchor));
   if (matches.length !== 1) throw new Error(`the anchor occurs in ${matches.length} blocks of chapter ${run.chapter}`);
   const source = chapter.blocks.map((entry) => entry.text).join('\n\n');
@@ -313,6 +321,14 @@ async function main() {
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
     await cdp.send('Network.enable');
+    // BOOK-225 — the page is one acknowledged reader: without the answer the gate stands where
+    // the chapters would, and there is no print to measure.
+    await cdp.send('Network.setCookie', {
+      name: AGE_COOKIE,
+      value: ageDateOf(new Date()),
+      domain: '127.0.0.1',
+      path: '/',
+    });
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: WATCH_SOURCE });
 
     const { assertions, check } = checker(log);
@@ -402,7 +418,7 @@ async function main() {
       process.exitCode = 1;
     }
   } catch (error) {
-    console.error(`[chain-print] FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`[chain-print] FAILED: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
     for (const [name, child] of [['server', server], ['browser', browser]]) {
       if (child?.output) console.error(`${name}:\n${child.output.split('\n').slice(-12).join('\n')}`);
     }
