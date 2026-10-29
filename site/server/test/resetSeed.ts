@@ -1,6 +1,7 @@
 /**
- * The seeded book BOOK-137 wipes: three chapters, one identity with its session, one filing that
- * became a change, and the engine row of every table the reset drops. It lives apart from the
+ * The seeded book BOOK-137 wipes: three chapters (ch01 written and kept by BOOK-202, the frozen
+ * finale, ch08 written), one identity with its session, one filing that became a change, and the
+ * engine row of every table the reset drops. It lives apart from the
  * test so the reset suite reads as assertions rather than as SQL, and so the same seed can be
  * counted from two sides — the literals below and the response.
  *
@@ -22,28 +23,29 @@ export const AT = '2026-10-25T12:00:00Z';
 export const SEEDED_STATE_VERSION = 813;
 
 /**
- * The three chapters a seeded book has: the two frame slots and one written chapter, as the
- * one-shot import reads them. `reconcile` turns them into rows and that is the last time any of
- * this exists as a file.
+ * The chapters a seeded book has: the frozen finale, one written chapter, and **ch01 written**
+ * (BOOK-202) — the launch reset keeps it whole, so a fixture whose ch01 is only the frame would
+ * never exercise the rule. `withFrame` leaves a file whose frame already opens the body alone,
+ * and the ingest accepts it: the title, the frame sentence and the paragraphs after it.
  */
 export function bookFiles(): Record<string, string> {
   return {
-    'ch01.md': FRAME_FIRST_SENTENCE,
+    'ch01.md': longProse([FRAME_FIRST_SENTENCE, 'Служебный абзац номер один. Это служебный текст главы первой.']),
     [`ch${String(TOTAL_CHAPTERS).padStart(2, '0')}.md`]: FRAME_LAST_SENTENCE,
     'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
   };
 }
 
 /**
- * The sentences the ingest wrote for the written chapters, recomputed with the shared segmenter
+ * The sentences the ingest wrote for the wiped chapters, recomputed with the shared segmenter
  * rather than read from the store: the dry run's answer and the fixture's own number must not be
- * the same SQL. The frame slots are excluded, like `blocks` in the counters.
+ * the same SQL. ch01 and the finale are excluded, like `blocks` in the counters (BOOK-202).
  */
 function seededSentences(db: Db): number {
   const blocks = db
     .prepare(
       `SELECT b.text AS text FROM blocks b JOIN chapters c ON c.n = b.chapter
-        WHERE c.basis = 0 ORDER BY b.chapter, b.idx`,
+        WHERE c.basis = 0 AND c.n <> 1 ORDER BY b.chapter, b.idx`,
     )
     .all() as Array<{ text: string }>;
   return blocks.reduce((sum, block) => sum + splitSentences(block.text).length, 0);
@@ -193,7 +195,7 @@ export function seedBook(target: Fixture): string {
       `SELECT s.id AS id FROM sentences s
          JOIN blocks b ON b.id = s.block_id
          JOIN chapters c ON c.n = b.chapter
-        WHERE c.basis = 0 AND s.erased_at IS NULL
+        WHERE c.basis = 0 AND c.n <> 1 AND s.erased_at IS NULL
         ORDER BY b.chapter, b.idx, s.idx LIMIT 1`,
     )
     .get() as { id: string } | undefined;
@@ -293,10 +295,13 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     comment_events: 1,
     feedback_batches: 1,
     reconciles: 1,
-    events: 1,
+    // BOOK-202: the import writes one `chapter.created` event per written chapter — ch01 and
+    // ch08 in this fixture — and the log is wiped whole. A literal on purpose: a wipe that
+    // stopped deleting events must fail this, so the number is not counted from the rows.
+    events: 2,
     front_revisions: 0,
-    block_lineage: count(db, 'SELECT COUNT(*) AS n FROM block_lineage'),
-    block_versions: count(db, 'SELECT COUNT(*) AS n FROM block_versions'),
+    block_lineage: count(db, 'SELECT COUNT(*) AS n FROM block_lineage WHERE chapter <> 1'),
+    block_versions: count(db, 'SELECT COUNT(*) AS n FROM block_versions WHERE chapter <> 1'),
     facts: 2,
     extraction_runs: 1,
     fact_dependency: 2,

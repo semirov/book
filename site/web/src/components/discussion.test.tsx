@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Discussion } from './Discussion.tsx';
+import { firstDeclarations } from './cssRules.ts';
 
 /** Every stylesheet as text: the ink classes are an invariant of the sheet, not of a snapshot. */
 const sheets = import.meta.glob<string>('../styles/*.css', {
@@ -39,48 +40,44 @@ function render(comments: readonly CommentDto[]): string {
   return renderToStaticMarkup(<Discussion depth={0} comments={comments} live />);
 }
 
-/** The ink rules a stylesheet declares: class slot → colour. */
-function inkRules(css: string): Array<{ slot: string; color: string }> {
-  return [...css.matchAll(/\.comment-author\.author-ink-(\d+)\s*\{\s*color:\s*(#[0-9a-f]{6});/gu)].map(
-    (match) => ({ slot: match[1] ?? '', color: match[2] ?? '' }),
-  );
-}
-
 /**
- * BOOK-30 — the author colour travels as a class per palette slot, never as a style
- * attribute: the markup holds no colour value, and a slot is themeable from the sheet.
+ * BOOK-199 (audit #21) — one ink for people. Six colours for six readers measured 1.98–2.41:1 on
+ * the day paper and named nothing a reader could use: identity is the name, and a reader's own
+ * filing is marked by the word `ваше`. The stored `authorColor` remains on the wire; the sheet
+ * no longer paints it, so no slot class and no hex may reach the markup.
  */
 describe('the author ink on the thread', () => {
-  it('gives two readers two different classes, and names no colour in the markup', () => {
+  it('prints every name in the one class, with no colour value in the markup', () => {
     const html = render([
       comment({ id: 'cmt_1', author: 'Аня', authorColor: AUTHOR_COLORS[0] }),
       comment({ id: 'cmt_2', author: 'Борис', authorColor: AUTHOR_COLORS[1] }),
     ]);
-    expect(html).toContain('class="comment-author author-ink-0"');
-    expect(html).toContain('class="comment-author author-ink-1"');
+    expect(html).toContain('class="comment-author"');
     expect(html).toContain('>Аня<');
     expect(html).toContain('>Борис<');
-    // No colour value and no style attribute anywhere in the rendered thread.
+    // No colour value, no style attribute and no palette slot anywhere in the thread.
+    expect(html).not.toMatch(/comment-author\s/u);
     expect(html).not.toMatch(/style=/u);
     for (const color of AUTHOR_COLORS) expect(html).not.toContain(color);
   });
 
-  it('keeps a reader separated by name when the stored colour is unknown', () => {
+  it('keeps the two readers apart by name, whatever colour a row stores', () => {
     const html = render([
       comment({ id: 'cmt_1', author: 'Аня', authorColor: '#2e6274' }),
       comment({ id: 'cmt_2', author: 'Вера', authorColor: '#2e6274' }),
     ]);
-    expect(html).toContain('class="comment-author author-ink-3"');
-    expect(html).toContain('class="comment-author author-ink-2"');
+    expect(html).not.toMatch(/comment-author\s/u);
     expect(html).toContain('>Аня<');
     expect(html).toContain('>Вера<');
   });
 
-  it('has exactly one stylesheet rule per palette slot, with the palette colour', () => {
-    const rules = Object.values(sheets).flatMap((css) => inkRules(css));
-    expect(rules).toHaveLength(AUTHOR_COLORS.length);
-    expect(rules.map((rule) => rule.slot)).toEqual(AUTHOR_COLORS.map((_, slot) => String(slot)));
-    expect(rules.map((rule) => rule.color)).toEqual([...AUTHOR_COLORS]);
+  it('gives the name the sheet’s one ink — no slot rules left to paint', () => {
+    // No compound `.comment-author.<slot>` rule survives: the name has one class, one ink.
+    for (const css of Object.values(sheets)) expect(css).not.toMatch(/\.comment-author\./u);
+    const rule = firstDeclarations(sheets['../styles/book.css'] ?? '', '.comment-author');
+    expect(rule).toContain('color: var(--ink)');
+    expect(rule).toContain('font-size: var(--fs-micro)');
+    expect(rule).not.toMatch(/#[0-9a-f]{3,8}/iu);
   });
 });
 

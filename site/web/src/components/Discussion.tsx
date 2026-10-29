@@ -1,4 +1,4 @@
-import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { focusHash } from '../lib/focus.ts';
@@ -157,7 +157,7 @@ export function Discussion({
                 data-comment-id={comment.id}
               >
                 <div className="comment-meta">
-                  <span className={`comment-author ${commentInkClass(comment.author, comment.authorColor)}`}>
+                  <span className="comment-author">
                     {comment.author}
                   </span>
                   <span>глава {comment.chapter}</span>

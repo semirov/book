@@ -5,17 +5,18 @@ import { formatChars, formatTime } from '../lib/format.ts';
 /**
  * The chapter's header: BOOK-DOC-43 §6 (BOOK-66) and the chip rules of BOOK-70.
  *
- * The slot's meta line is where the skeleton's one sentence is printed, because it is a slot
- * the surface already has: the status adds no height, so nothing below it moves when the text
- * arrives. While the wait is quiet the meta line prints only what is provable: the printing
- * chip `.ch-print` («■ печатается») when the opening is still being typed, and the catalog's
- * character count and time as data in `.ch-data`. A slot with nothing to read prints nothing —
- * «не написана» is gone (BOOK-70, editor's table): an absent line is not a fact about a
- * request, and the basis slot explains its own silence through `basisSentence` instead.
+ * The header is two things on two lines: the numeral, then the apparatus line `.ch-meta` —
+ * the catalog's character count and time as data in `.ch-data`, and the printing chip
+ * `.ch-print` while the opening is still being typed. The wait sentence is not apparatus: it is
+ * the surface's own sentence about this slot, so it takes its own block line `.ch-status`
+ * (mono 12, BOOK-199 m5) instead of living in `.ch-meta`, and it drops the `■` glyph the chip
+ * carried — a sentence is not a chip. A slot with nothing to read prints nothing: «не написана»
+ * is gone (BOOK-70, editor's table), and the basis slot explains its own silence through
+ * `basisSentence` instead.
  *
- * Extracted from `ChapterArticle` to keep that file under the arch limit; the markup is the
- * same, and the ■ of «■ читаем главу 07» stays chrome: `role="status"` carries exactly the
- * sentence, never the mark.
+ * Extracted from `ChapterArticle` to keep that file under the arch limit; the ■ of
+ * «■ читаем главу 07» was chrome and is retired with the status line: `role="status"` carries
+ * exactly the sentence, and the sentence is the whole line.
  */
 export type ChapterHeaderProps = {
   entry: CatalogEntry;
@@ -31,6 +32,9 @@ export type ChapterHeaderProps = {
 };
 
 export function ChapterHeader({ entry, printing, status }: ChapterHeaderProps) {
+  // The apparatus line exists only when it has a fact: a printing chip, the chapter's data, or
+  // both. An empty `.ch-meta` is a line that says nothing.
+  const apparatus = printing || entry.written;
   return (
     <header className="ch-h">
       <span className="ch-id">
@@ -38,28 +42,24 @@ export function ChapterHeader({ entry, printing, status }: ChapterHeaderProps) {
           {chapterLabel(entry.n)}
         </h2>
       </span>
-      <span className="ch-meta">
-        {status === null ? (
-          <>
-            {printing ? (
-              <span className="ch-print">
-                <span aria-hidden="true">■ </span>печатается
-              </span>
-            ) : null}
-            {printing && entry.written ? ' · ' : ''}
-            {entry.written ? (
-              <span className="ch-data">{`${formatChars(entry.chars)} · ${formatTime(entry.updatedAt)}`}</span>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <span aria-hidden="true">■</span>{' '}
-            <span role="status" aria-live="polite" aria-atomic="true">
-              {status}
+      {apparatus ? (
+        <span className="ch-meta">
+          {printing ? (
+            <span className="ch-print">
+              <span aria-hidden="true">■ </span>печатается
             </span>
-          </>
-        )}
-      </span>
+          ) : null}
+          {printing && entry.written ? ' · ' : ''}
+          {entry.written ? (
+            <span className="ch-data">{`${formatChars(entry.chars)} · ${formatTime(entry.updatedAt)}`}</span>
+          ) : null}
+        </span>
+      ) : null}
+      {status === null ? null : (
+        <p className="ch-status" role="status" aria-live="polite" aria-atomic="true">
+          {status}
+        </p>
+      )}
     </header>
   );
 }

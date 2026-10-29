@@ -305,16 +305,16 @@ describe('the consent strip carries two type registers (BOOK-88)', () => {
   });
 
   it('fires on a third size in the strip', () => {
-    // The seeded violation: a third rung (13 px) on the section itself. The strip may not borrow
+    // The seeded violation: a third rung (14 px) on the section itself. The strip may not borrow
     // a size from anywhere else in the book.
-    const third = typeProblems(seeded(SHEET, '.consent { font-size: var(--fs-label); }'));
+    const third = typeProblems(seeded(SHEET, '.consent { font-size: var(--fs-meta); }'));
     expect(third).toContain(
-      'consent.css: a third size in the strip — font-size: var(--fs-label); the strip has exactly two: var(--fs-note) for the sentence and var(--fs-micro) for the actions',
+      'consent.css: a third size in the strip — font-size: var(--fs-meta); the strip has exactly two: var(--fs-note) for the sentence and var(--fs-micro) for the actions',
     );
   });
 
   it('fires when the secondary action brings a size of its own', () => {
-    const divergent = typeProblems(seeded(SHEET, '.consent-choice + .consent-choice { font-size: var(--fs-label); }'));
+    const divergent = typeProblems(seeded(SHEET, '.consent-choice + .consent-choice { font-size: var(--fs-meta); }'));
     expect(divergent.some((problem) => problem.includes('a third size in the strip'))).toBe(true);
     expect(divergent.some((problem) => problem.includes('the secondary action differs by more than ink'))).toBe(true);
   });
@@ -379,9 +379,9 @@ describe('/privacy carries the same one action register (BOOK-88)', () => {
     const ink = legalProblems(seeded(SHEET, '.consent-state { color: var(--ink); }'));
     expect(ink.some((problem) => problem.includes('.consent-state ink is var(--ink)'))).toBe(true);
 
-    const size = legalProblems(seeded(SHEET, '.consent-state { font-size: var(--fs-label); }'));
-    expect(size.some((problem) => problem.includes('.consent-state font-size is var(--fs-label)'))).toBe(true);
-    expect(size.some((problem) => problem.includes('resolves to 13px and its buttons to 12px'))).toBe(true);
+    const size = legalProblems(seeded(SHEET, '.consent-state { font-size: var(--fs-meta); }'));
+    expect(size.some((problem) => problem.includes('.consent-state font-size is var(--fs-meta)'))).toBe(true);
+    expect(size.some((problem) => problem.includes('resolves to 14px and its buttons to 12px'))).toBe(true);
   });
 
   it('fires when the sheet read is not the one that styles the line', () => {

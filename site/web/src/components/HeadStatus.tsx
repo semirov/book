@@ -13,9 +13,10 @@ import type { Stages } from '../lib/useStages.ts';
  *
  * It is the running head's free space and nothing more: one 12 px mono line in the row that
  * already exists, so `.top-in`'s height and the folio's y do not move by a pixel (the box is
- * shorter than the brand's 17.55 px label line, and `flex: none` keeps it from growing). Both
- * variants are always in the markup — the full line and the phone's — and the sheet chooses
- * between them, so no width is decided in JavaScript and nothing is ever ellipsized.
+ * shorter than the brand's own 16.2 px label line, and `flex: none` keeps it from growing). One
+ * line is in the markup; the phone does not paint it at all (BOOK-199: the phone head is the
+ * page number and the book's name), so no width is decided in JavaScript and nothing is ever
+ * ellipsized.
  *
  * The clock is the page's, but the *end of a silence* needs a moment to happen in: while a pass
  * is live one timeout is armed for `atMs + 90 s`, and it is cleared with the state or the page.
@@ -44,7 +45,7 @@ export function HeadStatus({
 
   const status = headStatusOf({ stages, state, nowMs: fixed ? nowMs : clock });
 
-  // The silence has an end, and it is one moment: the line changes to `движок остановлен` without
+  // The silence has an end, and it is one moment: the line changes to `книга не пишется` without
   // waiting for another frame, and one timer is armed at a time.
   useEffect(() => {
     if (fixed || status.kind !== 'live' || status.atMs === null) return;
@@ -73,7 +74,6 @@ export function HeadStatus({
       {/* The nib is the pass's own mark, --live: five pixels on the baseline, no motion. */}
       {status.kind === 'live' ? <span className="head-nib" aria-hidden="true" /> : null}
       <span className="head-status-full">{status.full}</span>
-      <span className="head-status-short">{status.short}</span>
     </span>
   );
 }

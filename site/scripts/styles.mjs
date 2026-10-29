@@ -42,10 +42,9 @@ import { declarationsOf, lineAt, reaches, ruleBodies, toPx, withoutComments } fr
 /** The floor for every label, counter and meta line (BOOK-DOC-35 §4.1). */
 export const MIN_FONT_PX = 12;
 
-/** The ladder is the design's whole type scale: 12 / 13 / 14 / 15 → 18 / 19. */
+/** The ladder is the design's whole type scale: 12 / 14 / 15 → 18 / 19. */
 export const LADDER = Object.freeze({
   '--fs-micro': 12,
-  '--fs-label': 13,
   '--fs-meta': 14,
   '--fs-note': 15,
   '--fs-body': 18,
@@ -93,9 +92,8 @@ export const CHIP_SELECTORS = Object.freeze([
   {
     selector: '.author-plus',
     tier: 'ref',
-    // BOOK-128 comment 3900 §1 (audit 3) — «+ 3» sits inside the cover's byline, so it takes
-    // the byline's own 13 px rung and its spacing instead of opening a second size on the line.
-    px: 13,
+    // BOOK-199 (audit #21) — «+ 3» sits inside the cover's byline, and the byline is a mark:
+    // the 12 px floor, the byline's own spacing, one size on the line.
     spacing: '0',
     fact: 'how many readers’ text survived («+ 3»)',
   },
@@ -336,7 +334,7 @@ export function styleProblems(stylesDir, { requireChips = false } = {}) {
     const fail = (message) => problems.push({ file: entry.file, line: entry.line, message: `${selector}: ${message}` });
 
     const size = declarations.get('font-size');
-    const wantPx = tier === 'sentence' ? SENTENCE_PX : (chip.px ?? CHIP_PX);
+    const wantPx = tier === 'sentence' ? SENTENCE_PX : CHIP_PX;
     /** «a state chip» / «a sentence» — the message names the form the rule must hold. */
     const what = tier === 'sentence' ? 'a sentence' : `a ${tier} chip`;
     if (size === undefined) {
