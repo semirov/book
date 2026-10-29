@@ -93,4 +93,50 @@ describe('migrate — the money ledger (BOOK-117)', () => {
     db.close();
   });
 
+
+  it('widens the ledger’s provenance to `pipeline-estimated` on an upgrade, and keeps every row (BOOK-219)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v30 ledger: the CHECK knew only the two words, and a pass is already charged.
+    db.exec('DROP INDEX IF EXISTS pass_spend_day');
+    db.exec('DROP TABLE pass_spend');
+    db.exec(`CREATE TABLE pass_spend (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at TEXT NOT NULL, day TEXT NOT NULL, pass_id TEXT NOT NULL UNIQUE, chapter INTEGER,
+      pass TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep','triage')),
+      change_id TEXT, model TEXT, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL,
+      usd REAL NOT NULL, priced INTEGER NOT NULL CHECK (priced IN (0,1)),
+      provenance TEXT CHECK (provenance IN ('pipeline','operator')))`);
+    db.exec('CREATE INDEX pass_spend_day ON pass_spend(day)');
+    const insert = db.prepare(
+      `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, tokens_in, tokens_out, usd, priced, provenance)
+       VALUES ('2026-10-29T09:00:00Z', '2026-10-29', ?, 1, 'draft', 25300, 15068, 0.046533, 1, ?)`,
+    );
+    insert.run('stp_old', 'pipeline');
+
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    // The row the old table held is still there, word for word.
+    expect(db.prepare('SELECT pass_id, tokens_in, provenance FROM pass_spend').get()).toEqual({
+      pass_id: 'stp_old',
+      tokens_in: 25300,
+      provenance: 'pipeline',
+    });
+    // The estimate is a priced row with its own word — never `priced = 0`.
+    expect(() => insert.run('stp_estimated', 'pipeline-estimated')).not.toThrow();
+    expect(db.prepare('SELECT priced, provenance FROM pass_spend WHERE pass_id = ?').get('stp_estimated')).toEqual({
+      priced: 1,
+      provenance: 'pipeline-estimated',
+    });
+    // A word nobody defined is still refused, and the index came back with the table.
+    expect(() => insert.run('stp_other', 'stub')).toThrow(/CHECK/u);
+    expect(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'pass_spend_day'`).get()).toEqual({
+      name: 'pass_spend_day',
+    });
+    // Idempotent: a second boot finds the word already there and leaves the table alone.
+    const sql = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_spend'`).get() as { sql: string };
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    expect((db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_spend'`).get() as { sql: string }).sql).toBe(sql.sql);
+    db.close();
+  });
+
 });

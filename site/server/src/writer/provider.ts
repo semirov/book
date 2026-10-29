@@ -22,6 +22,18 @@
  * final too (see `partial`): re-running a half-read long generation doubles the cost and the reset
  * usually repeats. Error messages carry a code and a status and never the key or the response body.
  *
+ * Two rules come from BOOK-219, the pass that died on a good answer:
+ *
+ *  · **A good answer is never a shape failure.** A `200` whose stream ends without a usable
+ *    `usage` object used to be `PROVIDER_SHAPE`, and the pass — with its chapter already
+ *    published — parked instead of closing. Now the text is the answer and the money is
+ *    **estimated** from the bytes we sent and received (`estimateUsage`). The calibration of that
+ *    run: 74 943 prompt chars → 25 300 tokens (≈2.96 chars/token), 28 383 answer chars → 15 068
+ *    completion tokens with reasoning (≈1.88 chars/token); the constants sit **below** both
+ *    ratios and every count is `ceil`ed, so the estimate is at or above the truth.
+ *  · **An empty answer gets one more chance, unstreamed**: one more call as a plain body
+ *    (`stream: false`, no `stream_options`). Only a second empty answer is `PROVIDER_SHAPE`.
+ *
  * The call reports the model's own `finish_reason` and does not judge it: `length` means the
  * answer was cut at `max_tokens` — a reasoning model spends completion tokens before it writes
  * anything, so a tight cap truncates a chapter silently. That is the model's answer, not a
@@ -82,6 +94,21 @@ export type ProviderCode =
   | `PROVIDER_HTTP_${number}`
   | 'PROVIDER_SHAPE';
 
+/** BOOK-219's calibration, in characters per token — under the measured 2.96 / 1.88, ceil()ed. */
+export const PROMPT_CHARS_PER_TOKEN = 2.9;
+export const ANSWER_CHARS_PER_TOKEN = 1.8;
+
+/** The charge of a call that reported no usage: the prompt we sent, the answer we got, rounded up. */
+export function estimateUsage(messages: readonly WriterMessage[], text: string): PipelineUsage {
+  const promptChars = messages.reduce((sum, message) => sum + message.content.length, 0);
+  return {
+    in: Math.ceil(promptChars / PROMPT_CHARS_PER_TOKEN),
+    out: Math.ceil(text.length / ANSWER_CHARS_PER_TOKEN),
+    cachedIn: 0,
+    estimated: true,
+  };
+}
+
 export class ProviderError extends Error {
   readonly code: ProviderCode;
   readonly attempts: number;
@@ -103,7 +130,13 @@ type AttemptOk = {
   finishReason: string | null;
 };
 
-type AttemptFail = { ok: false; code: ProviderCode; retryable: boolean };
+type AttemptFail = {
+  ok: false;
+  code: ProviderCode;
+  retryable: boolean;
+  /** A `200` with not one character of prose: the one failure re-asked without a stream. */
+  empty?: boolean;
+};
 
 type Attempt = AttemptOk | AttemptFail;
 
@@ -248,41 +281,90 @@ function partial(code: ProviderCode, acc: Accumulated): AttemptFail {
   return { ok: false, code, retryable: acc.chars === 0 };
 }
 
-function shape(): AttemptFail {
-  return { ok: false, code: 'PROVIDER_SHAPE', retryable: false };
+function shape(empty = false): AttemptFail {
+  const failure: AttemptFail = { ok: false, code: 'PROVIDER_SHAPE', retryable: false };
+  return empty ? { ...failure, empty: true } : failure;
 }
 
 /**
- * The stream's own account, assembled into the result. A missing or unusable usage object is a
- * shape failure, never a zero-cost pass: a chapter whose tokens are unknown cannot be charged,
- * and a charge of zero would be a lie in the transcript. An empty text is not a chapter either.
+ * A text, a usage object and a model become an `AttemptOk` here, and only here (BOOK-219): an
+ * empty text is `PROVIDER_SHAPE` (`empty`, so it may be re-asked unstreamed); a usable usage is
+ * the measurement (cache clamped to the prompt); a missing one is `estimateUsage`.
  */
-function assemble(acc: Accumulated, apiModel: string): Attempt {
-  const inTokens = tokenCount(acc.usage?.prompt_tokens);
-  const outTokens = tokenCount(acc.usage?.completion_tokens);
-  if (acc.usage === null || inTokens === null || outTokens === null) return shape();
+function assembled(input: {
+  text: string;
+  usage: Record<string, unknown> | null;
+  responseModel: string;
+  finishReason: string | null;
+  messages: readonly WriterMessage[];
+}): Attempt {
+  const text = input.text;
+  if (text.trim().length === 0) return shape(true);
 
-  const text = acc.parts.join('');
-  if (text.trim().length === 0) return shape();
+  const { responseModel, finishReason } = input;
+  const inTokens = tokenCount(input.usage?.prompt_tokens);
+  const outTokens = tokenCount(input.usage?.completion_tokens);
+  // No usable usage: the answer is charged at the estimate, never refused for its own invoice.
+  if (input.usage === null || inTokens === null || outTokens === null) {
+    return { ok: true, text, responseModel, usage: estimateUsage(input.messages, text), finishReason };
+  }
+  const details = record(input.usage.prompt_tokens_details);
+  const cached = tokenCount(input.usage.prompt_cache_hit_tokens) ?? tokenCount(details?.cached_tokens) ?? 0;
+  const usage = { in: inTokens, out: outTokens, cachedIn: Math.min(cached, inTokens) };
+  return { ok: true, text, responseModel, usage, finishReason };
+}
 
-  const details = record(acc.usage.prompt_tokens_details);
-  const cached = tokenCount(acc.usage.prompt_cache_hit_tokens) ?? tokenCount(details?.cached_tokens) ?? 0;
-  const cachedIn = Math.min(cached, inTokens);
-
-  return {
-    ok: true,
-    text,
-    responseModel: acc.model.length > 0 ? acc.model : apiModel,
-    usage: { in: inTokens, out: outTokens, cachedIn },
+/** The streamed answer, from what the stream said so far. */
+function assemble(acc: Accumulated, request: ProviderRequest): Attempt {
+  return assembled({
+    text: acc.parts.join(''),
+    usage: acc.usage,
+    responseModel: acc.model.length > 0 ? acc.model : request.apiModel,
     finishReason: acc.finishReason,
-  };
+    messages: request.messages,
+  });
+}
+
+/**
+ * The plain-body answer — the retry an empty stream gets: `choices[0].message.content`, the
+ * `finish_reason`, the `usage`. A body that cannot be read carried no prose, so it is empty.
+ */
+async function readBody(response: Response, request: ProviderRequest): Promise<Attempt> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return shape(true);
+  }
+  const frame = record(payload);
+  if (frame === null) return shape();
+  const choices = frame.choices;
+  const choice = Array.isArray(choices) ? record(choices[0]) : null;
+  if (choice === null) return shape(true);
+  const message = record(choice.message);
+  const model = typeof frame.model === 'string' ? frame.model.trim() : '';
+  return assembled({
+    text: typeof message?.content === 'string' ? message.content : '',
+    usage: record(frame.usage),
+    responseModel: model.length > 0 ? model : request.apiModel,
+    finishReason: finishReasonOf(choice.finish_reason),
+    messages: request.messages,
+  });
 }
 
 function retryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-async function attemptOnce(request: ProviderRequest, deps: Required<ProviderDeps>): Promise<Attempt> {
+/** The request body: the stream envelope, or the plain one the unstreamed retry sends (BOOK-219). */
+function envelope(request: ProviderRequest, stream: boolean): string {
+  const body = { model: request.apiModel, messages: request.messages, max_tokens: request.maxTokens };
+  return JSON.stringify(
+    stream ? { ...body, stream: true, stream_options: { include_usage: true } } : { ...body, stream: false },
+  );
+}
+
+async function attemptOnce(request: ProviderRequest, deps: Required<ProviderDeps>, stream: boolean): Promise<Attempt> {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -301,13 +383,7 @@ async function attemptOnce(request: ProviderRequest, deps: Required<ProviderDeps
           'content-type': 'application/json',
           authorization: `Bearer ${request.apiKey}`,
         },
-        body: JSON.stringify({
-          model: request.apiModel,
-          messages: request.messages,
-          max_tokens: request.maxTokens,
-          stream: true,
-          stream_options: { include_usage: true },
-        }),
+        body: envelope(request, stream),
         signal: controller.signal,
       });
     } catch {
@@ -326,9 +402,11 @@ async function attemptOnce(request: ProviderRequest, deps: Required<ProviderDeps
       };
     }
 
+    if (!stream) return await readBody(response, request);
+
     const body = response.body;
-    // A `200` with no body at all is not a stream: there is nothing to read and nothing to bill.
-    if (body === null) return shape();
+    // A `200` with no body at all is not a stream: there is nothing to read, and no prose either.
+    if (body === null) return shape(true);
 
     const reader = body.getReader();
     const decoder = new TextDecoder();
@@ -372,13 +450,16 @@ async function attemptOnce(request: ProviderRequest, deps: Required<ProviderDeps
     if (stalled) return partial('PROVIDER_TIMEOUT', acc);
     if (broken) return shape();
     if (readError !== null) return partial(timedOut ? 'PROVIDER_TIMEOUT' : 'PROVIDER_UNREACHABLE', acc);
-    return assemble(acc, request.apiModel);
+    return assemble(acc, request);
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** One call, at most two attempts. The key travels in the header, never in the URL. */
+/**
+ * One call: at most two attempts, and the second one is either the transport retry or the
+ * unstreamed re-ask of an empty answer (BOOK-219). The key travels in the header, never in the URL.
+ */
 export async function callProvider(request: ProviderRequest, deps: ProviderDeps = {}): Promise<ProviderResult> {
   const transport = deps.transport ?? ((url, init) => fetch(url, init));
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolveSleep) => setTimeout(resolveSleep, ms)));
@@ -393,18 +474,19 @@ export async function callProvider(request: ProviderRequest, deps: ProviderDeps 
 
   const startedAt = now();
   let attempts = 0;
+  // A `200` that ended without a single character is asked again as a plain body — no backoff:
+  // the model did not fail, it answered nothing, and a short gate answer needs no stream.
+  let stream = true;
   for (;;) {
     attempts += 1;
-    const outcome = await attemptOnce(request, settings);
+    const outcome = await attemptOnce(request, settings, stream);
     if (outcome.ok) {
-      return {
-        text: outcome.text,
-        responseModel: outcome.responseModel,
-        usage: outcome.usage,
-        latencyMs: now() - startedAt,
-        attempts,
-        finishReason: outcome.finishReason,
-      };
+      const { text, responseModel, usage, finishReason } = outcome;
+      return { text, responseModel, usage, latencyMs: now() - startedAt, attempts, finishReason };
+    }
+    if (outcome.empty === true && stream) {
+      stream = false;
+      continue;
     }
     if (!outcome.retryable || attempts >= 2) {
       throw new ProviderError(outcome.code, attempts);

@@ -6,6 +6,7 @@
 
 import type { CascadeOutcome, ChangeOutcome, ChangeStatus, SeamRef, StepOutcome } from '@book/shared';
 
+import type { Provenance } from './model.ts';
 import type { PremiseCause } from './types.ts';
 
 export type CloseStepInput = {
@@ -15,8 +16,11 @@ export type CloseStepInput = {
   model: string | null;
   tokensIn: number;
   tokensOut: number;
-  /** Who ran the pass (`pipeline` | `operator`): the history answers «machine or repair». */
-  provenance?: 'pipeline' | 'operator' | null;
+  /**
+   * Who ran the pass (`pipeline`, `operator`, `pipeline-estimated`): the history answers «machine or
+   * repair», the ledger also answers «measured or estimated» (BOOK-219).
+   */
+  provenance?: Provenance | null;
   /** The change's outcome, decided from relevance before the write (void/dropped or applied). */
   changeOutcome?: ChangeOutcome | null;
   /** Overrides for a step that closes a change without editing it (void/dropped). */

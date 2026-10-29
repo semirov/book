@@ -358,16 +358,36 @@ export type CommentDecisionPayload = {
    * BOOK-206 — the frame carries the answer a filing got, and the removed fifth state is not one
    * of them: every filing is accepted, registered as paperwork, refused under a lock, or still
    * waiting (`new`). `registered` is the paperwork branch's own word (BOOK-137).
+   *
+   * BOOK-219 — `applied` is the **second** decision: triage accepted the filing, and a later
+   * close landed its text in a chapter. Without it the open page moved the change and left the
+   * filing row saying «ждёт», so the record and the text disagreed until a reload.
    */
-  status: 'accepted' | 'registered' | 'rejected' | 'expired' | 'quarantined';
+  status: 'accepted' | 'registered' | 'rejected' | 'applied' | 'expired' | 'quarantined';
   reason: string;
   decidedAt: string;
   batchId: string | null;
   changeId: string | null;
   queue: { depth: number; ahead: number };
-  source: 'llm';
+  /**
+   * Which judge spoke. The triage path names its judge (`'llm'`); a landing frame emitted by the
+   * site's bridge has no judge to name — the reading it carries is the one already stored on the
+   * row — so it leaves the field out.
+   */
+  source?: 'llm';
   /** BOOK-174 §5 — the three lines of the reading, carried with the frame itself. */
   report?: DispositionReport | null;
+  /**
+   * BOOK-174 — how the filing was read, when the frame is about a row that carries a chain. The
+   * open card takes it with the report instead of waiting for the reload.
+   */
+  disposition?: Disposition | null;
+  /**
+   * BOOK-219 — a landing: the chapter the filing's text entered, and that chapter's revision.
+   * The receipt storage derives for the filing (`comments/repo.ts`), never a number made up on
+   * the wire; `null` when no receipt exists (a landing whose chapter row is gone).
+   */
+  applied?: { chapter: number; rev: number } | null;
 };
 
 export type FeedbackBatchPayload = {

@@ -55,6 +55,7 @@ import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
+import { decisionFrameHandler } from './lib/decisionFrame.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
@@ -179,6 +180,7 @@ export function App() {
   useQueuePoll(dataRef, setData);
 
   useEffect(() => {
+    const onDecision = decisionFrameHandler({ noteRecord, noteDecision, refreshComments, refreshCatalog, noteRevision });
     const socket = new BookSocket(websocketUrl(window.location.origin), {
       onEvent: (event: Envelope) => {
         const frame = event as Envelope<ServerEventType, unknown>;
@@ -298,15 +300,11 @@ export function App() {
             void refreshComments(commentFrameChapter(frame.data) ?? undefined);
             break;
           }
-          case 'comment:decision': {
-            // A decision frame is a broadcast; only the viewer's own comment earns a reload
-            // of the durable record. Everybody else's is simply the thread's business.
-            // BOOK-174: the frame carries the reading, onto the open record at once.
-            noteRecord({ kind: 'frame', type: frame.type, data: frame.data });
-            noteDecision(frame.data);
-            void refreshComments(commentFrameChapter(frame.data) ?? undefined);
+          case 'comment:decision':
+            // BOOK-174/BOOK-219: the record, the reading and — for a landing — the text, in one
+            // breath; the rule itself lives in `lib/decisionFrame.ts`.
+            onDecision(frame);
             break;
-          }
           case 'change:queued': {
             void refreshChanges();
             // BOOK-65: a comment accepted through the interface appends `change.queued`, so

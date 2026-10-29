@@ -35,6 +35,7 @@ import {
   type CloseCopyKey,
 } from './cascade.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
+import { stepProvenance } from './model.ts';
 import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
@@ -368,7 +369,7 @@ export function closeStep(
       model: spend.model,
       tokens_in: spend.tokensIn,
       tokens_out: spend.tokensOut,
-      provenance: input.provenance ?? 'pipeline',
+      provenance: stepProvenance(input.provenance ?? 'pipeline'),
       closed_at: toIso(now),
       ms,
       lease_id: lease?.id ?? step.lease_id,

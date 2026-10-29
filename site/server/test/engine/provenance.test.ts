@@ -98,4 +98,50 @@ describe('a close names who answered', () => {
       fixture.close();
     }
   });
+
+  it('an estimated pipeline close keeps the pin, and the ledger names the estimate (BOOK-219)', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = landed(fixture, 'lane-estimated');
+      fixture.engine.done(assignment.leaseId, {
+        seams: [],
+        model: PIPELINE_MODEL,
+        tokensIn: 25_300,
+        tokensOut: 15_068,
+        provenance: 'pipeline-estimated',
+      });
+      // The money's own record: priced, with the word that says how it was read — never `priced = 0`.
+      const spend = fixture.db
+        .prepare('SELECT priced, provenance, usd FROM pass_spend WHERE pass_id = ?')
+        .get(assignment.stepId) as { priced: number; provenance: string; usd: number };
+      expect(spend.provenance).toBe('pipeline-estimated');
+      expect(spend.priced).toBe(1);
+      expect(spend.usd).toBeGreaterThan(0);
+      // The step answers *who ran the pass*: the pipeline did (`model.ts` `stepProvenance`).
+      const step = fixture.db
+        .prepare('SELECT provenance, model FROM steps WHERE step_id = ?')
+        .get(assignment.stepId) as { provenance: string; model: string };
+      expect(step).toEqual({ provenance: 'pipeline', model: PIPELINE_MODEL });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('refuses an estimated close that names another model: the estimate is not an exemption', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = landed(fixture, 'lane-estimated-flash');
+      expect(() =>
+        fixture.engine.done(assignment.leaseId, {
+          seams: [],
+          model: FLASH,
+          tokensIn: 10,
+          tokensOut: 2,
+          provenance: 'pipeline-estimated',
+        }),
+      ).toThrow(/MODEL_NOT_PIPELINE|the pipeline runs on/u);
+    } finally {
+      fixture.close();
+    }
+  });
 });

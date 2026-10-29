@@ -1,6 +1,5 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
-
 import {
   attemptsOf,
   earlierAttempts,
@@ -12,6 +11,7 @@ import {
   insertFiling,
   isPending,
   isStale,
+  landingOf,
   sortFilings,
   staleLine,
   stripFilings,
@@ -19,6 +19,7 @@ import {
   upsertFiling,
   withDecisionReport,
   wordFilingOf,
+  type CommentDecisionFrame,
 } from './filings.ts';
 import { placeHref } from './place.ts';
 
@@ -298,5 +299,60 @@ describe('the decision frame’s report (BOOK-174)', () => {
     const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
     expect(withDecisionReport([row], { id: 'cmt_missing', report })).toBeNull();
     expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
+  });
+});
+
+/**
+ * BOOK-219 — a close that landed the filing's text is a second decision about the same filing:
+ * `comment:decision` with `status: 'applied'` and the receipt. The row must move to `applied` in
+ * that frame (the open page must not print «ждёт» over a chapter that already holds the text),
+ * and the frame must name the chapter whose prose the page has to read again.
+ */
+describe('the landing frame (BOOK-219)', () => {
+  const report = { line1: 'прочитано как сказано', line2: 'потому что так и было', line3: 'глава 8 · абзац 3' };
+  const landing: CommentDecisionFrame = {
+    id: 'cmt_A',
+    chapter: 8,
+    status: 'applied',
+    reason: 'правка внесена в главу 8',
+    decidedAt: '2026-10-25T13:00:00Z',
+    changeId: 'chg_landed',
+    applied: { chapter: 8, rev: 4 },
+    report,
+  };
+
+  it('moves the row to applied with its receipt and its reading', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeId: 'chg_old' });
+    const next = withDecisionReport([row], landing);
+    expect(next?.[0]).toMatchObject({
+      id: 'cmt_A',
+      status: 'applied',
+      reason: 'правка внесена в главу 8',
+      decidedAt: '2026-10-25T13:00:00Z',
+      changeId: 'chg_landed',
+      applied: { chapter: 8, rev: 4 },
+      report,
+    });
+  });
+
+  it('takes the receipt as the last word, including “no receipt”', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'applied', applied: { chapter: 8, rev: 3 } });
+    const next = withDecisionReport([row], { id: 'cmt_A', status: 'applied', applied: null });
+    // The server derives the receipt; a landing whose chapter row is gone carries none, and the
+    // page must not keep printing the number it had.
+    expect(next?.[0]?.applied).toBeNull();
+  });
+
+  it('names the chapter whose text must be read again — and only for a landing', () => {
+    expect(landingOf(landing)).toEqual({ chapter: 8, rev: 4 });
+    // Triage's own frames move the record and no text: accepted, refused, or applied without
+    // the receipt the server derives.
+    expect(landingOf({ ...landing, status: 'accepted', applied: null })).toBeNull();
+    expect(landingOf({ ...landing, status: 'rejected' })).toBeNull();
+    expect(landingOf({ ...landing, applied: null })).toBeNull();
+    expect(landingOf({ ...landing, applied: { chapter: 0, rev: 4 } })).toBeNull();
+    expect(landingOf({ ...landing, applied: { chapter: 8, rev: -1 } })).toBeNull();
+    expect(landingOf('applied')).toBeNull();
+    expect(landingOf(null)).toBeNull();
   });
 });

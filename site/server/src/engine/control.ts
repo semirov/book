@@ -140,8 +140,7 @@ const doneBody = z.object({
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
-  /** BOOK-117: `operator` closes on the model that answered; the default is the pinned lane. */
-  provenance: z.enum(['pipeline', 'operator']).optional(),
+  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(), // BOOK-117, BOOK-219
 });
 
 /** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
@@ -161,6 +160,8 @@ const escalateBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
   /** `failed` when the pass broke rather than refused the work; a broken pass is not a refusal. */
   cause: z.enum(['refused', 'failed']).optional(),
+  /** BOOK-219: a park after a paid call says whether its tokens are estimated. */
+  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(),
 });
 const reopenBody = z.object({ stepId: id, because: z.string().max(200).optional() });
 const beatBody = z.object({ leaseId: id });
@@ -359,6 +360,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
         cause: body.cause,
+        provenance: body.provenance,
       }),
     };
   });

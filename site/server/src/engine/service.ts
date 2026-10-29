@@ -81,6 +81,8 @@ export type EscalateOptions = {
   tokensOut?: number;
   now?: number;
   cause?: PremiseCause;
+  /** BOOK-219: a park after a paid call is priced too, and says if its numbers are estimated. */
+  provenance?: Provenance;
 };
 
 export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
@@ -418,6 +420,7 @@ export function createEngine(deps: EngineDeps) {
         model: options.model ?? null,
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,
+        provenance: options.provenance,
         escalation: outcome,
         changeReason: because.slice(0, REASON_MAX_CHARS),
         premiseCause: options.cause ?? 'refused',

@@ -235,6 +235,178 @@ describe('change:* mapping', () => {
   });
 });
 
+describe('BOOK-219 — a landing reaches the filing, not only the change', () => {
+  /** One reader behind the filing; the comments table requires the identity row. */
+  function seedIdentity(db: Db): void {
+    db.prepare(
+      `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+       VALUES ('idn_book219', 'sub-book219', 'Аня', ?, ?)`,
+    ).run(new Date(T0).toISOString(), new Date(T0).toISOString());
+  }
+
+  function seedComment(db: Db, id: string, chapter: number, disposition: string | null): void {
+    db.prepare(
+      `INSERT INTO comments
+         (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, decided_at,
+          reason, batch_id, disposition)
+       VALUES (?, 'idn_book219', ?, 'Аня', 'в главе дважды «слово»', ?, ?, 'accepted', ?, ?, 'принято · входит в книгу', 'btc_1', ?)`,
+    ).run(
+      id,
+      chapter,
+      `sha-${id}`,
+      'a'.repeat(64),
+      new Date(T0).toISOString(),
+      new Date(T0 + 1_000).toISOString(),
+      disposition,
+    );
+  }
+
+  /** The chapter and the revision row the landing left: the receipt is read from these. */
+  function seedRevision(db: Db, chapter: number, rev: number, changeId: string): void {
+    db.prepare(
+      `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at)
+       VALUES (?, ?, 'Глава', 'sha-ch', 900, 4, 0, ?, ?)`,
+    ).run(chapter, rev, new Date(T0).toISOString(), new Date(T0).toISOString());
+    db.prepare(
+      `INSERT INTO revisions
+         (chapter, rev, at, kind, cause_kind, change_id, cascade_id, step_id, added, changed, removed,
+          snapshot, attributed)
+       VALUES (?, ?, ?, 'edit', 'change', ?, NULL, NULL, 1, 2, 0, 'versions/ch/9.md', 1)`,
+    ).run(chapter, rev, new Date(T0 + 60_000).toISOString(), changeId);
+  }
+
+  it('emits `comment:decision` for the applied filing, beside `change:decided`, once per close', () => {
+    const { fixture, frames, bridge } = boot();
+    try {
+      seedIdentity(fixture.db);
+      seedComment(fixture.db, 'cmt_landed', 9, 'as_said');
+      insertChange(fixture.db, {
+        id: 'chg_landed',
+        seq: 1,
+        chapter: 9,
+        status: 'done',
+        intent: 'убрать второе «слово»',
+        outcome: 'applied',
+        finishedAt: new Date(T0 + 60_000).toISOString(),
+      });
+      fixture.db
+        .prepare(`UPDATE changes SET source_comment = ?, reason = ? WHERE id = ?`)
+        .run('cmt_landed', 'правка внесена в главу 9', 'chg_landed');
+      seedRevision(fixture.db, 9, 4, 'chg_landed');
+      appendChangeEvent(fixture.db, 'chg_landed', 'queued', {}, T0);
+      appendChangeEvent(fixture.db, 'chg_landed', 'decided', { outcome: 'applied' }, T0 + 60_000);
+
+      bridge.tick();
+
+      const types = frames.map((frame) => frame.type);
+      expect(types).toContain('change:decided');
+      const filing = frames.find((frame) => frame.type === 'comment:decision')?.data as Record<string, unknown>;
+      expect(filing).toMatchObject({
+        id: 'cmt_landed',
+        chapter: 9,
+        status: 'applied',
+        reason: 'правка внесена в главу 9',
+        changeId: 'chg_landed',
+        disposition: 'as_said',
+      });
+      // The receipt is the one storage holds: the landing's chapter and its own revision row.
+      const revision = fixture.db
+        .prepare('SELECT MAX(rev) AS rev FROM revisions WHERE chapter = 9')
+        .get() as { rev: number };
+      expect(filing.applied).toEqual({ chapter: 9, rev: revision.rev });
+      // The reading travels with the frame, exactly as the row stores it (BOOK-174 §5).
+      expect((filing.report as { line1: string }).line1).toBe('прочитано как сказано');
+
+      // One frame per close: the drain cursor has already passed the row.
+      const seen = frames.length;
+      bridge.tick();
+      expect(frames.slice(seen).filter((frame) => frame.type === 'comment:decision')).toEqual([]);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('says nothing about a dropped or an escalated close — it never claims `applied`', () => {
+    const { fixture, frames, bridge } = boot();
+    try {
+      seedIdentity(fixture.db);
+      seedComment(fixture.db, 'cmt_dropped', 8, 'as_said');
+      seedComment(fixture.db, 'cmt_escalated', 9, 'escalated');
+      insertChange(fixture.db, {
+        id: 'chg_dropped',
+        seq: 1,
+        chapter: 8,
+        status: 'void',
+        intent: 'убрать второе «слово»',
+        outcome: 'dropped',
+      });
+      insertChange(fixture.db, {
+        id: 'chg_escalated',
+        seq: 2,
+        chapter: 9,
+        status: 'escalated',
+        intent: 'убрать второе «слово»',
+        outcome: 'escalated',
+      });
+      fixture.db.prepare(`UPDATE changes SET source_comment = 'cmt_dropped' WHERE id = 'chg_dropped'`).run();
+      fixture.db.prepare(`UPDATE changes SET source_comment = 'cmt_escalated' WHERE id = 'chg_escalated'`).run();
+      appendChangeEvent(fixture.db, 'chg_dropped', 'decided', { outcome: 'dropped' }, T0);
+      appendChangeEvent(fixture.db, 'chg_escalated', 'escalated', { outcome: 'escalated' }, T0 + 1_000);
+
+      bridge.tick();
+
+      const types = frames.map((frame) => frame.type);
+      // The change still narrates its own close; the filing is not told a chapter took the text.
+      expect(types.filter((type) => type === 'change:decided')).toHaveLength(2);
+      expect(types).not.toContain('comment:decision');
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('never invents a revision: no chapter row, no receipt — and the stored columns are the last word', () => {
+    const { fixture, frames, bridge } = boot();
+    try {
+      seedIdentity(fixture.db);
+      seedComment(fixture.db, 'cmt_noreceipt', 9, null);
+      seedComment(fixture.db, 'cmt_rowreceipt', 7, null);
+      // BOOK-136 — the receipt a row carries in its own columns is the second source, never a guess.
+      fixture.db.prepare(`UPDATE comments SET applied_chapter = 7, applied_rev = 2 WHERE id = 'cmt_rowreceipt'`).run();
+      insertChange(fixture.db, {
+        id: 'chg_noreceipt',
+        seq: 1,
+        chapter: 9,
+        status: 'done',
+        intent: 'убрать второе «слово»',
+        outcome: 'applied',
+      });
+      insertChange(fixture.db, {
+        id: 'chg_rowreceipt',
+        seq: 2,
+        chapter: 7,
+        status: 'done',
+        intent: 'убрать второе «слово»',
+        outcome: 'adapted',
+      });
+      fixture.db.prepare(`UPDATE changes SET source_comment = 'cmt_noreceipt' WHERE id = 'chg_noreceipt'`).run();
+      fixture.db.prepare(`UPDATE changes SET source_comment = 'cmt_rowreceipt' WHERE id = 'chg_rowreceipt'`).run();
+      appendChangeEvent(fixture.db, 'chg_noreceipt', 'decided', { outcome: 'applied' }, T0);
+      appendChangeEvent(fixture.db, 'chg_rowreceipt', 'decided', { outcome: 'adapted' }, T0 + 1_000);
+
+      bridge.tick();
+
+      const decisions = frames
+        .filter((frame) => frame.type === 'comment:decision')
+        .map((frame) => frame.data as Record<string, unknown>);
+      expect(decisions).toHaveLength(2);
+      expect(decisions.find((frame) => frame.id === 'cmt_noreceipt')?.applied).toBeNull();
+      expect(decisions.find((frame) => frame.id === 'cmt_rowreceipt')?.applied).toEqual({ chapter: 7, rev: 2 });
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
 describe('cascade:progress mapping', () => {
   it('walks both wings, reports the frontier and carries no gate fact', () => {
     const { fixture, frames, bridge } = boot();

@@ -5,150 +5,48 @@
  * arrives, or for transport/429/5xx (a half-read generation is never re-run); a stream the caller
  * cannot use is `PROVIDER_SHAPE`; a silent stream is `PROVIDER_TIMEOUT` inside the stall window;
  * and the key travels in the header — never in the URL, never in the body, never in an error.
+ *
+ * BOOK-219 adds the two rules the pass that died on a good answer taught: a **good answer without
+ * a usage object is charged** (the estimate, `estimated: true`, never a shape failure), and an
+ * **empty** answer is asked once more as a plain body (`stream: false`) before it is `SHAPE`.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import {
+  ANSWER_CHARS_PER_TOKEN,
   DEFAULT_STALL_MS,
-  ProviderError,
+  PROMPT_CHARS_PER_TOKEN,
   callProvider,
+  estimateUsage,
   type FetchLike,
-  type ProviderRequest,
 } from '../../src/writer/provider.ts';
-
-const KEY = 'sk-provider-test-key-never-print-me-1b2c3d';
-const ENDPOINT = 'https://api.deepseek.com/chat/completions';
-const API_MODEL = 'deepseek-v4-pro';
-const STREAM_MODEL = 'deepseek-v4-pro-20261027';
-const PROSE = 'Глава первая.\n\nОчередь стояла с утра.';
-
-type Call = { url: string; init: RequestInit };
-
-function request(overrides: Partial<ProviderRequest> = {}): ProviderRequest {
-  return {
-    endpoint: ENDPOINT,
-    apiKey: KEY,
-    apiModel: API_MODEL,
-    messages: [
-      { role: 'system', content: 'роль' },
-      { role: 'user', content: 'задание' },
-    ],
-    maxTokens: 16_000,
-    timeoutMs: 5_000,
-    ...overrides,
-  };
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-}
-
-/** A transport that answers from a script and records every call (the last answer repeats). */
-function scripted(...answers: Array<Response | (() => Promise<Response>)>): { transport: FetchLike; calls: Call[] } {
-  const calls: Call[] = [];
-  const transport: FetchLike = async (url, init) => {
-    calls.push({ url, init });
-    const answer = answers[Math.min(calls.length - 1, answers.length - 1)];
-    if (answer === undefined) throw new Error('the script ran out of answers');
-    return typeof answer === 'function' ? answer() : answer;
-  };
-  return { transport, calls };
-}
-
-/** An SSE stream delivered as given chunks: what the wire looks like at a chunk boundary. */
-function streamOf(chunks: readonly string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      controller.close();
-    },
-  });
-}
-
-/** The measured failure: chunks arrive, then the body is reset (`ECONNRESET`). */
-function streamThenReset(chunks: readonly string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  let index = 0;
-  return new ReadableStream<Uint8Array>({
-    pull(controller) {
-      const chunk = chunks[index];
-      if (chunk === undefined) {
-        controller.error(new TypeError('terminated', { cause: { errno: -54, code: 'ECONNRESET', syscall: 'read' } }));
-        return;
-      }
-      index += 1;
-      controller.enqueue(encoder.encode(chunk));
-    },
-  });
-}
-
-/** A generation that stops sending: the stream stays open and never yields again. */
-function streamThenHang(chunks: readonly string[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  let index = 0;
-  return new ReadableStream<Uint8Array>({
-    pull(controller) {
-      const chunk = chunks[index];
-      if (chunk === undefined) return new Promise<void>(() => {});
-      index += 1;
-      controller.enqueue(encoder.encode(chunk));
-    },
-  });
-}
-
-function streamResponse(body: ReadableStream<Uint8Array> | null, status = 200): Response {
-  return new Response(body, { status, headers: { 'content-type': 'text/event-stream' } });
-}
-
-function sse(payload: Record<string, unknown>): string {
-  return `data: ${JSON.stringify(payload)}\n\n`;
-}
-
-/** One prose delta, as the provider streams it. */
-function prose(content: string): string {
-  return sse({ id: 'chatcmpl-1', model: STREAM_MODEL, choices: [{ index: 0, delta: { content }, finish_reason: null }] });
-}
-
-/** A reasoning delta: thought, not text, and never a chapter. */
-function thought(content: string): string {
-  return sse({
-    id: 'chatcmpl-1',
-    model: STREAM_MODEL,
-    choices: [{ index: 0, delta: { reasoning_content: content, content: null }, finish_reason: null }],
-  });
-}
-
-function finish(reason: unknown): string {
-  return sse({ id: 'chatcmpl-1', model: STREAM_MODEL, choices: [{ index: 0, delta: {}, finish_reason: reason }] });
-}
-
-/** The final frame: no choices at all, the usage the ledger is charged from. */
-function usageFrame(usage: Record<string, unknown>): string {
-  return sse({ id: 'chatcmpl-1', model: STREAM_MODEL, choices: [], usage });
-}
-
-const DONE = 'data: [DONE]\n\n';
-
-const USAGE = { prompt_tokens: 100, completion_tokens: 40, prompt_cache_hit_tokens: 60 };
-
-/** A whole normal stream: thought, prose, the finish frame, the usage frame, `[DONE]`. */
-function normalStream(): string[] {
-  return [thought('Рассуждаю.'), prose('Глава первая.\n\n'), prose('Очередь стояла с утра.'), finish('stop'), usageFrame(USAGE), DONE];
-}
-
-const fastSleep = () => Promise.resolve();
-
-async function failureOf(promise: Promise<unknown>): Promise<ProviderError> {
-  try {
-    await promise;
-  } catch (error) {
-    if (error instanceof ProviderError) return error;
-    throw error;
-  }
-  throw new Error('the call was expected to fail');
-}
+import {
+  API_MODEL,
+  DONE,
+  ENDPOINT,
+  KEY,
+  PROSE,
+  STREAM_MODEL,
+  USAGE,
+  bodyOf,
+  emptyAnswer,
+  failureOf,
+  fastSleep,
+  finish,
+  json,
+  normalStream,
+  prose,
+  request,
+  scripted,
+  sse,
+  streamOf,
+  streamResponse,
+  streamThenHang,
+  streamThenReset,
+  usageFrame,
+  type Call,
+} from './sse.ts';
 
 describe('callProvider — one streamed completion', () => {
   it('posts the pinned model, the messages and the stream envelope; the key is a header, never the URL or the body', async () => {
@@ -357,28 +255,70 @@ describe('callProvider — a stream that breaks mid-answer', () => {
 });
 
 describe('callProvider — a stream it cannot use', () => {
-  it('refuses a stream with no data frame as PROVIDER_SHAPE, and does not retry it', async () => {
-    const { transport, calls } = scripted(streamResponse(streamOf([])));
+  it('refuses a stream with no data frame as PROVIDER_SHAPE after the one unstreamed retry', async () => {
+    const { transport, calls } = scripted(streamResponse(streamOf([])), emptyAnswer());
     const failure = await failureOf(callProvider(request(), { transport, sleep: fastSleep, backoffMs: 0 }));
     expect(failure.code).toBe('PROVIDER_SHAPE');
-    expect(failure.attempts).toBe(1);
+    expect(failure.attempts).toBe(2);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('refuses a 200 with no body at all, after the same retry', async () => {
+    const { transport, calls } = scripted(streamResponse(null), emptyAnswer());
+    expect((await failureOf(callProvider(request(), { transport, sleep: fastSleep }))).code).toBe('PROVIDER_SHAPE');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('charges a good answer that arrived without a usage frame, and says the number is an estimate', async () => {
+    const { transport, calls } = scripted(streamResponse(streamOf([prose('Абзац.'), finish('stop'), DONE])));
+    const result = await callProvider(request(), { transport, sleep: fastSleep });
+
+    // BOOK-219: the text is the answer; the money is read off the bytes, never refused.
+    expect(result.text).toBe('Абзац.');
+    expect(result.usage.estimated).toBe(true);
     expect(calls).toHaveLength(1);
+    const promptChars = request().messages.reduce((sum, message) => sum + message.content.length, 0);
+    expect(result.usage.in).toBe(Math.ceil(promptChars / PROMPT_CHARS_PER_TOKEN));
+    expect(result.usage.out).toBe(Math.ceil('Абзац.'.length / ANSWER_CHARS_PER_TOKEN));
+    expect(result.usage.cachedIn).toBe(0);
+    expect(result.usage.in).toBeGreaterThan(0);
+    expect(result.usage.out).toBeGreaterThan(0);
   });
 
-  it('refuses a 200 with no body at all', async () => {
-    const { transport } = scripted(streamResponse(null));
-    expect((await failureOf(callProvider(request(), { transport, sleep: fastSleep }))).code).toBe('PROVIDER_SHAPE');
-  });
-
-  it('refuses content with no usage: an uncharged pass is a lie, not a zero', async () => {
-    const { transport } = scripted(streamResponse(streamOf([prose('Абзац.'), finish('stop'), DONE])));
-    expect((await failureOf(callProvider(request(), { transport, sleep: fastSleep }))).code).toBe('PROVIDER_SHAPE');
-  });
-
-  it('refuses a usage frame whose token counts are unusable', async () => {
+  it('charges the same estimate when a usage frame is there but unusable', async () => {
     const body = [prose('Абзац.'), finish('stop'), usageFrame({ prompt_tokens: 'many', completion_tokens: 40 }), DONE];
     const { transport } = scripted(streamResponse(streamOf(body)));
-    expect((await failureOf(callProvider(request(), { transport, sleep: fastSleep }))).code).toBe('PROVIDER_SHAPE');
+    const result = await callProvider(request(), { transport, sleep: fastSleep });
+    expect(result.text).toBe('Абзац.');
+    expect(result.usage).toEqual(estimateUsage(request().messages, 'Абзац.'));
+  });
+
+  it('asks an empty answer once more without a stream, and only then gives up', async () => {
+    const { transport, calls } = scripted(streamResponse(streamOf([finish('stop'), DONE])), emptyAnswer());
+    const failure = await failureOf(callProvider(request(), { transport, sleep: fastSleep, backoffMs: 0 }));
+
+    expect(failure.code).toBe('PROVIDER_SHAPE');
+    expect(failure.attempts).toBe(2);
+    expect(calls).toHaveLength(2);
+    // The first is the stream the pass always asks for; the second is a plain body.
+    expect(bodyOf(calls[0])).toMatchObject({ stream: true, stream_options: { include_usage: true } });
+    expect(bodyOf(calls[1])).toMatchObject({ stream: false });
+    expect(bodyOf(calls[1]).stream_options).toBeUndefined();
+  });
+
+  it('succeeds on the unstreamed retry when the stream was empty but the body answers', async () => {
+    const answered = json({
+      id: 'chatcmpl-2',
+      model: STREAM_MODEL,
+      choices: [{ index: 0, message: { content: 'Абзац.' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 90, completion_tokens: 12 },
+    });
+    const { transport, calls } = scripted(streamResponse(streamOf([DONE])), answered);
+    const result = await callProvider(request(), { transport, sleep: fastSleep, backoffMs: 0 });
+    expect(result.text).toBe('Абзац.');
+    expect(result.attempts).toBe(2);
+    expect(result.usage).toEqual({ in: 90, out: 12, cachedIn: 0 });
+    expect(bodyOf(calls[1]).stream).toBe(false);
   });
 
   it('refuses a malformed data frame as PROVIDER_SHAPE, and does not retry it', async () => {
@@ -396,8 +336,10 @@ describe('callProvider — a stream it cannot use', () => {
 
   it('collects whitespace-only prose as no text at all', async () => {
     const body = [prose('   '), finish('stop'), usageFrame(USAGE), DONE];
-    const { transport } = scripted(streamResponse(streamOf(body)));
+    const blank = json({ choices: [{ index: 0, message: { content: '   ' } }] });
+    const { transport, calls } = scripted(streamResponse(streamOf(body)), blank);
     expect((await failureOf(callProvider(request(), { transport, sleep: fastSleep }))).code).toBe('PROVIDER_SHAPE');
+    expect(calls).toHaveLength(2);
   });
 });
 

@@ -25,6 +25,7 @@ import { readFileSync } from 'node:fs';
 
 import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
+import type { Provenance } from '../engine/model.ts';
 import type { ChapterTextView } from '../engine/text.ts';
 import type { PremiseCause } from '../engine/types.ts';
 
@@ -256,6 +257,11 @@ export type DoneInput = {
   tokensIn?: number;
   tokensOut?: number;
   seams?: unknown[];
+  /**
+   * BOOK-219: `pipeline-estimated` when any call of the pass had its usage read off the text.
+   * The ledger row is still priced (`priced = 1`) — the word says the numbers are an estimate.
+   */
+  provenance?: Provenance;
 };
 
 /** What an escalation reports about the model calls it made before it parked (BOOK-117). */
@@ -264,6 +270,8 @@ export type EscalateSpend = {
   model?: string;
   tokensIn: number;
   tokensOut: number;
+  /** BOOK-219: a park after a paid call is priced too, and says whether its numbers are estimated. */
+  provenance?: Provenance;
 };
 
 export type EngineClient = {

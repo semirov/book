@@ -167,7 +167,7 @@ export const PASS_SPEND_TABLE_SQL = `CREATE TABLE pass_spend (                 -
   tokens_out INTEGER NOT NULL,
   usd        REAL NOT NULL,                        -- costUsd of the step's tokens, 6 dp
   priced     INTEGER NOT NULL CHECK (priced IN (0,1)), -- 1 = usd is a measurement
-  provenance TEXT CHECK (provenance IN ('pipeline','operator')) -- who ran the pass (BOOK-117)
+  provenance TEXT CHECK (provenance IN ('pipeline','operator','pipeline-estimated')) -- who ran it (BOOK-117), estimated or measured (BOOK-219)
 );
 CREATE INDEX pass_spend_day ON pass_spend(day);`;
 

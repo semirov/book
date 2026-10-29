@@ -12,9 +12,19 @@
  * yesterday's queue as if it were happening now; a reconnect rebuilds from `state`.
  */
 
-import { parseSeams, readerReason, type ServerEventType, type StateSnapshot } from '@book/shared';
+import {
+  parseSeams,
+  readerReason,
+  type CommentDecisionPayload,
+  type CommentStatus,
+  type ServerEventType,
+  type StateSnapshot,
+} from '@book/shared';
 
+import { filingChanges, filingStatus, isLanding } from '../comments/filingState.ts';
+import { readChapterBase, readCommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
+import { reportOfDecision, storedDecision } from '../feedback/dispositionStore.ts';
 import {
   chaptersOfChange,
   decisionOutcome,
@@ -204,6 +214,15 @@ export class EngineBridge {
       } else if (row.type === 'decided' || row.type === 'escalated' || row.type === 'cancelled') {
         this.emit('change:decided', this.decidedPayload(change, row.at, nowMs));
         emitted += 1;
+        // BOOK-219 — the change's own word is not the filing's: the open page moves a filing row
+        // only on `comment:decision`, so a close that landed the reader's text speaks here too.
+        // One row, one frame: the drain cursor has already passed this row, so a later tick
+        // cannot repeat it.
+        const filing = this.landingFrame(change, row.at, nowMs);
+        if (filing !== null) {
+          this.emit('comment:decision', filing);
+          emitted += 1;
+        }
       }
     }
     return emitted;
@@ -256,6 +275,61 @@ export class EngineBridge {
       relevance: dto?.relevance === null || dto?.relevance === undefined ? null : { grade: dto.relevance.grade },
       tokens: { total: change.tokens_in + change.tokens_out },
       decidedAt: change.finished_at ?? at,
+    };
+  }
+
+  /**
+   * BOOK-219 — the filing's own word beside the change's, once per close that landed its text.
+   *
+   * The engine writes facts; the reader's page moves a filing row only on `comment:decision`, so
+   * a close that is a **landing** must speak one here — otherwise the chapter's text and the
+   * record of the filing that put it there disagree until a reload. The decision itself is not
+   * re-made: the state, the reading and the receipt are the ones storage already derives for the
+   * filing, and `null` means there is nothing truthful to say (no filing, no landing, no state).
+   */
+  private landingFrame(change: ChangeRow, at: string, nowMs: number): CommentDecisionPayload | null {
+    // A change the author filed (a continuity pass, an operator's edit) has no reader behind it,
+    // and a withdrawn filing is stored for the operator and never republished (BOOK-101).
+    if (change.source_comment === null) return null;
+    const comment = readCommentRow(this.db, change.source_comment);
+    if (comment === undefined || comment.status === 'hidden') return null;
+
+    // Only a landing speaks `applied`. A dropped, superseded, escalated or cancelled close
+    // decided the change, not the reader's text: `change:decided` says what it says, and this
+    // frame is not emitted at all rather than claiming a chapter that never received it.
+    if (!isLanding(change)) return null;
+
+    // The receipt the filing derives (comments/repo.ts): the landing is the newest `done` change
+    // whose outcome took the text, and the chapter's own revision is where the text stands. The
+    // derived state is read through the same helpers, so the frame cannot disagree with the DTO.
+    const { landed, attempt } = filingChanges(this.db, comment.id, comment.change_id);
+    const state = filingStatus(landed ?? attempt, comment.status as CommentStatus);
+    if (state !== 'applied') return null;
+    const chapter = landed?.chapter ?? change.chapter;
+    const base = readChapterBase(this.db, chapter);
+    const applied =
+      base !== undefined
+        ? { chapter, rev: base.rev }
+        : comment.applied_chapter !== null && comment.applied_rev !== null
+          ? { chapter: comment.applied_chapter, rev: comment.applied_rev }
+          : null;
+
+    // The reading travels with the frame exactly as the row stores it (BOOK-174 §5); a row with
+    // no chain has no reading, and nothing here invents one.
+    const stored = storedDecision(comment);
+    return {
+      id: comment.id,
+      chapter: comment.chapter,
+      status: 'applied',
+      // The frame is a public surface: a sentence, never an engine code.
+      reason: readerReason(landed?.reason ?? change.reason) ?? readerReason(comment.reason) ?? '',
+      decidedAt: comment.decided_at ?? change.finished_at ?? at,
+      batchId: comment.batch_id,
+      changeId: landed?.id ?? change.id,
+      queue: { depth: readQueue(this.db, nowMs).depth, ahead: 0 },
+      report: stored === null ? null : reportOfDecision(this.db, stored, comment),
+      disposition: stored?.disposition ?? null,
+      applied,
     };
   }
 

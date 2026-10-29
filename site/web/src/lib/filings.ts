@@ -202,6 +202,10 @@ export function filingQuote(comment: CommentDto, max = 120): string {
  * row with the same id only — and only when the report it carries is one the row does not have.
  * `refreshComments` remains the durable truth; this keeps the open card from saying «ждёт» for
  * the frame before the reload lands.
+ *
+ * BOOK-219 — a close that landed the filing's text arrives on the same frame with
+ * `status: 'applied'` and the receipt (`applied: { chapter, rev }`); both move the row here, so
+ * the record and the text agree in one breath instead of after a reload.
  */
 export type CommentDecisionFrame = {
   id: string;
@@ -209,6 +213,8 @@ export type CommentDecisionFrame = {
   status?: CommentDto['status'];
   reason?: string;
   decidedAt?: string;
+  changeId?: string | null;
+  applied?: CommentDto['applied'];
   disposition?: CommentDto['disposition'];
   report?: CommentDto['report'];
 };
@@ -217,6 +223,26 @@ export function decisionFrameOf(data: unknown): CommentDecisionFrame | null {
   if (data === null || typeof data !== 'object') return null;
   const value = data as Partial<CommentDecisionFrame>;
   return typeof value.id === 'string' && value.id.length > 0 ? (value as CommentDecisionFrame) : null;
+}
+
+/**
+ * BOOK-219 — the chapter a landing frame rewrote, or `null` for every other decision frame.
+ *
+ * A `comment:decision` about a filing is not news about the prose: triage accepts it long before
+ * a chapter moves, and a refusal moves nothing. Only the frame that says `applied` **and**
+ * carries the receipt names a chapter whose text the page must read again; the number comes from
+ * the server's receipt, never from the frame's own chapter.
+ */
+export function landingOf(data: unknown): { chapter: number; rev: number } | null {
+  if (data === null || typeof data !== 'object') return null;
+  const value = data as { status?: unknown; applied?: unknown };
+  if (value.status !== 'applied') return null;
+  const receipt = value.applied;
+  if (receipt === null || typeof receipt !== 'object') return null;
+  const { chapter, rev } = receipt as { chapter?: unknown; rev?: unknown };
+  if (typeof chapter !== 'number' || !Number.isInteger(chapter) || chapter <= 0) return null;
+  if (typeof rev !== 'number' || !Number.isInteger(rev) || rev < 0) return null;
+  return { chapter, rev };
 }
 
 /** The feed with the frame's report carried onto its own row, or `null` when nothing changed. */
@@ -232,6 +258,10 @@ export function withDecisionReport(
     ...(frame.status === undefined ? {} : { status: frame.status }),
     ...(frame.reason === undefined ? {} : { reason: frame.reason }),
     ...(frame.decidedAt === undefined ? {} : { decidedAt: frame.decidedAt }),
+    // A landing names the change it became: the row's link may still point at the attempt that
+    // escalated (BOOK-136), and the door must open the change the state now comes from.
+    ...(typeof frame.changeId !== 'string' ? {} : { changeId: frame.changeId }),
+    ...(frame.applied === undefined ? {} : { applied: frame.applied }),
     ...(frame.disposition === undefined ? {} : { disposition: frame.disposition }),
     ...(frame.report === undefined ? {} : { report: frame.report }),
   };
@@ -239,6 +269,8 @@ export function withDecisionReport(
     next.status === row.status &&
     next.reason === row.reason &&
     next.decidedAt === row.decidedAt &&
+    next.changeId === row.changeId &&
+    sameApplied(next.applied, row.applied) &&
     (next.report ?? null) === (row.report ?? null)
   ) {
     return null;
@@ -246,6 +278,13 @@ export function withDecisionReport(
   const out = [...comments];
   out[at] = next;
   return out;
+}
+
+/** The receipt by value: a frame always carries a fresh object, so identity cannot decide it. */
+function sameApplied(left: CommentDto['applied'], right: CommentDto['applied']): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return left.chapter === right.chapter && left.rev === right.rev;
 }
 
 /**

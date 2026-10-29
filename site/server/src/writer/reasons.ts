@@ -73,6 +73,12 @@ export type ParkInput = {
   detail: string;
   fallback?: string;
   cause?: PremiseCause;
+  /**
+   * A sentence the pass names itself, used **instead of** the code's own (BOOK-219): a pass that
+   * put its own landed text back cannot be read as «заявка остаётся в очереди» — what happened to
+   * the text is the fact the reader needs, and it is not one code's answer.
+   */
+  sentence?: string;
 };
 
 /** A note is read on a page and inside a stage summary: it is bounded here, once. */
@@ -96,6 +102,16 @@ export const readerSentences = {
   frameChanged:
     'рамка книги — фраза этой главы не меняется, текст не опубликован',
   stepClosed: 'шаг закрылся, пока текст писался — текст не опубликован',
+  /**
+   * BOOK-219: a pass landed its text, the gate never answered, and the pass put the chapter back
+   * to the revision it started from. Nothing new is live, and the filing waits for a person.
+   */
+  reverted: 'проверка не ответила — текст возвращён к прежней редакции, заявка ждёт решения',
+  /**
+   * The same pass, and the way back failed: the new text **stands**, unverified. Saying the
+   * filing merely waits would hide a published revision; the note says which one, honestly.
+   */
+  unverified: 'проверка не ответила — новый текст стоит без проверки, заявка ждёт решения',
 } as const;
 
 /**

@@ -33,17 +33,16 @@ import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/sh
 import { formatUsd } from '../budget.ts';
 import { readBuildStamp } from '../buildStamp.ts';
 import { isWrittenView } from '../engine/text.ts';
-import { parseChapter } from '../ingest/parseChapter.ts';
-import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
+import type { EngineClient, EngineStateView, StartView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, finalize, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
-import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { continueDraft, draftAnswer } from './answer.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import { codeOf, failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
-import { changedSpans } from './span.ts';
+import { codeOf, failureOf, isTransportFailure, readerFallbacks, readerSentences, reasonOf, type Failure } from './reasons.ts';
+import { closePass } from './closePass.ts';
+import { putBack } from './putBack.ts';
 import { stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
 
@@ -216,6 +215,10 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     job, chapter, answered,
   );
   let beforeText = '';
+  /** BOOK-219: the revision and text this pass started from, and whether it landed over them. */
+  let preRev: number | null = null;
+  let preSha = '';
+  let landedHere = false;
 
   function goneOf(code: string | null, detail: string): PassResult | null {
     if (code === null || !GONE_CODES.has(code)) return null;
@@ -275,6 +278,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
+      // The revision and the text this pass starts from: what a revert has to return to (BOOK-219).
+      preRev = typeof started.expectedRev === 'number' ? started.expectedRev : null;
+      preSha = started.sha;
 
       // 5. The prompt, and the stage that says it was assembled. The text is read from rows, in
       //    one call: the target and its two neighbours are everything a prompt may quote.
@@ -346,6 +352,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // 8. The landing that makes the answer a revision — the text travels, no file is touched.
       try {
         await lane.land(text);
+        landedHere = true;
       } catch (error) {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
@@ -412,81 +419,35 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       answered.rights = false;
     }
     if (failed !== null) {
-      // Remembered, not fatal: the transcript is where a survived failure is proved.
-      deps.log(`[writer] гейт не ответил (${failed.code ?? 'без кода'}): ${failed.detail} — шаг закрывается`);
       lane.remember(failed);
-    }
-
-    // 10. `landed`: the span, the tokens, the money — a stage, so it can never throw.
-    const usage = lane.usage();
-    const passCost = costUsd(config.pipeline.pricing, usage);
-    const parsed = parseChapter(chapter, text);
-    await lane.emit({
-      stage: 'landed',
-      chapter,
-      passId: job.stepId,
-      changeId: job.changeId,
-      summary: stageSummary.landed({
+      deps.log(`[writer] гейт не ответил (${failed.code ?? 'без кода'}): ${failed.detail}`);
+      // BOOK-219, the compensating revert: a pass that published and then lost its verdict takes
+      // its own landing back before it parks. Nothing here reorders the gate — the engine still
+      // requires `landed_at` to dispatch one — so the undo is the fix, and the sentence says it.
+      const back = await putBack({
+        engine,
+        job,
         chapter,
-        chars: parsed.chars,
-        blocks: parsed.blocks.length,
-        tokensIn: usage.in,
-        tokensOut: usage.out,
-        costUsd: passCost,
-      }),
-      model: config.model,
-      span: changedSpans(beforeText, text, chapter),
-      tokens: { in: usage.in, out: usage.out },
-      costUsd: passCost,
-      at: now(),
-    });
-
-    // 11. `done`: the writer's tokens only (the engine adds each gate's). A landed step closes on
-    //     what it has: `STEP_CLOSED` is that close, a transport failure gets one more try.
-    let closed: DoneView | null = null;
-    let closeFailure: Failure | null = null;
-    for (let attempt = 0; attempt < 2 && closed === null; attempt += 1) {
-      try {
-        closed = await engine.done({
-          leaseId: job.leaseId,
-          note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
-          model: config.model,
-          tokensIn: lane.writerTokens().in,
-          tokensOut: lane.writerTokens().out,
-          seams: [],
+        started: { rev: preRev, sha: preSha },
+        landing: lane.landedAt(),
+        landed: landedHere,
+        log: deps.log,
+      });
+      if (back.kind !== 'none') {
+        return await lane.park({
+          ...failed,
+          sentence: back.kind === 'reverted' ? readerSentences.reverted : readerSentences.unverified,
+          detail: back.kind === 'reverted' ? failed.detail : `${failed.detail} · ${back.detail}`.slice(0, 300),
+          cause: 'failed',
         });
-      } catch (error) {
-        closeFailure = failureOf(error);
-        // The step is closed either way; `done` on it is a no-op, and the pass says what it did.
-        if (closeFailure.code === 'STEP_CLOSED') {
-          closed = { stepId: job.stepId, outcome: 'already-closed', cascadeId: null, changeStatus: null };
-          break;
-        }
-        if (!isTransportFailure(closeFailure) || attempt > 0) break;
-        deps.log(`[writer] done не прошёл (${closeFailure.code ?? 'транспорт'}): ${closeFailure.detail} — повтор`);
       }
-    }
-    if (closed === null) {
-      // The gate's own failure is why the verdicts never arrived; the close's refusal is its own.
-      const why: Failure =
-        closeFailure?.code === 'VERDICTS_REQUIRED' && failed !== null
-          ? failed
-          : (closeFailure ?? failed ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
-      return await lane.park({ ...why, fallback: why === failed ? readerFallbacks.gate : readerFallbacks.stopped });
+      // Nothing of ours was published (a resumed step): the text is not ours to undo.
+      deps.log('[writer] откат не нужен: текст опубликован не этим проходом — шаг закрывается');
     }
 
-    const result: PassResult = {
-      status: 'closed',
-      stepId: closed.stepId,
-      changeId: job.changeId,
-      tokens: lane.writerTokens(),
-      costUsd: passCost,
-    };
-    await lane.transcript(result);
-    deps.log(
-      `[writer] closed ${closed.stepId}: ${closed.outcome}, глава ${String(chapter)}, ${String(parsed.chars)} знаков, $${passCost.toFixed(4)}`,
-    );
-    return result;
+    // 10–11. `landed`, then `done`: the close is its own seam (`closePass.ts`), because the
+    //     money it reports and the words it closes with are BOOK-219's business too.
+    return await closePass({ lane, engine, config, chapter, job, text, beforeText, failed, log: deps.log, now });
   } catch (error) {
     const stepped = gone(error);
     if (stepped !== null) return stepped;

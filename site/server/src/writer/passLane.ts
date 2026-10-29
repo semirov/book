@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 import { type WriterAssignment } from '@book/shared';
 
-import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
+import { assignmentData } from './laneText.ts';
 import type { ChapterTextView } from '../engine/text.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
 import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
@@ -24,9 +24,8 @@ import {
   chapterQuote,
   noChapterText,
   type ChapterTextLookup,
-  type WriterAssignmentData,
 } from './prompt.ts';
-import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
+import { estimateUsage, type ProviderRequest, type ProviderResult, type WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { storeTranscript, type CallKind, type CallRecord, type CallVerdict, type PromptSectionFact } from './transcript.ts';
 import { rightsRunner } from './rightsGate.ts';
@@ -58,49 +57,17 @@ export type Answer = ReturnType<typeof validateAnswer>;
 
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
-  return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
-}
-
-function stripFence(value: string): string {
-  const text = value.trim();
-  const match = /^```[a-zA-Z]*\n([\s\S]*?)\n?```$/u.exec(text);
-  return match?.[1] === undefined ? text : match[1].trim();
-}
-
-/** The prose of a continuation, with a repeated title line dropped and a stray fence stripped. */
-export function mergeContinuation(chapter: number, written: string, raw: string): string {
-  const addition = stripFence(normalizeChapterText(raw)).trim();
-  if (addition.length === 0) return written;
-  const title = parseChapter(chapter, written).title;
-  const first = (addition.split('\n')[0] ?? '').trim();
-  const body = title !== null && first === title ? addition.slice(first.length).trimStart() : addition;
-  if (body.length === 0) return written;
-  return `${written.trimEnd()}\n\n${body}`;
-}
-
-/** The bytes that land: the validated text, one trailing newline, nothing else touched. */
-export function finalize(text: string): string {
-  return `${text.trimEnd()}\n`;
-}
-
-export function charsOf(chapter: number, text: string): number {
-  return parseChapter(chapter, text).chars;
-}
-
-/** The assignment as the prompt may quote it (`prompt.ts` narrows it the same way). */
-export function assignmentData(assignment: WriterAssignment): WriterAssignmentData {
-  if (typeof assignment.chapter !== 'number') {
-    throw new PassRefusal('этот проход не про главу — его ведёт другая полоса, а не писатель');
-  }
   return {
-    chapter: assignment.chapter,
-    pass: assignment.pass,
-    intent: assignment.intent,
-    interventionKind: assignment.interventionKind,
-    premise: assignment.premise === null ? null : { intent: assignment.premise.intent, kind: assignment.premise.kind },
-    expectation: assignment.expectation,
+    in: total.in + usage.in,
+    out: total.out + usage.out,
+    cachedIn: total.cachedIn + usage.cachedIn,
+    // BOOK-219: the flag is sticky — one estimated call makes the pass's line an estimate.
+    ...(total.estimated === true || usage.estimated === true ? { estimated: true } : {}),
   };
 }
+
+// The text values live apart (`laneText.ts`) because this file is at its arch bound.
+export { assignmentData, charsOf, finalize, mergeContinuation } from './laneText.ts';
 
 /** The index slice is a path the engine returned; a missing file is not a gate failure. */
 function sliceText(path: string | null): string | null {
@@ -153,6 +120,10 @@ export type Lane = {
   model(): string | null;
   /** The prompt's sections, as facts: ids, hashes and lengths — never the prompt itself. */
   setPrompt(value: { sections: PromptSectionFact[]; promptSha256: string }): void;
+  /** BOOK-219: some call's usage was read off the text — the close and the park name the estimate. */
+  estimated(): boolean;
+  /** The revision the pass's own last landing published, `null` before it landed anything. */
+  landedAt(): { rev: number; sha: string } | null;
 };
 
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
@@ -160,6 +131,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   const sink: StageSink = { stage: (event) => engine.stage(event) };
   const calls: CallRecord[] = [];
   const written = { in: 0, out: 0 };
+  /** The prompt of calls that threw (BOOK-219): the request left, so its prompt was paid for. */
+  let attempted: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
+  /** The last landing of this pass, as the engine answered it: what a revert must move off. */
+  let landing: { rev: number; sha: string } | null = null;
   let all: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
   /** The prompt's sections as facts (AC7): ids, hashes, lengths — the receipt's only census. */
   let sections: PromptSectionFact[] = [];
@@ -223,6 +198,11 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
+      // A failed call still sent its prompt: the pass pays for the request it made, so the prompt
+      // is charged at the estimate and the park can never read as a free pass (BOOK-219).
+      const spent = estimateUsage(messages, '');
+      all = addUsage(all, spent);
+      attempted = addUsage(attempted, spent);
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     // The writer's own tokens: what `done` reports — each gate's verdict row is added by the close.
@@ -298,14 +278,23 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         reason: 'lease released by the engine — taking the next filing',
       };
     }
-    const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
+    // A sentence the pass names itself wins: a revert must not read as «остаётся в очереди».
+    const sentence =
+      why.sentence ?? readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
-    // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
-    // each gate's verdict row is added by the close. A park before the first call claims neither.
-    const spent = calls.length === 0
+    // BOOK-117: a parked pass spent money too — the writer's calls travel with the escalate and
+    // each gate's verdict row is added by the close. A park before the first call claims neither;
+    // BOOK-219: a call that threw is paid for, so its prompt travels too, and the ledger's word
+    // says whether these numbers were measured or estimated.
+    const spent = all.in + all.out === 0
       ? { tokensIn: 0, tokensOut: 0 }
-      : { model: config.model, tokensIn: written.in, tokensOut: written.out };
+      : {
+          model: config.model,
+          tokensIn: written.in + attempted.in,
+          tokensOut: written.out + attempted.out,
+          provenance: all.estimated === true ? ('pipeline-estimated' as const) : ('pipeline' as const),
+        };
     try {
       await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
@@ -347,7 +336,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
    */
   async function land(value: string): Promise<void> {
     try {
-      await engine.land(job.leaseId, { text: value });
+      const published = await engine.land(job.leaseId, { text: value });
+      landing = { rev: published.revAfter, sha: published.sha };
     } catch (error) {
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
@@ -488,7 +478,11 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     },
     reviseText,
     usage: () => all,
-    writerTokens: () => ({ ...written }),
+    // A gate call that threw has no verdict row to be charged from, so its prompt is reported
+    // with the writer's tokens: the close takes the larger of the two, and the money is counted.
+    writerTokens: () => ({ in: written.in + attempted.in, out: written.out + attempted.out }),
+    estimated: () => all.estimated === true,
+    landedAt: () => landing,
     model: () => laneModel(),
     setPrompt: (value) => {
       sections = value.sections;

@@ -47,8 +47,14 @@ function byId(db: Db, changeId: string): FilingChange | undefined {
 /** BOOK-136 — the outcomes a `done` change is closed with when the text took it. */
 const LANDED_OUTCOMES = new Set(['applied', 'adapted', 'finding']);
 
-/** Did this change land the reader's text? `done` alone is not a landing (`registered`). */
-function isLanding(change: FilingChange): boolean {
+/**
+ * Did this change land the reader's text? `done` alone is not a landing (`registered`).
+ *
+ * BOOK-219 — exported because the site's bridge must speak a landing to the filing (`comment:
+ * decision`) with the **same** rule this module uses to derive the filing's state; a second
+ * copy of the set would let the frame and the row disagree the day one of them moves.
+ */
+export function isLanding(change: Pick<FilingChange, 'status' | 'outcome'>): boolean {
   return change.status === 'done' && change.outcome !== null && LANDED_OUTCOMES.has(change.outcome);
 }
 

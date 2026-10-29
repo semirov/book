@@ -125,11 +125,13 @@ export const stageSummary = {
     tokensIn: number;
     tokensOut: number;
     costUsd: number;
+    /** BOOK-219: the tokens were read off the text, so the number is `≈$0.0465`, not `$0.0465`. */
+    estimated?: boolean;
   }): string =>
     line([
       `глава ${String(input.chapter)}: ${grouped(input.chars)} знаков, ${String(input.blocks)} абзацев`,
       `${grouped(input.tokensIn)} → ${grouped(input.tokensOut)} токенов`,
-      money(input.costUsd),
+      input.estimated === true ? `≈${money(input.costUsd)}` : money(input.costUsd),
     ]),
 
   refused: (input: { reason: string }): string => line([`проход остановлен: ${input.reason}`]),
