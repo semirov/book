@@ -388,37 +388,18 @@ export type ComposerInfo = {
   editMaxChars: number;
 };
 
-/** The fixed ink palette (§11.6): a reader's colour is a slot in it, never a free value. */
+/**
+ * The stored author palette (§11.6): `CommentDto.authorColor` is written by the server and kept
+ * on the wire, and this list is the only authority on what a value may be.
+ *
+ * BOOK-199 (audit #21) — the book no longer paints it. Six colours for six readers measured
+ * 1.98–2.41:1 on the day paper and named nothing a reader could use: identity is the name, and
+ * a reader's own filing is marked by the word `ваше`. The palette stays so stored rows keep
+ * their shape; the sheet gives every name one ink (`--ink`).
+ */
 export const AUTHOR_COLORS = ['#6f9bb5', '#a98b6f', '#7d9b6f', '#9b7f9e', '#b58f6f', '#6f8fb5'] as const;
 
-/**
- * BOOK-30 — the palette slot a stored colour names; 0 for a row written before the palette,
- * or for a colour this build does not know. The palette is the only authority on ink.
- */
-export function authorInkIndex(color: string): number {
-  const slot = (AUTHOR_COLORS as readonly string[]).indexOf(color);
-  return slot < 0 ? 0 : slot;
-}
-
-/**
- * BOOK-30 — the class that carries that ink. The class names the slot, never the hex.
- */
-export function authorInkClass(color: string): string {
-  return `author-ink-${authorInkIndex(color)}`;
-}
-
-/**
- * BOOK-30 — the class for a **stored** colour. The page keeps inline style attributes out
- * of its markup, so the reader's colour is a class: themeable, and no value in the DOM. A
- * colour this build does not know (an older row, another writer) falls back to the reader's
- * own palette slot — derived from the name — rather than collapsing every stranger to slot 0.
- */
-export function commentInkClass(author: string, color: string): string {
-  const known = (AUTHOR_COLORS as readonly string[]).includes(color);
-  return authorInkClass(known ? color : authorColor(author));
-}
-
-/** Stable colour for a display name: same reader, same ink, no server state. */
+/** Stable colour for a display name: same reader, same stored value, no server state. */
 export function authorColor(seed: string): string {
   let hash = 2166136261;
   for (const char of seed) {

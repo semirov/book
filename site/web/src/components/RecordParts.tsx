@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 import { filingNumber } from '../lib/filings.ts';
 import { filingConsequence } from '../lib/marginalia.ts';
-import type { InterventionRow, RowWindow } from '../lib/recState.ts';
+import { RECORD_CUT, type InterventionRow, type RowWindow } from '../lib/recState.ts';
 
 /**
  * BOOK-128 comment #3863 — the record's three repeated shapes: a section header, a list of rows
@@ -83,22 +83,13 @@ export function RowsList({
           </button>
         );
       })}
-      {rows.more > 0 ? (
-        <button type="button" className="rec-fold" onClick={onLift}>
-          {`ещё ${String(rows.more)} →`}
-        </button>
-      ) : null}
-      {rows.over > 0 ? (
+      {rows.rest > 0 ? (
         <div className="rec-fold rec-fold-end">
           <span>{`показаны ${String(rows.rows.length)} из ${String(total)}`}</span>
-          {lifted ? (
-            <button type="button" onClick={onFold}>
-              свернуть
-            </button>
-          ) : null}
+          {/* BOOK-199 m3 — the count is never a dead end: its own control opens the rest. */}
+          <button type="button" onClick={onLift}>{`ещё ${String(rows.rest)} →`}</button>
         </div>
-      ) : null}
-      {rows.over === 0 && lifted && total > 6 ? (
+      ) : lifted && total > RECORD_CUT ? (
         <button type="button" className="rec-fold" onClick={onFold}>
           свернуть
         </button>

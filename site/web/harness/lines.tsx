@@ -151,7 +151,9 @@ function Gallery() {
       </Line>
       <Line id=".ch-h / .ch-print">
         <article className="page ch" data-n={1}>
-          <ChapterHeader entry={ENTRY} printing status={null} basisSentence={null} />
+          {/* The header's two lines as one section: the apparatus line (`■ печатается`, the
+              data) and the wait sentence on its own block line (BOOK-199 m5). */}
+          <ChapterHeader entry={ENTRY} printing status="читаем главу 01" basisSentence={null} />
         </article>
       </Line>
       <Line id=".seam-row">

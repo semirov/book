@@ -77,24 +77,25 @@
 
 :root {
   /* concrete / ink — day («бланк»): a cool grey sheet, no paper tint, no grain.
-     Contrast on `--paper` (WCAG 2.2, normal text ≥4.5): ink 11.9, ink-2 5.1, ink-3 4.6,
-     live 4.9, revise 4.8 — the palette is measured, not eyeballed. */
+     Contrast on `--paper` (WCAG 2.2, normal text ≥4.5): ink 11.9, ink-2 5.1, ink-3 5.1,
+     live 5.4, revise 5.4 — the palette is measured, not eyeballed. `contrast.test.ts` computes
+     every pair, including the two tinted fills, so a lighter mark cannot return. */
   --paper: #cfd3d2;
   --paper-2: #dde1e0; /* raised: a panel, a hover, a field */
   --paper-3: #c2c7c6; /* recessed */
   --ink: #14171a;
   --ink-2: #4e5455;
-  --ink-3: #565b5c; /* labels only: numerals of an empty slot take --ink (BOOK-DOC-6) */
+  --ink-3: #4f5455; /* labels only: numerals of an empty slot take --ink (BOOK-DOC-6) */
   --rule: #a6adac; /* the hairline */
-  --rule-2: #8b9291;
+  --rule-2: #8b9291; /* rules only — never a text ink (2.1:1 on paper) */
 
   /* live accent — cold steel, the caret, anything happening now */
-  --live: #2a5c6d;
-  --live-bg: rgba(42, 92, 109, 0.07);
+  --live: #245563;
+  --live-bg: rgba(36, 85, 99, 0.07);
 
   /* revision — muted ochre, nothing to do with "warning" */
-  --revise: #7a4e14;
-  --revise-bg: rgba(122, 78, 20, 0.075);
+  --revise: #6f4612;
+  --revise-bg: rgba(111, 70, 18, 0.075);
 
   /* write accent — the owner's red for the pass's write caret (BOOK-116/BOOK-121): a deep matte
      ink red, 6.05:1 on `--paper`. The read caret stays `--live` (blue). The designer's «no red»
@@ -110,14 +111,10 @@
   --serif: 'PT Serif', Literata, Georgia, 'Times New Roman', serif;
   --mono: 'PT Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* BOOK-DOC-35 §4.1 — a ladder with a floor: 12 / 13 / 14 / 15 → 18 / 19.
+  /* BOOK-DOC-35 §4.1 — a ladder with a floor: 12 / 14 / 15 → 18 / 19.
      `--fs-micro` is the floor: marks only (numerals, times, counters, states), never a
      sentence. A PT Mono stem at 12px is ≈1.5 device pixels at 1×; at 11 it is not. */
   --fs-micro: 12px;
-  /* A SIZE, not a family (BOOK-128 #3900): `--fs-label` is the 13 px rung and has nothing to do
-     with the retired `--label` face. It survives on the cover's byline (a name at 13 px) and on
-     the few prose lines that were already 13 px serif. */
-  --fs-label: 13px;
   --fs-meta: 14px;
   --fs-note: 15px;
   --fs-body: 18px;

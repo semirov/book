@@ -36,10 +36,9 @@ describe('BOOK-DOC-35 — the styles guard', () => {
     expect(styleProblems(STYLES)).toEqual([]);
   });
 
-  it('pins the ladder: 12 / 13 / 14 / 15 → 18 / 19, declared once in tokens.css', () => {
+  it('pins the ladder: 12 / 14 / 15 → 18 / 19, declared once in tokens.css', () => {
     expect(LADDER).toEqual({
       '--fs-micro': 12,
-      '--fs-label': 13,
       '--fs-meta': 14,
       '--fs-note': 15,
       '--fs-body': 18,
@@ -238,7 +237,7 @@ describe('BOOK-70 — the chips', () => {
     '.ch-print': 'font-size: 12px; color: var(--live); white-space: nowrap',
     '.sec-meta': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
     '.seam-filing-n': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
-    '.author-plus': 'font-family: var(--mono); font-size: 13px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.author-plus': 'font-family: var(--mono); font-size: 12px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.seam-filing-stamp': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.stamp-time': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.ch-data': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
@@ -339,15 +338,14 @@ describe('BOOK-70 — the chips', () => {
     expect(messages(voice)).toContain('.author-plus: a reference chip is tabular');
   });
 
-  it('lets a reference ride its row’s own rung when the registry says so (the cover byline)', () => {
-    // BOOK-128 §1 (audit 3): «+ 3» is part of the byline's 13 px line, and the entry states it,
-    // so the guard proves *that* size and spacing instead of the default 12 px.
+  it('keeps every reference on the 12 px floor — the cover byline has no private rung', () => {
+    // BOOK-199 (audit #21): «+ 3» rode a 13 px rung beside the byline. The byline is a mark, so
+    // the chip is 12 px like the rest of the register; a 13 px one is a second size and fails.
     expect(seeded({ 'chips.css': sheet() })).toEqual([]);
-    const twelve = seeded({
-      'chips.css': sheet({ '.author-plus': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap' }),
+    const thirteen = seeded({
+      'chips.css': sheet({ '.author-plus': 'font-family: var(--mono); font-size: 13px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap' }),
     });
-    expect(messages(twelve)).toContain('.author-plus: font-size: 12px resolves to 12px, but a ref chip is 13px');
-    expect(messages(twelve)).toContain(".author-plus: a reference chip's spacing is 0, not .02em");
+    expect(messages(thirteen)).toContain('.author-plus: font-size: 13px resolves to 13px, but a ref chip is 12px');
   });
 
   it('fails a sentence set at chip size, and a registered chip with no rule at all', () => {

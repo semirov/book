@@ -179,6 +179,8 @@ describe('the chapter wait under a browser', () => {
     expect(skel?.getAttribute('data-lines')).toBe('8');
     expect(container.querySelectorAll('.skel-line')).toHaveLength(8);
     expect(container.querySelector('[role="status"]')?.textContent).toBe('читаем главу 07');
+    // BOOK-199 m5: the sentence is its own block line, outside the apparatus line.
+    expect(container.querySelector('.ch-status')?.tagName).toBe('P');
     expect(container.querySelector('article')?.getAttribute('aria-busy')).toBe('true');
 
     // At 2 000 ms the same slot replaces the form's company with one plain sentence.

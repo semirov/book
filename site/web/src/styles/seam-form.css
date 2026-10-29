@@ -91,7 +91,8 @@
   outline-offset: 2px;
 }
 .note-action:disabled {
-  color: var(--rule-2);
+  /* BOOK-199: `--rule-2` is 2.1:1 on paper — a hairline, never a text ink. */
+  color: var(--ink-3);
   cursor: default;
 }
 
@@ -146,7 +147,7 @@
   border: 0;
   background: none;
   font-family: var(--mono);
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   text-align: left;
   cursor: pointer;

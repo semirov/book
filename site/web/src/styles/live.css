@@ -281,8 +281,8 @@
   }
 }
 /* <768: the last item of the sticky head's first row — the only slot where the margin is the
-   page itself. The box (16.2px) is shorter than the brand's line (17.55px), so row 1 does not
-   grow, and the head keeps its measured height (D2). */
+   page itself. The box (16.2 px) is the brand's own box, so row 1 does not grow, and the head
+   keeps its measured height (D2). */
 @media (max-width: 767px) {
   .folio {
     position: static;

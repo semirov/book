@@ -15,12 +15,13 @@ import { firstDeclarations, mediaBlocks, unionDeclarations } from './cssRules.ts
  * What is asserted here is the DOM contract and the geometry the sheets state:
  *
  *   - the line is a child of the head's one row, after the chapter cluster and before the folio;
- *   - live prints `книга пишется · глава 12 · 14:21` (and `пишется · 14:21` for the phone) with
- *     the 5×5 nib, stopped prints `движок остановлен · 14:21` without it, and idle prints
- *     nothing at all;
+ *   - live prints `книга пишется · глава 12 · 14:21` with the 5×5 nib, stopped prints
+ *     `книга не пишется · 14:21` without it, and idle prints nothing at all;
+ *   - below 768 the status is not painted: the phone head is the book's name and the folio, and
+ *     the shortened line it used to print no longer exists (BOOK-199, audit #1);
  *   - the region is announced once per *state change*, never per render;
- *   - the row cannot grow: the status is one 12 px line, and the row's tallest item is the
- *     brand's 13 px × 1.35 = 17.55 px label line (base.css). jsdom has no layout, so the height
+ *   - the row cannot grow: the status is one 12 px line, and the row's items are all the same
+ *     12 px × 1.35 = 16.2 px box (base.css's `.top-row`). jsdom has no layout, so the height
  *     proof is read from the sheets here and measured in the browser in the delivery report.
  */
 
@@ -179,16 +180,16 @@ afterEach(async () => {
 });
 
 describe('the head says the book is being written', () => {
-  it('prints the full line, the phone’s line and the 5×5 nib while a pass is in flight', async () => {
+  it('prints the one line and the 5×5 nib while a pass is in flight', async () => {
     await mount({ stages: stagesOf(event('queued', 1), event('drafting', 2)), nowMs: AT + 20_000 });
     const line = status();
     expect(line).not.toBeNull();
     expect(line?.getAttribute('data-kind')).toBe('live');
-    // Both variants are always in the markup: the sheet chooses, nothing is cut in JavaScript.
+    // One line in the markup: there is no second, shortened variant (BOOK-199).
     expect(line?.querySelector('.head-status-full')?.textContent).toBe(
       `книга пишется${MIDDOT}глава 12${MIDDOT}14:21`,
     );
-    expect(line?.querySelector('.head-status-short')?.textContent).toBe(`пишется${MIDDOT}14:21`);
+    expect(line?.querySelector('.head-status-short')).toBeNull();
     expect(line?.querySelector('.head-nib')).not.toBeNull();
     // One status region in the head, and no second name for a pass anywhere in it.
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
@@ -217,11 +218,14 @@ describe('the head says the book is being written', () => {
     expect(status()).toBeNull();
   });
 
-  it('says the engine stopped — the word, the clock, and no nib — after 90 s of silence', async () => {
+  it('says the book is not being written — the same verb, the clock, and no nib — after 90 s', async () => {
     await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 2_000 + 90_001 });
     const line = status();
     expect(line?.getAttribute('data-kind')).toBe('stopped');
-    expect(line?.querySelector('.head-status-full')?.textContent).toBe(`движок остановлен${MIDDOT}14:21`);
+    // The book's sentence, not the engine's: no «движок», no stage name, no placeholder.
+    expect(line?.querySelector('.head-status-full')?.textContent).toBe(`книга не пишется${MIDDOT}14:21`);
+    expect(line?.textContent ?? '').not.toContain('движок');
+    expect(line?.textContent ?? '').not.toContain('—');
     expect(line?.querySelector('.head-nib')).toBeNull();
   });
 });
@@ -251,7 +255,7 @@ describe('the region speaks only when the state changes', () => {
       vi.advanceTimersByTime(90_002);
     });
     expect(status()?.getAttribute('data-kind')).toBe('stopped');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe(`движок остановлен${MIDDOT}14:21`);
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe(`книга не пишется${MIDDOT}14:21`);
   });
 });
 
@@ -284,8 +288,8 @@ describe('the head’s height does not move', () => {
     expect(unionDeclarations(sheets['../styles/running-head.css'] ?? '', '.top-chapter')).toContain(
       'font-size: var(--fs-micro)',
     );
-    // The folio's own box below 768 is 16.2 px — under the row's 17.55 px too, so it cannot be
-    // what grows when the status appears (it is fixed and out of flow above 768).
+    // The folio's own box below 768 is 16.2 px — the row's box too, so it cannot be what grows
+    // when the status appears (it is fixed and out of flow above 768).
     const folio = firstDeclarations(sheets['../styles/live.css'] ?? '', '.folio');
     expect(folio).toContain('font-size: var(--fs-micro)');
     expect(folio).toContain('line-height: 1.35');
@@ -295,21 +299,44 @@ describe('the head’s height does not move', () => {
     expect(unionDeclarations(css, '.top-in .top-row:first-child')).toContain('flex: 1');
   });
 
-  it('never wraps and never ellipsizes: the phone prints the short phrase from the sheet', () => {
+  it('never wraps and never ellipsizes, and the phone does not paint it at all', async () => {
     const css = sheets['../styles/head-status.css'] ?? '';
     const line = firstDeclarations(css, '.head-status');
     expect(line).toContain('white-space: nowrap');
     expect(css).not.toMatch(/text-overflow/u);
     expect(css).not.toMatch(/ellipsis/u);
     expect(css).not.toMatch(/overflow/u);
-    // The two variants swap at the one step the head already has.
+    // BOOK-199: below 768 there is no second line to fit — the status is hidden outright.
     const phone = mediaBlocks(css, 'max-width: 767px').join('\n');
-    expect(unionDeclarations(phone, '.head-status-full')).toContain('display: none');
-    expect(unionDeclarations(phone, '.head-status-short')).toContain('display: inline');
-    // On the phone the status owns the free space: the folio keeps the right end beside it.
-    expect(
-      unionDeclarations(phone, '.top-in .top-row:first-child:has(.head-status) .folio'),
-    ).toContain('margin-inline-start: 0');
+    expect(unionDeclarations(phone, '.head-status')).toContain('display: none');
+    expect(unionDeclarations(phone, '.head-status-full')).toBe('');
+    expect(css).not.toContain('head-status-short');
+    // …and no exception re-flows the folio around a node that is not painted.
+    expect(css).not.toContain(':has(');
+  });
+
+  it('paints the folio and the book’s own name only on the phone (audit #1)', async () => {
+    // Mount the live state, then read the row as the sheet lays it out below 768.
+    await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 20_000 });
+    expect(status()).not.toBeNull();
+    const css = sheets['../styles/head-status.css'] ?? '';
+    const live = sheets['../styles/live.css'] ?? '';
+    const running = sheets['../styles/running-head.css'] ?? '';
+    const phone = mediaBlocks(css, 'max-width: 767px').join('\n');
+    // The state is not painted; the chapter slot is not either (BOOK-104), so the row is the
+    // book's name … the page number, and nothing else.
+    expect(unionDeclarations(phone, '.head-status')).toContain('display: none');
+    expect(unionDeclarations(mediaBlocks(live, 'max-width: 767px').join('\n'), '.top-chapter')).toContain(
+      'display: none',
+    );
+    // Both survivors are the row's own items, and the folio keeps its right end by its margin.
+    const items = rowItems();
+    expect(items).toContain('brand');
+    expect(items).toContain('folio');
+    expect(unionDeclarations(running, '.top-row:first-child .folio')).toContain('margin-inline-start: auto');
+    // The row's height is unchanged: the hidden status was the row's own 16.2 px line.
+    expect(firstDeclarations(css, '.head-status')).toContain('line-height: 1.35');
+    expect(firstDeclarations(css, '.head-status')).toContain('font-size: var(--fs-micro)');
   });
 
   it('adds no ink of its own: the quiet ink and the pass’s one accent', () => {

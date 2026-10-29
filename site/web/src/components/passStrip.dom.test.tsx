@@ -148,7 +148,11 @@ describe('the pass strip’s anatomy', () => {
 
     const empty = await draw({ events: [], now: T0 });
     expect(rows(empty)).toEqual([]);
-    expect(empty.querySelector('.pass-strip-heading')?.textContent).toBe('книга пишется\u00a0·\u00a0глава 7');
+    // No stored stage: the strip says the absence in words and claims no pass (BOOK-199).
+    expect(empty.querySelector('.pass-strip')?.getAttribute('data-phase')).toBe('absent');
+    expect(empty.querySelector('.pass-strip-heading')?.textContent).toBe('пока ничего не записано\u00a0·\u00a0глава 7');
+    expect(empty.querySelector('.pass-strip-right')).toBeNull();
+    expect(empty.querySelector('.pass-strip-receipt')).toBeNull();
   });
 
   it('prints each row with its own stored moment', async () => {

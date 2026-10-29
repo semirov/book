@@ -60,7 +60,8 @@ describe('the head’s state while a pass is in flight', () => {
     const status = live(event('queued', 1), event('read', 2), event('drafting', 3));
     expect(status.kind).toBe('live');
     expect(status.full).toBe(`книга пишется${MIDDOT}глава 12${MIDDOT}14:21`);
-    expect(status.short).toBe(`пишется${MIDDOT}14:21`);
+    // One line and no second variant: the phone does not paint the state at all (BOOK-199).
+    expect(status).not.toHaveProperty('short');
     // The timer counts from the newest fact, not from the pass's first one.
     expect(status.atMs).toBe(AT + 2_000);
   });
@@ -103,7 +104,7 @@ describe('the head’s state while a pass is in flight', () => {
 
   it('names no model, no role and no second word for a pass', () => {
     const status = live(event('drafting', 3));
-    const printed = `${status.full ?? ''} ${status.short ?? ''}`;
+    const printed = status.full ?? '';
     expect(printed).not.toContain('проход');
     expect(printed).not.toMatch(/deepseek|flash|writer|модел/iu);
     // Lowercase, as the owner asked: no label shout on the reading surface.
@@ -119,9 +120,9 @@ describe('the 90 s silence', () => {
     expect(silent(AT + 2_000 + HEAD_SILENCE_MS).kind).toBe('live');
     const stopped = silent(AT + 2_000 + HEAD_SILENCE_MS + 1);
     expect(stopped.kind).toBe('stopped');
-    expect(stopped.full).toBe(`движок остановлен${MIDDOT}14:21`);
-    // The phone keeps the word and drops the clock: both never fit one 342 px row.
-    expect(stopped.short).toBe('движок остановлен');
+    // The book's own sentence, on the live line's verb: no «движок», no stage name.
+    expect(stopped.full).toBe(`книга не пишется${MIDDOT}14:21`);
+    expect(stopped.full).not.toContain('движок');
     expect(stopped.atMs).toBe(AT + 2_000);
   });
 
@@ -133,7 +134,7 @@ describe('the 90 s silence', () => {
         nowMs: AT + 2_500,
       });
       expect(held.kind, status).toBe('stopped');
-      expect(held.full).toBe(`движок остановлен${MIDDOT}14:21`);
+      expect(held.full).toBe(`книга не пишется${MIDDOT}14:21`);
     }
     // `paused` and `throttled` are not a stopped engine: the pass may still land.
     for (const status of ['paused', 'throttled', 'unknown'] as const) {
@@ -150,7 +151,7 @@ describe('the 90 s silence', () => {
 describe('no pass in flight', () => {
   it('prints nothing at all, and the foot’s grip keeps the fact', () => {
     const status = headStatusOf({ stages: stagesOf(), state: stateOf(), nowMs: AT });
-    expect(status).toEqual({ kind: 'idle', full: null, short: null, atMs: null });
+    expect(status).toEqual({ kind: 'idle', full: null, atMs: null });
   });
 
   it('prints nothing for a new book: no stage ever ran and no mark is held', () => {
@@ -242,7 +243,7 @@ describe('the facts the snapshot carries when the frames were missed', () => {
       nowMs: AT,
     });
     expect(status.kind).toBe('stopped');
-    expect(status.full).toBe(`движок остановлен${MIDDOT}14:15`);
+    expect(status.full).toBe(`книга не пишется${MIDDOT}14:15`);
   });
 
   it('drops the clock when nothing in the state carries a moment', () => {

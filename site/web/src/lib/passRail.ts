@@ -46,6 +46,12 @@ export const RAIL_WORDS: Record<RailKey, string> = {
 export const RAIL_PRINTING = 'печатается';
 /** The live row's one actor-free line — never a model, never a role's private name. */
 export const RAIL_BROWSER = 'печатает браузер';
+/**
+ * No stage was stored for the pass this strip was opened on: the absence, said in words in the
+ * strip's own register. A failed read is not a pass in flight, and an empty rail must not claim
+ * one (BOOK-199, audit #2).
+ */
+export const RAIL_ABSENT = 'пока ничего не записано';
 
 export type RailRow = {
   key: RailKey;
@@ -298,8 +304,13 @@ export type PassStripInput = {
 };
 
 export type PassStripModel = {
-  phase: 'live' | 'ended';
-  /** `книга пишется · глава 7 · 11:18`, or `писалась · глава 7 · 11:18`. */
+  /** `absent`: no stage was stored, so there is no pass to be live or ended (BOOK-199). */
+  phase: 'live' | 'ended' | 'absent';
+  /**
+   * `книга пишется · глава 7 · 11:18`, `писалась · глава 7 · 11:18`, or
+   * `пока ничего не записано · глава 7` when the read came back empty: the absence in words,
+   * never a live claim.
+   */
   heading: string;
   /** Live: the current stage's word. Ended: the pass's duration. */
   right: string | null;
@@ -313,12 +324,25 @@ export function passStripModel(input: PassStripInput): PassStripModel {
   const ordered = [...input.events].sort(byStage);
   const rows = railRows(ordered, { blocks: input.blocks, blockId: input.blockId });
   const first = ordered[0] ?? null;
+  const place = `глава ${input.chapter}`;
+  // No stored stage, no pass: the strip says the absence instead of borrowing the live words.
+  // The rail stays empty and no time is invented — there is no event whose moment it could be.
+  if (first === null) {
+    return {
+      phase: 'absent',
+      heading: `${RAIL_ABSENT}${MIDDOT}${place}`,
+      right: null,
+      rows,
+      receipt: receiptOf(null),
+      refused: false,
+    };
+  }
   // The strip is live while its last row is: reading, weighing, writing, or a landing whose
   // text the browser is printing. A pass that landed and settled — or was refused — is past.
-  const phase: 'live' | 'ended' = rows.length === 0 || rows[rows.length - 1]?.state === 'live' ? 'live' : 'ended';
+  const phase: 'live' | 'ended' =
+    rows.length === 0 || rows[rows.length - 1]?.state === 'live' ? 'live' : 'ended';
   const lead = phase === 'live' ? PASS_WRITING : PASS_WROTE;
-  const place = `глава ${input.chapter}`;
-  const heading = first === null ? `${lead}${MIDDOT}${place}` : `${lead}${MIDDOT}${place}${MIDDOT}${timeOf(first.at)}`;
+  const heading = `${lead}${MIDDOT}${place}${MIDDOT}${timeOf(first.at)}`;
   const terminal = [...ordered].reverse().find((event) => event.stage === 'landed' || event.stage === 'refused') ?? null;
   const landed = passStageAt(ordered, 'landed');
   const durationMs =
