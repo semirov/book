@@ -474,7 +474,11 @@ describe('the finale lock is the one a decision may name (BOOK-174 §4)', () => 
       line2: 'потому что это отменяет исход',
       line3: 'сработает иначе: те же слова — как заявление, которое отклоняют, или как вера героя, который ошибается',
     });
-    expect(emitted.find((event) => event.type === 'comment:decision')?.data).toMatchObject({ status: 'rejected' });
+    // BOOK-206 B2: a lock refusal never became a change — the receipt is present and null.
+    expect(emitted.find((event) => event.type === 'comment:decision')?.data).toMatchObject({
+      status: 'rejected',
+      applied: null,
+    });
   });
 });
 

@@ -3,6 +3,7 @@ import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
+import { widenSpendProvenance } from './widenSpendProvenance.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
 import { migrateV25 } from './migrateV25.ts';
@@ -409,6 +410,7 @@ export function migrate(db: Db): { from: number; to: number } {
   }
 
   ensureStepLifecycle(db);
+  widenSpendProvenance(db); // BOOK-219: the ledger's CHECK gains `pipeline-estimated`, idempotently.
   // BOOK-61 review B3: a row posted before Gate B existed carries no rights answer, and every
   // gate behind it reads `NULL` as "no answer" — the filing would wait forever. One deterministic
   // pass over the undecided, still-open rows; marked done in `meta`, so a boot costs nothing.

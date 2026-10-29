@@ -21,7 +21,7 @@
 import type { CommentStatus } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { decided, OWN_STATES } from './states.ts';
+import { decided, isStopped, OWN_STATES, STOPPED_STATUS } from './states.ts';
 
 /** One change of a filing, as this module reads it: the columns a state is chosen from. */
 export type FilingChange = {
@@ -47,8 +47,14 @@ function byId(db: Db, changeId: string): FilingChange | undefined {
 /** BOOK-136 — the outcomes a `done` change is closed with when the text took it. */
 const LANDED_OUTCOMES = new Set(['applied', 'adapted', 'finding']);
 
-/** Did this change land the reader's text? `done` alone is not a landing (`registered`). */
-function isLanding(change: FilingChange): boolean {
+/**
+ * Did this change land the reader's text? `done` alone is not a landing (`registered`).
+ *
+ * BOOK-219 — exported because the site's bridge must speak a landing to the filing (`comment:
+ * decision`) with the **same** rule this module uses to derive the filing's state; a second
+ * copy of the set would let the frame and the row disagree the day one of them moves.
+ */
+export function isLanding(change: Pick<FilingChange, 'status' | 'outcome'>): boolean {
   return change.status === 'done' && change.outcome !== null && LANDED_OUTCOMES.has(change.outcome);
 }
 
@@ -89,6 +95,22 @@ export function filingChanges(db: Db, commentId: string, changeId: string | null
 }
 
 /**
+ * BOOK-136/BOOK-206 B2 — the change a filing's state is read from.
+ *
+ * The landing is the last word about text — except when the filing's **current** attempt is a
+ * stop that came after it: a pass the engine gave up on is the newest fact, and an earlier
+ * landing is not what became of the filing that was tried again. A landing newer than the stop is
+ * still the answer, so both directions read the same rule: the newest fact wins.
+ */
+export function decisiveChange(facts: FilingChanges): FilingChange | undefined {
+  const { landed, attempt } = facts;
+  if (attempt !== undefined && isStopped(attempt.status) && (landed === undefined || attempt.seq >= landed.seq)) {
+    return attempt;
+  }
+  return landed ?? attempt;
+}
+
+/**
  * BOOK-136 — an ordinary filing's public state, from the change that decided it.
  *
  * The owner's prod rows: the change was `done applied` and the comment stayed `accepted`, so
@@ -99,9 +121,13 @@ export function filingChanges(db: Db, commentId: string, changeId: string | null
  *   1. a row that decided itself keeps its own word;
  *   2. `done` + a landing outcome is `applied`; `done` + `registered` is the paperwork row;
  *   3. `void` + a **human sentence** is a decision: a supersede, or the writer's refusal;
- *   4. everything else — `pending`, `processing`, `stale`, a `void` with an internal code (a
+ *   4. a change the engine **stopped** (`escalated`/`failed`) is one terminal state, whatever
+ *      its outcome: the text was not written (or was put back before the stop), and nothing
+ *      will retry the filing. BOOK-206 B2 — the word and the sentence come from here, so the
+ *      card, the record and the change card cannot answer three ways about one stop;
+ *   5. everything else — `pending`, `processing`, `stale`, a `void` with an internal code (a
  *      failed attempt) — has not decided, so the filing keeps its own word;
- *   5. no linked change at all: the row's word is the whole record.
+ *   6. no linked change at all: the row's word is the whole record.
  */
 export function filingStatus(change: FilingChange | undefined, fallback: CommentStatus): CommentStatus {
   if (OWN_STATES.has(fallback) || change === undefined) return fallback;
@@ -113,6 +139,9 @@ export function filingStatus(change: FilingChange | undefined, fallback: Comment
   if (change.status === 'void' && decided(change.reason)) {
     return change.outcome === 'superseded' ? 'superseded' : 'rejected';
   }
+  // BOOK-206 B2: a stopped change is a terminal state, never a queue place. Its reason is the
+  // change's own public line (`states.ts` `stoppedLine`), read by every surface that prints it.
+  if (isStopped(change.status)) return STOPPED_STATUS;
   return fallback;
 }
 

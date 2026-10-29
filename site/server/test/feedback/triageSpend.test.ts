@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readBookCost } from '../../src/cost/book.ts';
 import { runFeedback } from '../../src/feedback/cli.ts';
 import { DECISION_FALLBACK, publicDecisionReason } from '../../src/feedback/decisions.ts';
+import { chargeTriageSpend } from '../../src/feedback/triage.ts';
 import { bootComments, commentBody, type Harness } from '../comments/helpers.ts';
 
 let harness: Harness | null = null;
@@ -249,6 +250,37 @@ describe('a refusal does not spend the daily edit budget, an accepted filing doe
     expect(await accept(h, exempted)).toBe(0);
     expect(editKeys(h)).toHaveLength(2);
     expect(attempt(h, exempted)).toMatchObject({ outcome: 'accepted' });
+  });
+});
+
+describe('an estimated triage call is priced and named (BOOK-219)', () => {
+  it('writes `pipeline-estimated` even when the estimate is zero, and stays silent otherwise', async () => {
+    const h = await boot();
+    chargeTriageSpend(h.db, {
+      chapter: 8,
+      passId: 'triage:cmt_estimated:1',
+      at: '2026-10-25T10:00:00.000Z',
+      model: 'deepseek/deepseek-v4-pro',
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+      estimated: true,
+    });
+    // The rate is known and only the counts were read: priced, and the row says how.
+    expect(spend(h)[0]).toMatchObject({ usd: 0, priced: 1, provenance: 'pipeline-estimated' });
+
+    // A measured zero stays BOOK-23's honest «never priced», and a caller that does not know who
+    // ran the pass declares no provenance rather than inventing one.
+    chargeTriageSpend(h.db, {
+      chapter: 8,
+      passId: 'triage:cmt_measured:1',
+      at: '2026-10-25T10:00:01.000Z',
+      model: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+    });
+    expect(spend(h)[1]).toMatchObject({ usd: 0, priced: 0, provenance: null });
   });
 });
 

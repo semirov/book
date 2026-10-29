@@ -97,7 +97,7 @@ export type Harness = {
    */
   run(options?: {
     chapter?: number | null;
-    lanes?: Array<'fwd' | 'bwd'>;
+    lanes?: Array<'fwd' | 'bwd' | 'filing'>;
     dryRun?: boolean;
     filed?: boolean;
   }): Promise<PassResult>;

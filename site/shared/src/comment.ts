@@ -345,7 +345,14 @@ export type CommentAddedPayload = {
   createdAt: string;
 };
 
-/** §10 `comment:decision` — triage accepted or rejected; acceptance is not application. */
+/**
+ * §10 `comment:decision` — the reader's filing moved. Triage accepted, refused or registered it;
+ * a close applied it; the reader's own attempt came back empty.
+ *
+ * BOOK-206 B2 — every surface that prints a filing reads this one frame, so its `status` and
+ * `reason` are the filing's **derived** state (the same derivation `toCommentDto` uses), and
+ * `applied` is always present: `null` says this transition moved no chapter's text.
+ */
 export type CommentDecisionPayload = {
   id: string;
   /**
@@ -358,16 +365,45 @@ export type CommentDecisionPayload = {
    * BOOK-206 — the frame carries the answer a filing got, and the removed fifth state is not one
    * of them: every filing is accepted, registered as paperwork, refused under a lock, or still
    * waiting (`new`). `registered` is the paperwork branch's own word (BOOK-137).
+   *
+   * BOOK-219 — `applied` is the **second** decision: triage accepted the filing, and a later
+   * close landed its text in a chapter. Without it the open page moved the change and left the
+   * filing row saying «ждёт», so the record and the text disagreed until a reload.
+   *
+   * BOOK-206 B2 — the status is the filing's **derived** word, not a second vocabulary: a
+   * stopped change reads `rejected` with its own sentence here, exactly as the DTO does.
    */
-  status: 'accepted' | 'registered' | 'rejected' | 'expired' | 'quarantined';
+  status: CommentStatus;
   reason: string;
   decidedAt: string;
-  batchId: string | null;
+  batchId?: string | null;
   changeId: string | null;
-  queue: { depth: number; ahead: number };
-  source: 'llm';
+  queue?: { depth: number; ahead: number };
+  /**
+   * Which judge spoke. The triage path names its judge (`'llm'`); a landing frame emitted by the
+   * site's bridge has no judge to name — the reading it carries is the one already stored on the
+   * row — so it leaves the field out.
+   */
+  source?: 'llm';
   /** BOOK-174 §5 — the three lines of the reading, carried with the frame itself. */
   report?: DispositionReport | null;
+  /**
+   * BOOK-174 — how the filing was read, when the frame is about a row that carries a chain. The
+   * open card takes it with the report instead of waiting for the reload.
+   */
+  disposition?: Disposition | null;
+  /**
+   * BOOK-219 — a landing: the chapter the filing's text entered, and that chapter's revision.
+   * The receipt storage derives for the filing (`comments/repo.ts`), never a number made up on
+   * the wire; `null` when no receipt exists (a landing whose chapter row is gone) or when the
+   * transition moved no text at all.
+   */
+  applied?: { chapter: number; rev: number } | null;
+  /**
+   * BOOK-206 B5 — the attempt behind the filing came back empty (the triage cap, an abandoned
+   * claim). `retryAt` is the hour the next read is bought, `null` when no attempt is scheduled.
+   */
+  attempt?: { state: 'failed'; retryAt: string | null };
 };
 
 export type FeedbackBatchPayload = {

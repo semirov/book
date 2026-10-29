@@ -126,6 +126,45 @@ describe('main', () => {
     }
   });
 
+  it('reads one triage pulse before the pass, so a manual run is not blind (BOOK-206 --once)', async () => {
+    const harness = await createHarness();
+    try {
+      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
+      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // The engine is the real client, with a recorder in front: the pulse is visible as its own
+      // `nextTriage` call, and the pass still runs afterwards.
+      const calls: string[] = [];
+      const engine = new Proxy(harness.client, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== 'function') return value;
+          return (...args: unknown[]): unknown => {
+            calls.push(String(property));
+            return (value as (...rest: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      }) as EngineClient;
+      const lines: string[] = [];
+      const code = await main({
+        argv: ['--once', '--chapter', '20'],
+        env: harness.env,
+        provider: harness.provider,
+        engine,
+        now: () => harness.fixture.clock.now(),
+        log: (line) => lines.push(line),
+      });
+      expect(code).toBe(0);
+      // One pulse: the first empty `next` ends it without a second ask.
+      expect(calls.filter((name) => name === 'nextTriage')).toHaveLength(1);
+      expect(lines.some((line) => line.includes('триаж: прочитано 0'))).toBe(true);
+      // And the pass the operator asked for still ran, after the pulse.
+      expect(harness.fixture.readChapter(20)).not.toBeNull();
+      expect(calls.lastIndexOf('nextTriage')).toBeLessThan(calls.indexOf('land'));
+    } finally {
+      await harness.close();
+    }
+  });
+
   it('exits 0 and calls nothing once the day’s passes are spent', async () => {
     const harness = await createHarness({ env: { WRITER_MAX_PASSES_PER_DAY: '1' } });
     try {

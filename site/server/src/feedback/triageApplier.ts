@@ -269,8 +269,11 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
   const chain = storedDecision(after);
   const report = chain === null ? null : reportOfDecision(db, chain, after);
   emitDecision(options, after, placed.status, report, at);
-  // BOOK-189: the answer the reader is owed, once — the same hook the decisions tailer uses.
-  options.notify(commentId, report);
+  // BOOK-206 M9: a push at placement is owed only where no change speaks for the filing — a lock
+  // refusal (it never becomes a change) and paperwork (its document is not the chapter's text).
+  // An accepted filing is announced by its change's own decision push when the chapter lands;
+  // pushing here spent the (identity, chapter) claim and swallowed «глава N написана».
+  if (placed.status !== 'accepted') options.notify(commentId, report);
   return true;
 }
 

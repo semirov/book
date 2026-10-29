@@ -2,6 +2,7 @@ import type { CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { countOf, historyRows, interventionRows, recordStateOf, rowWindow, type RecordSituation } from './recState.ts';
+import { filingMarginalia } from './marginalia.ts';
 
 /**
  * BOOK-128 comment #3862 §2 — the six situations, in words the book already prints.
@@ -127,6 +128,53 @@ describe('the six situations', () => {
     const result = state({ filings: [filing({ status: 'quarantined' })] });
     expect(result.word).toBe('ждёт');
     expect(result.line).toBe('ждёт человека');
+  });
+
+  it('takes every word from the deck, never a second copy of the rule', () => {
+    // BOOK-90 — the record's word is `filingMarginalia`'s, for every status the DTO can carry:
+    // a superseded or held row waits («ждёт»), a paperwork row is «рассмотрено», and only the
+    // server's own `applied`/`rejected`/live rows say the rest.
+    const statuses = [
+      'new',
+      'batched',
+      'delivered',
+      'accepted',
+      'applied',
+      'registered',
+      'superseded',
+      'rejected',
+      'quarantined',
+      'expired',
+      'hidden',
+    ] as const;
+    for (const status of statuses) {
+      const row = filing({ status });
+      expect(recordStateOf({ filings: [row], own: never, ...base }).word, status).toBe(filingMarginalia(row).word);
+    }
+  });
+
+  it('prints the server’s stopped filing as a decision, with its own sentence (BOOK-206 B2)', () => {
+    const result = state({
+      filings: [filing({ status: 'rejected', reason: 'правка остановлена — текст остался прежним' })],
+    });
+    expect(result.word).toBe('отклонено');
+    expect(result.line).toBe(': правка остановлена — текст остался прежним');
+    expect(result.line).not.toContain('в очереди');
+  });
+
+  it('prints a paperwork row as «рассмотрено», never as a refusal (BOOK-137)', () => {
+    const result = state({
+      filings: [filing({ status: 'registered', reason: 'принято как оформление: рамка книги — фраза не меняется' })],
+    });
+    expect(result.word).toBe('рассмотрено');
+    expect(result.line).toBe('оформление · фраза не изменилась');
+  });
+
+  it('the row register prints the same word as the state block', () => {
+    const held = filing({ id: 'cmt_hold', status: 'quarantined' });
+    expect(interventionRows({ filings: [held], own: never })[0]?.facts).toContain('ждёт');
+    const refused = filing({ id: 'cmt_ref', status: 'rejected', refusal: 'rights', reason: 'не принято: пересказ' });
+    expect(interventionRows({ filings: [refused], own: never })[0]?.facts).toContain('не принято');
   });
 
   it('a landed version the chain numbers prints the change in the head cell, and no line', () => {
