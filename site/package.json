@@ -41,6 +41,7 @@
     "test:model": "node model-lane/run.mjs",
     "test:model:pass": "node model-lane/pass.mjs",
     "accordion:cdp": "node scripts/accordion-cdp.mjs",
+    "position:cdp": "node scripts/position-cdp.mjs",
     "line:fonts": "node scripts/line-fonts-cdp.mjs",
     "margin:check": "node scripts/margin-cdp.mjs",
     "record:tap": "node scripts/record-tap.mjs"
