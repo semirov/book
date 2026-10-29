@@ -19,7 +19,7 @@
  * §2), only the meta line under it and whether the item is a link at all.
  */
 
-import { PASS_RECORD_PREFIX } from '@book/shared';
+import { changeHref } from '@book/shared';
 
 import { formatDayMonth } from './format.ts';
 
@@ -95,10 +95,10 @@ export function passStateOf(facts: PassFacts): PassState {
 /**
  * The third item's target, its meta line and its accessible name.
  *
- * Live: `#pass` — the reader watches the block being printed. Record: `#проход-<changeId>` —
- * the pass's own page, never the change card, because the card is the workshop's view and the
- * reader asked what happened to the chapter. Silent: no target at all, and the item says so.
- * The visible word never changes; the meta line is the only thing the state rewrites.
+ * Live: `#pass` — the reader watches the block being printed. Record: `?change=<changeId>` —
+ * the record's `правка` section at the sentence the change touched; a pass has no page of its
+ * own. Silent: no target at all, and the item says so. The visible word never changes; the meta
+ * line is the only thing the state rewrites.
  */
 export function passDoor(facts: PassFacts & { watching?: boolean }): PassDoor {
   const state = passStateOf(facts);
@@ -121,7 +121,7 @@ export function passDoor(facts: PassFacts & { watching?: boolean }): PassDoor {
   const meta = `${PASS_WROTE} · ${formatDayMonth(facts.change.decidedAt ?? facts.change.enqueuedAt)}`;
   return {
     state: 'record',
-    href: `#${PASS_RECORD_PREFIX}${facts.change.id}`,
+    href: changeHref(facts.change.id),
     meta,
     label: PASS_LABEL,
     name: `${PASS_LABEL} · ${meta}`,

@@ -114,6 +114,17 @@ describe('the deleted floating layer', () => {
     expect(panels).not.toContain('@keyframes seam-fade');
   });
 
+  it('leaves the one card a block in the flow: no fixed position, backdrop or overlay slot', () => {
+    const card = firstDeclarations(panels, '.filing-panel');
+    expect(card, 'the card is still styled').not.toBe('');
+    expect(card).not.toMatch(/position:\s*(fixed|absolute|sticky|relative)/u);
+    expect(card).not.toContain('z-index');
+    expect(card).not.toMatch(/backdrop|box-shadow/u);
+    // No sentence surface can bring a scrim back: no overlay pseudo-element anywhere.
+    const declarations = rules(panels).map(([, body]) => body).join('\n');
+    expect(declarations).not.toMatch(/backdrop-filter|::backdrop/u);
+  });
+
   it('has no absolutely positioned reader block and no zero-height seat', () => {
     const block = unionDeclarations(reader, '.prov-block');
     expect(block, 'the reader block is still styled').not.toBe('');

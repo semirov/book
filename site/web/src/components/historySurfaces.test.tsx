@@ -382,7 +382,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
           outcome: null,
           reason: null,
           changeId: null,
-          recordHref: `#проход-2-stp_1`,
+          recordHref: '#ch-2',
           span: null,
         },
       ],
@@ -392,7 +392,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
     const rows = container.querySelectorAll('li.chr-row');
     expect(rows).toHaveLength(1);
     expect(rows[0]?.querySelector('.chr-cause')?.textContent).toBe('писалась');
-    expect(rows[0]?.querySelector('.chr-change')?.getAttribute('href')).toBe('#проход-2-stp_1');
+    expect(rows[0]?.querySelector('.chr-change')?.getAttribute('href')).toBe('#ch-2');
     expect(container.textContent).not.toContain('перематывать пока нечего');
     // The reader-driven surfaces are still off, as `live` says.
     expect(container.querySelector('.chain')).toBeNull();

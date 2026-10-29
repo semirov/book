@@ -213,7 +213,7 @@ describe('the head says the book is being written', () => {
     await mount({ stages: stagesOf(event('drafting', 1), event('landed', 2)), nowMs: AT + 5_000 });
     expect(status()).toBeNull();
     expect(container.querySelector('.top')?.textContent ?? '').not.toContain('пишется');
-    // ...and with no log at all, which is how PassRecordPage mounts the head.
+    // ...and with no log at all: nothing is live.
     await mount({ nowMs: AT + 5_000 });
     expect(status()).toBeNull();
   });

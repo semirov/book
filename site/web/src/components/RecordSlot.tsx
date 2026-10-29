@@ -50,7 +50,7 @@ export function RecordSlot({
 }) {
   return (
     <Record
-      key={recordKey(record)}
+      key={`${recordKey(record)}:${record.filing?.id ?? ''}`}
       entry={entry}
       blockId={blockId}
       blockIndex={blockIndex}
@@ -67,6 +67,7 @@ export function RecordSlot({
       history={history}
       changeId={record.changeId ?? null}
       changeQuote={record.changeQuote ?? null}
+      filing={record.filing ?? null}
       onPosted={onPosted}
       {...(onReanchor === undefined ? {} : { onReanchor })}
       onClose={() => {

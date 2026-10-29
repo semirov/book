@@ -310,11 +310,8 @@
 .seam-prov:focus-visible,
 .filing-mark:focus-visible,
 .margin-note:focus-visible,
-.phone-strip-row:focus-visible,
-.revision-close:focus-visible,
-.revision-door:focus-visible,
-.revision:focus-visible {
-  /* BOOK-90: one ring, one offset — the margin's objects included. */
+.phone-strip-row:focus-visible {
+  /* BOOK-90: one ring, one offset. */
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }

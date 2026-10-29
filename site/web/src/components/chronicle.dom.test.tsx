@@ -205,7 +205,7 @@ describe('the moment rail under a browser (BOOK-DOC-50 §4, §6)', () => {
 
     dragTo('7');
     expect(readout()).toContain(`26.10.2026${MID}09:00`);
-    expect(container.querySelector('.scrub-count')?.textContent).toBe('запись 2 из 3');
+    expect(container.querySelector('.scrub-count')?.textContent).toBe('показаны 2 из 3');
     expect(askedAt(fetchMock)).toHaveLength(before);
   });
 

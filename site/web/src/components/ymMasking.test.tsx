@@ -13,14 +13,13 @@ import { describe, expect, it } from 'vitest';
 import { Authors } from './Authors.tsx';
 import { ChangeSection } from './ChangeSection.tsx';
 import { Chronicle } from './Chronicle.tsx';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
 import { MarginNote } from './MarginNote.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProvenanceBlock } from './ProvenanceBlock.tsx';
 import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { MIDDOT } from '../lib/format.ts';
-import { RevisionObject } from './RevisionObject.tsx';
 import type { WordFacts } from '../lib/provenance.ts';
 
 /**
@@ -207,7 +206,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
   });
 
   it('masks the filing panel: the author, the quote and the body', () => {
-    const html = renderToStaticMarkup(<FilingPanel comment={COMMENT} anchor={null} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(<FilingCard comment={COMMENT} onClose={() => undefined} />);
     expectMasked(html, SENTINEL.name, '.filing-panel');
     expectMasked(html, SENTINEL.quote, '.filing-panel');
     expectMasked(html, SENTINEL.body, '.filing-panel');
@@ -217,15 +216,6 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     const html = renderToStaticMarkup(<MarginNote comment={COMMENT} onOpen={() => undefined} />);
     expectMasked(html, SENTINEL.name, '.margin-note');
     expectMasked(html, SENTINEL.quote, '.margin-note');
-  });
-
-  it('masks the revision object: the name, the quote and the body', () => {
-    const html = renderToStaticMarkup(
-      <RevisionObject comment={COMMENT} text={SENTINEL.quote} onClose={() => undefined} />,
-    );
-    expectMasked(html, SENTINEL.name, '.revision');
-    expectMasked(html, SENTINEL.quote, '.revision');
-    expectMasked(html, SENTINEL.body, '.revision');
   });
 
   it('masks the word’s margin block, whose hand may be a reader’s name', () => {
@@ -285,7 +275,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
 
   it('keeps the mask on the container, not on the text of a single field', () => {
     // A mask on an inner <span> would leave the container's own text (the quote around it) open.
-    const html = renderToStaticMarkup(<FilingPanel comment={COMMENT} anchor={null} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(<FilingCard comment={COMMENT} onClose={() => undefined} />);
     const node = holder(html, SENTINEL.body);
     expect(node.className).not.toContain('ym-hide-content');
     expect(node.parentElement?.className).toContain('ym-hide-content');

@@ -24,12 +24,10 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
 export function FilingMark({
   filings,
   onOpen,
-  onOpenRevision,
 }: {
   filings: SentenceFilings;
+  /** Both forms open the record at this sentence: the numeral a filing, the tick a landed one. */
   onOpen: (comment: CommentDto, origin: HTMLElement) => void;
-  /** The landed change's tick opens the revision object. */
-  onOpenRevision: (comment: CommentDto, origin: HTMLElement) => void;
 }) {
   const ordered = sortFilings(filings.all);
   const alive = ordered.find(isAlive);
@@ -85,7 +83,7 @@ export function FilingMark({
           data-number={filingNumber(landed)}
           data-state="accepted"
           aria-label={`${filingMarginalia(landed).word} · открыть запись ${filingNumber(landed)}`}
-          onClick={(event) => onOpenRevision(landed, event.currentTarget)}
+          onClick={(event) => onOpen(landed, event.currentTarget)}
         >
           <span className="filing-tick-bar" aria-hidden="true" />
         </button>

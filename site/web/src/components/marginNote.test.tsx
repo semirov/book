@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { STATE_WORDS } from '../lib/marginalia.ts';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
 import { FilingMark } from './FilingMark.tsx';
 import { MarginNote } from './MarginNote.tsx';
 import { PhoneStrip } from './PhoneStrip.tsx';
@@ -122,7 +122,7 @@ describe('the mark at the sentence', () => {
   it('shows the numeral for an alive filing, with its word in the accessible name', () => {
     const [group] = filingsForBlock([comment()], 'ch08#aa11bb22');
     const html = renderToStaticMarkup(
-      <FilingMark filings={group!} onOpen={noop} onOpenRevision={noop} />,
+      <FilingMark filings={group!} onOpen={noop} />,
     );
     expect(html).toContain('filing-alive');
     expect(html).toContain('class="filing-mark-num"');
@@ -135,7 +135,7 @@ describe('the mark at the sentence', () => {
       'ch08#aa11bb22',
     );
     const html = renderToStaticMarkup(
-      <FilingMark filings={group!} onOpen={noop} onOpenRevision={noop} />,
+      <FilingMark filings={group!} onOpen={noop} />,
     );
     expect(html).toContain('filing-tick');
     expect(html).toContain('filing-tick-bar');
@@ -154,7 +154,7 @@ describe('the mark at the sentence', () => {
       'ch08#aa11bb22',
     );
     const html = renderToStaticMarkup(
-      <FilingMark filings={texts[0]!} onOpen={noop} onOpenRevision={noop} />,
+      <FilingMark filings={texts[0]!} onOpen={noop} />,
     );
     expect(html).toContain('filing-alive');
     expect(html).not.toContain('filing-tick');
@@ -162,7 +162,7 @@ describe('the mark at the sentence', () => {
 
   it('prints nothing for a hidden filing', () => {
     const [group] = filingsForBlock([comment({ status: 'hidden' })], 'ch08#aa11bb22');
-    expect(renderToStaticMarkup(<FilingMark filings={group!} onOpen={noop} onOpenRevision={noop} />)).toBe('');
+    expect(renderToStaticMarkup(<FilingMark filings={group!} onOpen={noop} />)).toBe('');
   });
 });
 
@@ -187,7 +187,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
       const row = comment({ status });
       const note = renderToStaticMarkup(<MarginNote comment={row} onOpen={noop} />);
       const strip = renderToStaticMarkup(<PhoneStrip comments={[row]} skipQuote={null} onOpen={noop} />);
-      const record = renderToStaticMarkup(<FilingPanel comment={row} anchor={null} onClose={noop} />);
+      const record = renderToStaticMarkup(<FilingCard comment={row} onClose={noop} />);
       expect(note, `note ${status}`).toContain(`>${word}<`);
       expect(strip, `strip ${status}`).toContain(`>${word}<`);
       expect(record, `record ${status}`).toContain(`>${word}<`);
@@ -199,7 +199,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     for (const html of [
       renderToStaticMarkup(<MarginNote comment={working} onOpen={noop} />),
       renderToStaticMarkup(<PhoneStrip comments={[working]} skipQuote={null} onOpen={noop} />),
-      renderToStaticMarkup(<FilingPanel comment={working} anchor={null} onClose={noop} />),
+      renderToStaticMarkup(<FilingCard comment={working} onClose={noop} />),
     ]) {
       expect(html).toContain(`>${STATE_WORDS.working}<`);
     }
@@ -216,7 +216,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     });
     const refusedNote = renderToStaticMarkup(<MarginNote comment={refused} onOpen={noop} />);
     const refusedStrip = renderToStaticMarkup(<PhoneStrip comments={[refused]} skipQuote={null} onOpen={noop} />);
-    const refusedPanel = renderToStaticMarkup(<FilingPanel comment={refused} anchor={null} onClose={noop} />);
+    const refusedPanel = renderToStaticMarkup(<FilingCard comment={refused} onClose={noop} />);
     for (const html of [refusedNote, refusedStrip, refusedPanel]) expect(count(html, 'не принято')).toBe(1);
     // The strip is a word and a door; the note and the card own the sentence beside the word.
     for (const html of [refusedNote, refusedPanel]) {
@@ -227,7 +227,7 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     const landed = comment({ status: 'applied', applied: { chapter: 7, rev: 4 } });
     const landedNote = renderToStaticMarkup(<MarginNote comment={landed} onOpen={noop} />);
     const landedStrip = renderToStaticMarkup(<PhoneStrip comments={[landed]} skipQuote={null} onOpen={noop} />);
-    const landedPanel = renderToStaticMarkup(<FilingPanel comment={landed} anchor={null} onClose={noop} />);
+    const landedPanel = renderToStaticMarkup(<FilingCard comment={landed} onClose={noop} />);
     for (const html of [landedNote, landedStrip, landedPanel]) expect(count(html, 'внесено')).toBe(1);
     // The receipt is the same line on the note and the card; the strip is the word and a door.
     for (const html of [landedNote, landedPanel]) {

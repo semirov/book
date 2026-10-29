@@ -8,7 +8,7 @@ import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
-import { hideRevision } from '../lib/useRevision.ts';
+import { hideWord } from '../lib/useWord.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
@@ -57,7 +57,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 /** The two questions the enumeration asks of the DOM. */
 const FLOATING = '.filing-panel, [data-open="true"]';
-const CLOSES = '.seam-close, .prov-close, .filing-close, .revision-close';
+const CLOSES = '.seam-close, .prov-close, .filing-close, .rec-close';
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
@@ -114,7 +114,7 @@ afterEach(async () => {
 async function teardown(): Promise<void> {
   await act(async () => {
     hideFiling();
-    hideRevision();
+    hideWord();
     closeSeam();
   });
   if (root !== null) await act(async () => root?.unmount());
@@ -133,6 +133,8 @@ async function click(selector: string): Promise<void> {
   if (element === null) throw new Error(`no ${selector}`);
   await act(async () => {
     element.click();
+    // A door may read the log (the word's facts): give the request a task to settle in.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
   });
 }
@@ -243,7 +245,7 @@ function expectOneFrame(expected: { floating: number; close: string; frame?: str
 }
 
 describe('one close on screen for every surface combination', () => {
-  it('one close on screen for every surface combination', async () => {
+  it('the record is the sentence’s only surface; the premise card is the one exception', async () => {
     // 1 — the strip alone: no floating layer, and its own ✕ is the only control of its kind.
     await mount();
     expectOneFrame({ floating: 0, close: 'seam-close' });
@@ -256,51 +258,48 @@ describe('one close on screen for every surface combination', () => {
     expectOneFrame({ floating: 1, close: 'seam-close' });
     await restart();
 
-    // 3 — the strip with the word's record open: the record is the strip's own body, so the
-    // strip's ✕ is still the only close and nothing floats.
+    // 3 — the word's facts are the strip's own body: still one close, nothing floating.
     await mount();
     await click('.seam-prov');
     expect(document.querySelector('.prov-block')).not.toBeNull();
     expectOneFrame({ floating: 0, close: 'seam-close', frame: '.prov-block' });
     await restart();
 
-    // 4 — the strip under the sentence's card: still one frame and one close.
+    // 4 — a filing row opens the record: the strip goes, no card, and the record's ✕ is the
+    // only close on the page.
     await mount([comment()]);
     await click('.seam-filing');
-    expect(document.querySelector('.seam-close')).toBeNull();
-    expectOneFrame({ floating: 1, close: 'filing-close' });
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expect(document.querySelector('.rec')?.getAttribute('data-body')).toBe('filing');
+    expectOneFrame({ floating: 0, close: 'rec-close', frame: '.rec' });
     await restart();
 
-    // 5 — the revision object: inline in the margin, so it is not a floating layer — but the
-    // record opens over a seam, and exactly one close stays on the page.
+    // 5 — a landed tick opens the same record, and closes the strip and the word's body.
     await mount([comment({ status: 'applied', applied: { chapter: 8, rev: 4 } })]);
     await click('.seam-prov');
     expect(document.querySelector('.prov-block')).not.toBeNull();
     await click('.filing-tick');
     expect(document.querySelector('.prov-block')).toBeNull();
     expect(document.querySelector('.seam')).toBeNull();
-    expectOneFrame({ floating: 0, close: 'revision-close', frame: '.revision' });
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expectOneFrame({ floating: 0, close: 'rec-close', frame: '.rec' });
     await restart();
 
-    // 7 — the strip with its form under the word's record: two half-written surfaces never
-    // coexist, so the form is the surface that goes — and the strip's ✕ closes the rest.
+    // 6 — the strip with its form under the word's facts: two half-written surfaces never
+    // coexist, so the form is the surface that goes — the strip's ✕ closes the rest.
     await mount();
     await click('.seam-cta');
     expect(document.querySelector('.seam-form')).not.toBeNull();
     await click('.seam-prov');
-    expect(document.querySelector('.seam-form'), 'the form goes under the record').toBeNull();
+    expect(document.querySelector('.seam-form'), 'the form goes under the facts').toBeNull();
     expectOneFrame({ floating: 0, close: 'seam-close', frame: '.prov-block' });
-    // The door puts the record away and the strip is where it was; the form comes back with its
-    // own action, and the focus the door returns to is the door itself.
     await click('.seam-prov');
     expect(document.querySelector('.prov-block')).toBeNull();
     expect(document.activeElement?.getAttribute('data-door')).toBe('prov');
     expectOneFrame({ floating: 0, close: 'seam-close' });
     await restart();
 
-    // 8 — the strip with its form under the filing its own refusal names (the blocker). The
-    // refusal is the strip's fact: the rebuilt form prints the line and its door again, and the
-    // focus the panel's close returns lands on that door — never on `<body>`.
+    // 7 — the refusal’s own door opens the record: the card is gone from the reading path.
     refusing(comment({ id: 'cmt_x' }));
     await mount();
     await click('.seam-cta');
@@ -309,17 +308,12 @@ describe('one close on screen for every surface combination', () => {
     expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
     await click('[data-door="duplicate"]');
     expect(document.querySelector('.seam-form')).toBeNull();
-    expectOneFrame({ floating: 1, close: 'filing-close' });
-    await click('.filing-close');
-    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
-    expect(document.querySelector('[data-door="duplicate"]')).not.toBeNull();
-    expectOneFrame({ floating: 1, close: 'seam-close' });
-    expect(document.activeElement?.getAttribute('data-door')).toBe('duplicate');
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expectOneFrame({ floating: 0, close: 'rec-close', frame: '.rec' });
     await restart();
 
-    // 9 — an empty chapter's premise strip with its form under the card its refusal names. The
-    // same three surfaces on a chapter with no prose: one close at a time, and the refusal
-    // survives the card that its own door opened.
+    // 8 — the named exception: an empty chapter’s premise has no sentence, so its filing keeps
+    // the one card. It is the only surface with a card and it closes to nothing else.
     refusing(
       comment({
         id: 'cmt_x',
@@ -338,12 +332,9 @@ describe('one close on screen for every surface combination', () => {
     await submit();
     expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
     await click('[data-door="duplicate"]');
-    expect(document.querySelector('.seam-form')).toBeNull();
+    expect(document.querySelector('.seam')).toBeNull();
     expectOneFrame({ floating: 1, close: 'filing-close', frame: '.filing-panel' });
     await click('.filing-close');
-    expect(document.querySelector('.seam-form'), 'the premise form comes back').not.toBeNull();
-    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
-    expectOneFrame({ floating: 1, close: 'seam-close' });
-    expect(document.activeElement?.getAttribute('data-door')).toBe('duplicate');
+    expect(document.querySelector('.filing-panel')).toBeNull();
   });
 });

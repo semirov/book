@@ -9,7 +9,6 @@ import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { closeRecord, resetRecordMemory } from '../lib/record.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
-import { hideRevision } from '../lib/useRevision.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { tapAt } from './tap.fixture.ts';
 
@@ -134,7 +133,6 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     hideFiling();
-    hideRevision();
     closeSeam();
     closeRecord();
   });
@@ -428,9 +426,10 @@ describe('the record: the sentence is the door', () => {
     // The sentence's handler bails: the numeral's own keys are never swallowed.
     expect(event.defaultPrevented).toBe(false);
     expect(rec()?.getAttribute('data-acc')).toBe('open');
-    // And the numeral's own act still reaches the filing.
+    // And the numeral's own act still reaches the filing — in the record at that sentence.
     await press('.p .filing-mark');
-    expect(document.querySelector('.filing-panel')).not.toBeNull();
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expect(rec()?.getAttribute('data-body')).toBe('filing');
   });
 
   it('walks the paragraph by keyboard: one tab stop, arrows to every sentence, Enter opens', async () => {

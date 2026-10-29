@@ -10,7 +10,7 @@ import { changeWord } from './marginalia.ts';
  * A change used to be a sheet of its own (the change card, then the focus view). It is now a
  * section of the sentence's record: the numeral is the section's header value, and the body is
  * rows in the record's register — the touched sentence before and after, the state word with
- * its moment, the change's outcome, and one line per step. Everything here is a function of
+ * its moment, the change's verdict, and one line per step. Everything here is a function of
  * the public DTOs and the record's own anchor, so the rows can be asserted without a browser.
  */
 
@@ -24,8 +24,11 @@ export type ChangeView = {
   state: string;
   /** `25.10, 12:05` — the moment the change was decided, or when it was filed. */
   stamp: string;
-  /** `внесено` / `внесено частично` / `снято` — the outcome of the change. */
-  outcome: string;
+  /**
+   * The verdict in the book's register: `внесено` for a landed change, and
+   * `правка не внесена: <reason>` for one the book stopped. No gate code, no stage name.
+   */
+  verdict: string;
   /** The author's own words, as the record quotes them when there is no filing. */
   intent: string;
   /** The sentence the filing cited, as filed; `null` when the change has no filing. */
@@ -46,6 +49,23 @@ export function changeBefore(change: Pick<ChangeDto, 'source'>, filings: readonl
   return filings?.find((filing) => filing.id === id)?.anchor.quote ?? null;
 }
 
+/** Outcomes that entered the book; every other terminal outcome is a sentence of refusal. */
+const LANDED: ReadonlySet<string> = new Set(['applied', 'adapted', 'registered', 'finding']);
+
+/**
+ * The change's verdict as a reader can check it. The engine's vocabulary (a gate's word, a
+ * stage, a duration) is the author's console; here a stopped change is one sentence, «правка
+ * не внесена», with the public reason that says what happened to the text.
+ */
+export function changeVerdict(change: ChangeDto): string {
+  if (change.outcome !== null && LANDED.has(change.outcome)) return outcomeCopy(change.outcome);
+  if (change.status === 'pending' || change.status === 'processing' || change.status === 'stale') {
+    return 'правка ещё не внесена';
+  }
+  const reason = change.reason?.trim() ?? '';
+  return reason.length === 0 ? 'правка не внесена' : `правка не внесена: ${reason}`;
+}
+
 export function changeView(
   change: ChangeDto,
   before: string | null,
@@ -56,7 +76,7 @@ export function changeView(
     numeral: changeNumber(change.seq),
     state: changeWord(change),
     stamp: commentStamp(change.decidedAt ?? change.enqueuedAt),
-    outcome: outcomeCopy(change.outcome),
+    verdict: changeVerdict(change),
     intent: change.intent,
     before,
     after,

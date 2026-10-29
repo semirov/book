@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
  * from being a finding while a rendered string cannot slip through.
  *
  * **The internal noun for a pass**: a reader's surface says «писалась» / «пишется», never the
- * noun the store and the hash use. The hash itself is built from `PASS_RECORD_PREFIX` in
+ * noun the store and the old address use. The hash itself is read by `passHash.ts` in
  * `shared`, so no `web/src` literal needs the word — and this guard proves none prints it.
  */
 

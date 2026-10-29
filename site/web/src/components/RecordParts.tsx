@@ -151,8 +151,24 @@ export function ExistingFilingNotice({ onOpen, onNew }: { onOpen: () => void; on
   );
 }
 
-/** A filing read in full — the same body, not a card: back row, text, state, the deck's line. */
-export function FilingBody({ comment, onBack }: { comment: CommentDto; onBack: () => void }) {
+/**
+ * A filing read in full — the same body, not a card: back row, its facts, the sentence it was
+ * filed on and the sentence that stands there now, then the reader's words. The record opens
+ * with this body when a numeral, a margin note or a place door names the filing.
+ */
+export function FilingBody({
+  comment,
+  onBack,
+  before = null,
+  after = null,
+}: {
+  comment: CommentDto;
+  onBack: () => void;
+  /** The filing's stored sentence, when the book rewrote it (`было`). */
+  before?: string | null;
+  /** The sentence as it stands now (`стало`). */
+  after?: string | null;
+}) {
   return (
     <div className="rec-filing" data-kind="filing">
       <button type="button" className="rec-back" onClick={onBack}>
@@ -161,6 +177,18 @@ export function FilingBody({ comment, onBack }: { comment: CommentDto; onBack: (
       <p className="rec-filing-facts">
         {`${filingNumber(comment)} · ${comment.author} · ${filingConsequence(comment)}`}
       </p>
+      {before === null ? null : (
+        <p className="rec-change-row">
+          <span className="rec-change-label">было</span>
+          <span className="rec-change-quote">«{before}»</span>
+        </p>
+      )}
+      {after === null ? null : (
+        <p className="rec-change-row">
+          <span className="rec-change-label">стало</span>
+          <span className="rec-change-quote">«{after}»</span>
+        </p>
+      )}
       <p className="rec-filing-text">{comment.body}</p>
     </div>
   );

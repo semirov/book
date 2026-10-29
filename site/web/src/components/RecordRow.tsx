@@ -17,7 +17,7 @@ import { PlaceLink } from './PlaceLink.tsx';
  * past, not the workshop's logbook.
  *
  * The record's door is an **anchor**, built by the server from the same id the record behind it
- * uses (`?change=<changeId>` · `#проход-<changeId>` · `#проход-<chapter>-<passId>`), so a row and
+ * uses (`?change=<changeId>` for a change, `#ch-<chapter>` for a bare pass), so a row and
  * its record cannot name one entry two ways. Clicking the row does not move the moment either;
  * the moment moves only through `MomentControl`.
  *
@@ -54,7 +54,7 @@ export function RecordRow({ record, onOpenChange, onLoadChapter }: RecordRowProp
   /**
    * The record's own door. A change opens through the page's one door: a query alone would be a
    * promise this surface cannot keep in place, so the landing is the page's. A bare pass has no
-   * change row — its `#проход-<chapter>-<passId>` is the record page, and the browser's own act
+   * change row — its `#ch-<chapter>` is the chapter's place, and the browser's own act
    * is the one that gets there. A modified click is always the browser's (copy, a new tab), so
    * the href keeps its promise either way.
    */

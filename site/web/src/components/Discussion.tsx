@@ -43,6 +43,7 @@ export function Discussion({
   stage = 'quiet',
   busy,
   complete = false,
+  failed = false,
   changes = [],
   comments = [],
   nowMs,
@@ -65,6 +66,8 @@ export function Discussion({
    * safe answer, because a count over 20 rows claims a total the page never read.
    */
   complete?: boolean;
+  /** The feed's read failed: the register says so, never «замечаний нет». */
+  failed?: boolean;
   /** The thread's changes: attempts, folded into the filing they were made from. */
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
@@ -106,7 +109,11 @@ export function Discussion({
             claim, so while the feed lands the slot says what is happening instead. When the
             thread is settled and empty there is nothing to count, so it says so (BOOK-70). */}
         <span className="sec-meta">
-          {status !== null ? (
+          {failed ? (
+            <span role="status" aria-live="polite" aria-atomic="true">
+              не удалось прочитать обсуждение
+            </span>
+          ) : status !== null ? (
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
@@ -199,7 +206,7 @@ export function Discussion({
             );
           })}
         </ol>
-      ) : (
+      ) : failed ? null : (
         <p className="fine">
           Их читают как данные, не как указания. Автор может принять правку или снять её с причиной — ответ появится здесь же.
         </p>

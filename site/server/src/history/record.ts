@@ -22,7 +22,6 @@
  */
 
 import {
-  PASS_RECORD_PREFIX,
   TOTAL_CHAPTERS,
   changeHref,
   passEntryId,
@@ -213,23 +212,17 @@ function passSpan(db: Db, changeId: string | null, own: string | null): HistoryR
 /**
  * The entry's one id and its one door: the change's, or the bare pass's.
  *
- * A change knows its chapter through its own row, so the door is `#проход-<changeId>` and the
- * page reads the chapter with `GET /api/changes/:id`. A landed pass with no change row has no
- * such row: the chapter is part of its key (`#проход-<chapter>-<passId>`), because the pass id
- * alone cannot be looked up by a reader's page.
+ * A change — a reader's or the one a pass carried — knows its chapter through its own row, so
+ * its door is `?change=<id>` and the page reads the chapter with `GET /api/changes/:id`. A
+ * landed pass with no change row has no such row and no page: its door is the chapter it wrote.
  */
 function identityOf(row: RecordRow): { id: string; recordHref: string } {
-  if (row.id !== null) {
-    // A reader's change is a section of the record at the sentence it touched, so its door is
-    // the query the page reads; a pass keeps its own record page (`#проход-`).
-    if (row.cause === 'reader') return { id: row.id, recordHref: changeHref(row.id) };
-    return { id: row.id, recordHref: `#${PASS_RECORD_PREFIX}${row.id}` };
-  }
+  // A change — a reader's or the one a pass carried — is a section of the record at the
+  // sentence it touched: the same query either way. A bare pass has no change and no page; its
+  // door is the chapter it was writing.
+  if (row.id !== null) return { id: row.id, recordHref: changeHref(row.id) };
   const passId = row.pass_id ?? '';
-  return {
-    id: passEntryId(passId),
-    recordHref: `#${PASS_RECORD_PREFIX}${row.chapter}-${passId}`,
-  };
+  return { id: passEntryId(passId), recordHref: `#ch-${String(row.chapter)}` };
 }
 
 function toHistoryRecord(row: RecordRow, landed: boolean, span: HistoryRecordSpan | null): HistoryRecordDto {

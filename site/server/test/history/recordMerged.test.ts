@@ -1,4 +1,4 @@
-import { PASS_RECORD_PREFIX, TOTAL_CHAPTERS } from '@book/shared';
+import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../../src/db/db.ts';
@@ -188,7 +188,7 @@ describe('the record is the union of changes and landed passes (the fix)', () =>
       cause: 'pass',
       alias: null,
       changeId: seeded.machine,
-      recordHref: `#${PASS_RECORD_PREFIX}${seeded.machine}`,
+      recordHref: `?change=${seeded.machine}`,
     });
 
     const bare = byId.get(`pass:${seeded.bare}`);
@@ -199,7 +199,7 @@ describe('the record is the union of changes and landed passes (the fix)', () =>
       cause: 'pass',
       // The bare pass has no change row, so its chapter is part of the door's key: the page has
       // nothing else to find it by.
-      recordHref: `#${PASS_RECORD_PREFIX}4-${seeded.bare}`,
+      recordHref: '#ch-4',
     });
   });
 

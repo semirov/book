@@ -63,11 +63,7 @@ import { useDeepLink } from './lib/useDeepLink.ts';
 import { setChangeOpener } from './lib/changeDoor.ts';
 import { useChangeDoor } from './useChangeDoor.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
-import { useBookCost } from './useBookCost.ts';
 import { useFrontRevision } from './useFrontRevision.ts';
-import { parsePassRecordHash } from './lib/passRecord.ts';
-import { usePassRecord } from './lib/usePassRecord.ts';
-import { PassRecordPage } from './components/PassRecordPage.tsx';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → live TOC →
@@ -97,8 +93,6 @@ export function App() {
    * page hands the whole mode down to the article instead of drawing a floating box at its root.
    */
   const sentence = useParagraphChain();
-  /** BOOK-166: `#проход-…` is a mode of this page — its own read and state. */
-  const passRecord = usePassRecord();
   usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
@@ -108,7 +102,7 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, commentsComplete, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
+  const { changes, comments, commentsComplete, commentsFailed, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
     useReaderFeed();
   // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
   const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
@@ -118,19 +112,9 @@ export function App() {
    * The one door to a change: it lands on the change's sentence and opens the record there with
    * the `правка` section expanded. A change never gets a surface of its own again.
    */
-  const changeDoor = useChangeDoor({
-    ready: data !== null && view === 'book' && passRecord.phase === 'idle',
-    loadChapter,
-  });
+  const changeDoor = useChangeDoor({ ready: data !== null && view === 'book', loadChapter });
   const openChange = useCallback(
     (changeId: string) => {
-      // A pass's record is a mode chosen by the fragment: opening a change leaves that mode.
-      if (parsePassRecordHash(window.location.hash) !== null) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-        // `usePassRecord` reads the fragment on `hashchange`; the mode has to leave before the
-        // landing, or the book it lands on is not on screen yet.
-        window.dispatchEvent(new HashChangeEvent('hashchange'));
-      }
       setView('book');
       changeDoor.open(changeId);
     },
@@ -179,8 +163,6 @@ export function App() {
 
   // `/api/queue` is polled only while the engine is alive (§9); the socket carries the rest.
   useQueuePoll(dataRef, setData);
-  /** BOOK-114: the footer's outlay, re-read when the book state version moves. */
-  const cost = useBookCost(data?.state.version ?? null);
 
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
@@ -393,8 +375,6 @@ export function App() {
     }
     scrollToChapter(target.n);
   };
-  /** Reaching a chapter (a record's step, a pass record's door): the book view is on. */
-  const toChapter = (n: number): void => void (setView('book'), scrollToChapter(n));
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
    * so the mark and the strip are there with no reload; the chapter's feed and the register
@@ -407,7 +387,6 @@ export function App() {
   };
 
   // BOOK-166 — the record is a mode of the same page: the head, the record, the colophon.
-  if (passRecord.phase !== 'idle') return <PassRecordPage record={passRecord} chrome={{ state, front, ribbon, catalog, escalation: escalationMarkers(state.unresolved), viewer, cost, donateUrl: front.donateUrl ?? null, exportBytes: front.exportBytes ?? null, capacity: connection === 'capacity', live: history }} onOpenChange={openChange} onOpenChapter={toChapter} />;
   const doorLine =
     changeDoor.failed === null ? null : (
       <p className="state-line" role="status">
@@ -480,8 +459,8 @@ export function App() {
         exportBytes={front.exportBytes ?? null}
         onLoadChapter={loadChapter}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
-      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} failed={commentsFailed} onLoadChapter={loadChapter} />
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {doorLine}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       <FootJumps live={history} processing={state.queue.processing !== null} revising={Object.values(revising).some((block) => block.active)} chapter={liveChapter(state.queue.processing?.chapter ?? null, revising)} change={changes[0] ?? null} plate={connection === 'capacity'} onLoad={loadChapter} />

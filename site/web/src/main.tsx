@@ -29,8 +29,6 @@ import './styles/seam.css';
 import './styles/pass-live.css';
 // BOOK-167 — the pass strip: a block in the seam's place, after the pass's own ink.
 import './styles/pass-strip.css';
-// BOOK-166 — the pass record: a page framed like the colophon, after the surfaces it sits beside.
-import './styles/pass-record.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';

@@ -6,7 +6,10 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { seamDrafts } from '../lib/draft.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
+import { closeRecord, resetRecordMemory } from '../lib/record.ts';
+import { hideFiling } from '../lib/useFiling.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
+import { hideWord } from '../lib/useWord.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
@@ -89,6 +92,9 @@ let root: Root | null = null;
 export function installSeamDom(): void {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   beforeEach(() => {
+    resetRecordMemory();
+    hideFiling();
+    hideWord();
     vi.stubGlobal('IntersectionObserver', class {
       observe(): void {}
       unobserve(): void {}
@@ -101,11 +107,15 @@ export function installSeamDom(): void {
     // Closing the seam is a store update, and the paragraphs still subscribed to it: both
     // belong in one `act`, or React reports every update as one made outside it.
     await act(async () => {
+      closeRecord();
       closeSeam();
       root?.unmount();
     });
     root = null;
     document.body.innerHTML = '';
+    resetRecordMemory();
+    hideFiling();
+    hideWord();
     vi.unstubAllGlobals();
   });
 }

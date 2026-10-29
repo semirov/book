@@ -106,14 +106,6 @@ export function changeHref(changeId: string): string {
   return `?${CHANGE_QUERY_PARAM}=${encodeURIComponent(changeId)}`;
 }
 
-/**
- * The one door of a pass: `#проход-<changeId>` when the pass carries a change row, and
- * `#проход-<chapter>-<passId>` when it does not (the chapter is part of the key because a bare
- * pass knows its chapter and nothing else can find it). The record behind it parses the same
- * id, so the chronicle row, the foot's door and the page cannot invent different links.
- */
-export const PASS_RECORD_PREFIX = 'проход-';
-
 /** The entry id of a pass that has no `changes` row behind it: `pass:<passId>`. */
 export function passEntryId(passId: string): string {
   return `pass:${passId}`;
@@ -196,8 +188,8 @@ export type HistoryRecordDto = {
   changeId: string | null;
   /**
    * The one way in, built from the same id the record behind the door uses:
-   * `?change=<changeId>` for a reader's change, `#проход-<changeId>` for a pass that carries a
-   * change row, `#проход-<chapter>-<passId>` for a landed pass that has none.
+   * `?change=<changeId>` for a change (a reader's or a pass's), and `#ch-<chapter>` for a landed
+   * pass that has no change row: a pass has no page of its own.
    */
   recordHref: string;
   /** `«было» → «стало»`; `null` when the book holds no honest pair behind this entry. */

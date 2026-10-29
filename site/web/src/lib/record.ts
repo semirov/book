@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
+import type { CommentDto } from '@book/shared';
+
 import { track, type SeamSurface } from './analytics.ts';
 import { closeOtherOverlays, registerOverlay } from './overlayRegistry.ts';
 import type { SeamAnchor } from './seam.ts';
@@ -36,6 +38,11 @@ export type OpenRecord = RecordRange & {
    * the door, because the sentence's live filing list no longer carries it.
    */
   changeQuote?: string | null;
+  /**
+   * The filing the record was opened for (a numeral, a margin note, a place door): the record
+   * opens with the filing's body in the same register, never in a panel of its own.
+   */
+  filing?: CommentDto | null;
 };
 
 /**

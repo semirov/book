@@ -61,6 +61,8 @@ export type RecordProps = {
   changeId?: string | null;
   /** The filing's stored quote — the sentence as the change found it. */
   changeQuote?: string | null;
+  /** The filing the record was opened for: its body is the record's open one. */
+  filing?: CommentDto | null;
   onPosted: (comment: CommentDto) => void;
   onClose: () => void;
   onReanchor?: (draft: SeamDraft) => void;
@@ -92,6 +94,7 @@ export function Record({
   history,
   changeId = null,
   changeQuote = null,
+  filing = null,
   onPosted,
   onClose,
   onReanchor,
@@ -102,12 +105,12 @@ export function Record({
       seamDrafts.read(draftKey) ??
       emptyDraft({ chapter: entry.n, blockId, sentence: anchor?.quote ?? '', baseRev, blockIndex }),
   );
-  const [body, setBody] = useState<Body>('list');
+  const [body, setBody] = useState<Body>(filing === null ? 'list' : 'filing');
   const [section, setSection] = useState<Section | null>(changeId === null ? 'interventions' : 'change');
   const changeRead = useChangeRead(changeId, section === 'change');
   const change = changeRead.change;
   const [lifted, setLifted] = useState(false);
-  const [openFiling, setOpenFiling] = useState<CommentDto | null>(null);
+  const [openFiling, setOpenFiling] = useState<CommentDto | null>(filing);
   const [receipt, setReceipt] = useState<CommentDto | null>(null);
   const [phase, setPhase] = useState<'enter' | 'open' | 'closing'>('enter');
   const { chain, settled: chainSettled, failed: chainFailed } = useChainRead(blockId);
@@ -150,22 +153,15 @@ export function Record({
     return () => window.clearTimeout(timer);
   }, []);
 
-  /**
-   * Release the reading line's hold. The hold corrects every movement of its probe, and the
-   * policy below is a movement **the reader asked for**: left armed, it would revert the
-   * policy's scroll within one frame and leave the block below the fold with no marker.
-   */
+  /** Release the reading line's hold: the policy's scroll is a movement the reader asked for,
+   * and an armed hold would revert it within one frame. */
   const releaseHold = (): void => {
     releaseAnchor.current?.();
     releaseAnchor.current = null;
   };
 
-  /**
-   * The long-paragraph policy (#3863, the owner's numbers): after the block opens, bring its
-   * top to `viewport bottom − 24` **only** if that does not move the touched line above the
-   * header's lower edge; otherwise leave the page alone and offer the marker instead. It runs
-   * after the disclosure (240 ms), so the height is final and the hold has nothing left to do.
-   */
+  /** #3863: after the block opens, bring its top to `viewport bottom − 24` only when that does
+   * not move the touched line above the header's edge; otherwise the marker is the offer. */
   const settleScroll = (): void => {
     if (settledScroll.current) return;
     settledScroll.current = true;
@@ -271,10 +267,7 @@ export function Record({
   const historyWindowed = rowWindow(historyList, lifted);
   const quote = anchor?.quote ?? '';
 
-  /**
-   * The quote with the touched word underlined — `RecordParts.QuoteBody` draws it; the word is
-   * decoration inside the quote and never a second node.
-   */
+  /** `QuoteBody` underlines the word inside the quote; never a second node. */
   const quoteStart = anchor?.sentence.start ?? null;
 
   const markerScroll = (): void => {
@@ -287,10 +280,7 @@ export function Record({
   };
 
   const headState = receipt !== null ? `ждёт · ${filingNumber(receipt)}` : state.word;
-  /**
-   * BOOK-128 #3862 — `вмешаться` is one act, never a toggle: a tap opens the form in the same
-   * block; a live filing is said out loud first instead of a silent nothing.
-   */
+  /** #3862 — `вмешаться` is one act: the form, or the live filing said out loud first. */
   const openIntervention = (): void => {
     keepPlace(headRef.current, () => setBody(aliveFiling === null ? 'form' : 'notice'));
   };
@@ -409,6 +399,14 @@ export function Record({
             ) : body === 'filing' && openFiling !== null ? (
               <FilingBody
                 comment={openFiling}
+                before={
+                  openFiling.anchor.quote === null || openFiling.anchor.quote === quote
+                    ? null
+                    : openFiling.anchor.quote
+                }
+                after={
+                  openFiling.anchor.quote === null || openFiling.anchor.quote === quote ? null : quote
+                }
                 onBack={() => {
                   keepPlace(sheetRef.current, () => {
                     setBody('list');

@@ -172,10 +172,6 @@
   --grip-row: 44px;
   --grip-hit: 44px;
 
-  /* BOOK-167 — the pass strip's fixed height: a block in the seam's place, never a growing
-     panel. 18 px of head, a 172 px rail (four rows and one live row) and what the pass spent. */
-  --pass-h: 235px;
-
   /* skeleton widths — BOOK-DOC-43 §3. Geometry, not ink, so there is no day/night pair:
      eight ragged line endings, never 100 %, selected by `data-w` on a `.skel-line`. */
   --skel-w1: 94%;

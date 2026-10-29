@@ -56,7 +56,7 @@ export function ChangeSection({
         <p className="rec-change-intent">«{view.intent}»</p>
       ) : null}
       <p className="rec-change-facts">{`${view.state} · ${view.stamp}`}</p>
-      <p className="rec-change-facts">{view.outcome}</p>
+      <p className="rec-change-facts">{view.verdict}</p>
       {view.steps.length === 0 ? null : (
         <ol className="rec-change-steps">
           {view.steps.map((step) => (

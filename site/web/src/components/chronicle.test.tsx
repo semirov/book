@@ -105,7 +105,7 @@ const ITEMS: HistoryRecordDto[] = [
     outcome: null,
     reason: null,
     changeId: null,
-    recordHref: '#проход-9-stp_7',
+    recordHref: '#ch-9',
     span: { before: 'первый абзац', after: 'первый абзац, переписанный' },
   },
   {
@@ -140,7 +140,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
     );
     // The readout answers "what time" with the record under the thumb.
     expect(html).toContain(`26.10.2026${MID}09:00`);
-    expect(html).toContain('запись 2 из 3');
+    expect(html).toContain('показаны 2 из 3');
     // Both ends are words over dated moments: the log's own ends, not the thumb's.
     expect(html).toContain('начало книги');
     expect(html).toContain('сейчас');
@@ -186,7 +186,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
     );
     expect(html).toContain(`27.10.2026${MID}15:40${MID}сейчас`);
     expect(html).toContain(`aria-valuetext="27.10.2026${MID}15:40${MID}сейчас"`);
-    expect(html).toContain('запись 3 из 3');
+    expect(html).toContain('показаны 3 из 3');
   });
 
   it('dates the rest position by the log’s own last moment, not by the newest record (BOOK-65 M2)', () => {

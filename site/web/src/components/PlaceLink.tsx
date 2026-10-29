@@ -17,8 +17,9 @@ import {
   type Place,
   type PlaceTarget,
 } from '../lib/place.ts';
+import { openFilingAt } from '../lib/recordRoute.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
 
 /**
  * BOOK-168 — **a filing row is a door to the paragraph it speaks about**.
@@ -34,9 +35,11 @@ import { FilingPanel } from './FilingPanel.tsx';
  * the target's top at the reading line, the footer grip respected, the card opened on the
  * post-scroll rect (`lib/place.ts`).
  *
- * The card is the page's one panel (`useFiling`), drawn by the link that opened it — `owner` is
- * this link, not the paragraph: a chapter the reader has not loaded has no paragraph to draw
- * a card from, and two doors to one filing must never raise two boxes.
+ * A filing with a sentence opens **the record** at that sentence, with the filing's body as the
+ * record's open one (`lib/recordRoute.ts`): the link lands, the record stands under the
+ * paragraph, and there is no second surface beside the prose. Only a filing with no sentence at
+ * all — a premise, or an anchor the log no longer resolves — keeps the page's one card, drawn
+ * by this link (`owner`), because there is no register to put it in.
  *
  * BOOK-128 #3863 / review M5 — **the card is a block after the row, never inside it.** A link
  * inside a `<p>` (a quote) or a flex row (the chronicle's `li.chr-row`) cannot hold an `<aside>`:
@@ -75,7 +78,7 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
   /** One owner per link: only the door that was opened draws the card. */
   const owner = `place:${useId()}`;
   const filing = useOpenFiling();
-  const open = filing !== null && filing.owner === owner && filing.comment !== null ? filing : null;
+  const open = filing !== null && filing.owner === owner ? filing : null;
   const link = useRef<HTMLAnchorElement>(null);
 
   const closePanel = (): void => {
@@ -84,17 +87,29 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
     origin?.focus();
   };
 
-  /** Land on the target and hand its post-scroll rect to the card. */
-  const openAt = (comment: CommentDto, target: PlaceTarget): void => {
+  /** The card is the named exception: a filing with no sentence on this page. */
+  const openCard = (comment: CommentDto, target: PlaceTarget): void => {
+    landAt(target.element);
     showFiling({
-      kind: 'filing',
       owner,
       comment,
       origin: link.current,
-      rect: landAt(target.element),
-      fromSeam: false,
       note: placeNote(comment, target.chapterOnly),
     });
+  };
+
+  /**
+   * The sentence's own route: the record at the filing's paragraph, with its body open. The
+   * card is drawn only when the filing has no sentence to stand on.
+   */
+  const openAt = async (comment: CommentDto, target: PlaceTarget, token?: number): Promise<void> => {
+    const opened = await openFilingAt({
+      comment,
+      element: target.element,
+      origin: link.current,
+      ...(token === undefined ? {} : { token }),
+    });
+    if (!opened) openCard(comment, target);
   };
 
   /**
@@ -135,7 +150,7 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
       return;
     }
     if (comment !== null) {
-      openAt(comment, target);
+      await openAt(comment, target, token);
       return;
     }
     landAt(target.element);
@@ -191,7 +206,7 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
 
   /** The card's block seat: a sibling after the row, never a child of the paragraph. */
   const [seat, setSeat] = useState<HTMLElement | null>(null);
-  const openId = open === null || open.comment === null ? null : open.comment.id;
+  const openId = open === null ? null : open.comment.id;
   useEffect(() => {
     if (openId === null) {
       setSeat(null);
@@ -224,12 +239,11 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
       >
         {children}
       </a>
-      {seat === null || open === null || open.comment === null
+      {seat === null || open === null
         ? null
         : createPortal(
-            <FilingPanel
+            <FilingCard
               comment={open.comment}
-              anchor={open.rect}
               placeNote={open.note ?? null}
               onClose={closePanel}
             />,

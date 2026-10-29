@@ -6,7 +6,7 @@ import { ChangeSection } from '../src/components/ChangeSection.tsx';
 import { ChapterHeader } from '../src/components/ChapterHeader.tsx';
 import { Colophon } from '../src/components/Colophon.tsx';
 import { Discussion } from '../src/components/Discussion.tsx';
-import { FilingPanel } from '../src/components/FilingPanel.tsx';
+import { FilingCard } from '../src/components/FilingCard.tsx';
 import { Header } from '../src/components/Header.tsx';
 import { LegalPage } from '../src/components/LegalPage.tsx';
 import { MarginNote } from '../src/components/MarginNote.tsx';
@@ -17,9 +17,8 @@ import { OwnDecisions } from '../src/components/OwnDecisions.tsx';
 import { PassStrip } from '../src/components/PassStrip.tsx';
 import { PhoneStrip } from '../src/components/PhoneStrip.tsx';
 import { PremiseRow } from '../src/components/PremiseRow.tsx';
-import { RowsList } from '../src/components/RecordParts.tsx';
+import { FilingBody, RowsList } from '../src/components/RecordParts.tsx';
 import { RecordRow } from '../src/components/RecordRow.tsx';
-import { RevisionObject } from '../src/components/RevisionObject.tsx';
 import { TableOfContents } from '../src/components/TableOfContents.tsx';
 import { TitleSheet } from '../src/components/TitleSheet.tsx';
 
@@ -36,7 +35,6 @@ import {
   FIXED_NOW,
   FRONT,
   IMPRINT,
-  PARAGRAPH,
   PASS_EVENTS,
   PASS_RECORD,
   PREMISE,
@@ -49,8 +47,6 @@ import {
   ChFailRow,
   ChrTitle,
   HeadRow,
-  PassRecordAbsent,
-  PassRecordBlock,
   PastChapterSummary,
   PastTocRow,
   RecordHead,
@@ -76,7 +72,6 @@ import '../src/styles/chronicle.css';
 import '../src/styles/seam.css';
 import '../src/styles/pass-live.css';
 import '../src/styles/pass-strip.css';
-import '../src/styles/pass-record.css';
 import '../src/styles/panels.css';
 import '../src/styles/seam-form.css';
 import '../src/styles/marginalia.css';
@@ -175,7 +170,7 @@ function Gallery() {
         <Discussion depth={0} comments={COMMENTS} changes={[ATTEMPT]} live nowMs={FIXED_NOW} />
       </Line>
       <Line id=".filing-head">
-        <FilingPanel comment={COMMENT} anchor={null} onClose={noop} earlierAttempts={[]} />
+        <FilingCard comment={COMMENT} onClose={noop} earlierAttempts={[]} />
       </Line>
       <Line id=".margin-note-head">
         <MarginNote comment={COMMENT_TWO} onOpen={noop} />
@@ -183,8 +178,10 @@ function Gallery() {
       <Line id=".phone-strip-row">
         <PhoneStrip comments={COMMENTS} skipQuote={null} onOpen={noop} />
       </Line>
-      <Line id=".revision-head">
-        <RevisionObject comment={COMMENT_TWO} text={PARAGRAPH} onClose={noop} />
+      <Line id=".rec-filing-facts / .rec-filing-text">
+        <div className="rec">
+          <FilingBody comment={COMMENT_TWO} onBack={noop} before="была одна лампа" after="лампа погасла" />
+        </div>
       </Line>
       <Line id=".chr-title">
         <ChrTitle />
@@ -204,12 +201,8 @@ function Gallery() {
       <Line id=".past-ch summary">
         <PastChapterSummary />
       </Line>
-      <Line id=".pr-head / .pr-span / .pr-cost / .pr-absent">
-        <PassRecordBlock />
-        <PassRecordAbsent />
-      </Line>
-      <Line id=".pass-strip-head / .pass-row-line">
-        <PassStrip chapter={1} events={PASS_EVENTS} blocks={[{ id: 'ch01#aa11bb22' }]} blockId="ch01#aa11bb22" now={FIXED_NOW} onClose={noop} />
+      <Line id=".pass-strip-head / .pass-strip-heading">
+        <PassStrip chapter={1} events={PASS_EVENTS} onClose={noop} />
       </Line>
       <Line id=".rec-change-row / .rec-change-facts / .rec-change-step">
         <ChangeSection change={CHANGE} before="была одна лампа" after="лампа погасла" />

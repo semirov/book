@@ -67,7 +67,7 @@ export type HeadState = {
 };
 
 export type HeadInput = {
-  /** Absent for a caller that holds no log yet (and for `PassRecordPage`): then nothing is live. */
+  /** Absent for a caller that holds no log yet: then nothing is live. */
   stages?: HeadStages | null;
   state: HeadState;
   nowMs: number;

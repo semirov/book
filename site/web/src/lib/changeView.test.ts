@@ -86,7 +86,28 @@ describe('the change in the record’s register', () => {
     expect(view.after).toBe('Её освещал ровный свет.');
     expect(view.state).toBe('внесено');
     expect(view.stamp).toMatch(/^25\.10, \d{2}:\d{2}$/u);
-    expect(view.outcome).toBe('внесено');
+    expect(view.verdict).toBe('внесено');
+  });
+
+  it('states a stopped change as one sentence in the book’s terms, never a gate word', () => {
+    const stopped: ChangeDto = {
+      ...change,
+      status: 'failed',
+      outcome: 'rights',
+      reason: 'чужая цитата без источника',
+      decidedAt: '2026-10-25T12:05:00Z',
+    };
+    const view = changeView(stopped, null, null);
+    expect(view.verdict).toBe('правка не внесена: чужая цитата без источника');
+    for (const gone of ['не принято', 'мин', 'сек', 'ждал', 'читал', 'писал', 'сверял']) {
+      expect(view.verdict, gone).not.toContain(gone);
+    }
+    // A change still running says only that it is not in the book yet.
+    expect(changeView({ ...change, status: 'processing', outcome: null, reason: null }, null, null).verdict).toBe(
+      'правка ещё не внесена',
+    );
+    // A stopped change with no public reason states the fact once.
+    expect(changeView({ ...stopped, reason: null }, null, null).verdict).toBe('правка не внесена');
   });
 
   it('carries one line per step and the author’s words for the author’s own change', () => {

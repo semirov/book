@@ -373,19 +373,6 @@
   text-transform: none;
   color: var(--ink-3);
 }
-/* BOOK-114 — the book's outlay, the last line of the page: the marks' register, mono, and a
-   number that never breaks. */
-.colophon .cost-line {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-}
-.colophon .cost-line > span {
-  white-space: nowrap;
-}
 /* BOOK-115 — the way out: the reader's own name keeps its case, and the verb is a word in the
    row, not a framed control. The row is mono at the 12 px floor — the book's mark voice — so the
    name and the button are read as one measurement of the session. */
