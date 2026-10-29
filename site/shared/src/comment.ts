@@ -216,6 +216,15 @@ export type CommentDto = {
    */
   changeStatus?: 'pending' | 'processing' | null;
   /**
+   * BOOK-221 — the filing's public **number**: the `seq` of the change it became, so a row can
+   * print «правка 014» from a real ordinal. The schema has no filing sequence, and a number cut
+   * out of an id would be a claim no row makes, so this is the change's own number or nothing:
+   * `null` for a filing no change holds yet (a note waiting to be read, a premise before the
+   * chapter's first pass) and for a row whose change the read did not reach. Optional for the
+   * same reason as `hint`: the server always sends it, an older page simply ignores it.
+   */
+  changeSeq?: number | null;
+  /**
    * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
    * The guard's own category and flags stay internal (audit m5): a public `flags` array
    * would let a stranger bisect the detector one probe at a time.
