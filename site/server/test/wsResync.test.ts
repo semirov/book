@@ -291,6 +291,42 @@ describe('reconnect resync', () => {
     }
   });
 
+  it('prints a pass’s write, never an import: a stepless revision is not `live.applied` (BOOK-220 m9)', () => {
+    const r = rig();
+    try {
+      applyChapterFile({
+        db: r.fixture.db,
+        dataDir: r.fixture.dataDir,
+        n: 5,
+        raw: longProse(['Первый импорт главы.']),
+        mtimeMs: T0,
+        nowMs: T0,
+      });
+      applyChapterFile({
+        db: r.fixture.db,
+        dataDir: r.fixture.dataDir,
+        n: 5,
+        raw: longProse(['Второй импорт главы, уже поверх текста.']),
+        mtimeMs: T0 + 10,
+        nowMs: T0 + 10,
+      });
+      // The rows are a write, but no pass wrote them: a fresh page joins no ink.
+      expect(serverLive(r).applied).toBeNull();
+      // The same rows under a pass's own step are the write a reader's page joins.
+      r.fixture.db
+        .prepare(
+          `INSERT INTO steps (step_id, cascade_id, seq, wave, lane, pass, chapter, boundary, outcome,
+             rev_before, rev_after, seams_in, seams_out, tokens_in, tokens_out, cost_rub, at, cycle, closed_at)
+           VALUES ('stp_w', NULL, 1, 0, 'forward', 'draft', 5, '5', NULL, 1, NULL, '[]', '[]', 0, 0, 0, ?, 0, NULL)`,
+        )
+        .run(new Date(T0).toISOString());
+      r.fixture.db.prepare("UPDATE revisions SET step_id = 'stp_w' WHERE chapter = 5 AND rev = 2").run();
+      expect(serverLive(r).applied).toMatchObject({ n: 5, rev: 2 });
+    } finally {
+      r.close();
+    }
+  });
+
   it('an in-place resync{since} answers one state:snapshot and the next seq is contiguous', async () => {
     const r = rig();
     try {

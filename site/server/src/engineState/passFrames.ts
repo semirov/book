@@ -54,7 +54,10 @@ export class PassNarrator {
       const pass = passKindOf(step.pass);
       if (pass === null) continue;
       if (row.kind === 'step.opened') {
-        this.deps.emit('pass:accepted', this.acceptedPayload(step, pass, row.at));
+        const accepted = this.acceptedPayload(step, pass, row.at);
+        // A front pass has no chapter to open: its claim would be a number the step never named.
+        if (accepted === null) continue;
+        this.deps.emit('pass:accepted', accepted);
         emitted += 1;
         continue;
       }
@@ -64,12 +67,15 @@ export class PassNarrator {
     return emitted;
   }
 
-  private acceptedPayload(step: StepRow, pass: PassKind, at: string): PassAcceptedPayload {
+  private acceptedPayload(step: StepRow, pass: PassKind, at: string): PassAcceptedPayload | null {
     // A change's claim is `change:processing`; this frame is the draft/premise claim, and a
     // premise is not in the filing queue (BOOK-7), so it has no place in line to announce.
+    // BOOK-220 — a `front` step has no chapter (`live.passes` names it `'front'`), so a claim
+    // that needs one is not invented: the pass is announced by its stages and its close.
+    if (step.chapter === null) return null;
     return {
       stepId: step.step_id,
-      chapter: step.chapter ?? 1,
+      chapter: step.chapter,
       lane: step.lane,
       pass,
       premiseChangeId: step.premise_change,

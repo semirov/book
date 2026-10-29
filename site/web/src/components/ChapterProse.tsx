@@ -93,6 +93,10 @@ export function ChapterProse({
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
   /** One paint per plan: a second paragraph with the same words is not the one being written. */
   const claimed = new Set<string>();
+  /** The chapter's own ids and how often each text occurs: a plan before the re-read needs both. */
+  const chapterIds = new Set(chapter.blocks.map((block) => block.id));
+  const textCounts = new Map<string, number>();
+  for (const block of chapter.blocks) textCounts.set(block.text, (textCounts.get(block.text) ?? 0) + 1);
 
   return (
     <>
@@ -100,13 +104,19 @@ export function ChapterProse({
         const text = reveal === null ? block.text : blockText(reveal, block.id, block.text);
         const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
         // The applied print's own renderer, for this block only, and only while it is unsettled.
-        // A plan names the pre-revision block id; after the patch the block may carry the new
-        // text under a new id, so the final text is the second key (never a second paint).
+        // A plan carries the **post**-revision block id (`appliedPrint.ts`), so the id is the
+        // key. The words are the fallback for one case only — a plan whose id the chapter does
+        // not hold yet (the prose has not been re-read) — and only when that sentence stands
+        // once: a twin paragraph is never painted as the block the pass wrote.
         const plan =
           live.find(
             (item) =>
               !claimed.has(item.key) &&
-              (item.blockId === block.id || block.text === item.after),
+              (item.blockId === block.id ||
+                (item.blockId !== null &&
+                  !chapterIds.has(item.blockId) &&
+                  block.text === item.after &&
+                  textCounts.get(block.text) === 1)),
           ) ?? null;
         if (plan !== null) claimed.add(plan.key);
         return (

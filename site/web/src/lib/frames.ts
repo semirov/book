@@ -37,7 +37,6 @@ import {
   type FrontUpdatedPayload,
   type HelloPayload,
   type HistoryEventFrame,
-  type LiveFiling,
   type PassAcceptedPayload,
   type PassClosedPayload,
   type PassStageEvent,
@@ -74,7 +73,6 @@ import {
   revisionOfApplied,
   stateUpdated,
   withLive,
-  workingChapters,
   type AppliedWrite,
   type ChangeLine,
   type ClientState,
@@ -95,7 +93,6 @@ export {
   openPassesOf,
   passesOf,
   stagesFromLive,
-  workingChapters,
 };
 export type { AppliedWrite, ChangeLine, ClientState, FrameCursors, FrameEffect, FrameResult, FrameViewport, PageNotice };
 
@@ -106,9 +103,13 @@ export function applyFrame(
   viewport?: FrameViewport,
 ): FrameResult {
   // §3.1 — the delivery cursor. A repeat is not state; a gap asks the hub for one snapshot.
-  if (frame.seq <= state.seq) return noop(state);
+  // `hello` is the one exception: it opens a **new** connection, whose `seq` starts at 0, so it
+  // can be lower than the cursor a dead connection left behind — it is applied and becomes the
+  // cursor, or the page would ignore the reconnect and every frame after it (BOOK-220 B1).
+  const opens = frame.type === 'hello';
+  if (!opens && frame.seq <= state.seq) return noop(state);
   const effects: FrameEffect[] = [];
-  if (state.seq > 0 && frame.seq > state.seq + 1) effects.push({ kind: 'resync', since: state.seq });
+  if (!opens && state.seq > 0 && frame.seq > state.seq + 1) effects.push({ kind: 'resync', since: state.seq });
   const base: ClientState = { ...state, seq: frame.seq };
 
   switch (frame.type) {
@@ -404,9 +405,15 @@ export function applyFrame(
     case 'filing:update': {
       const update = frame.data as FilingUpdatePayload;
       if (update.at <= (base.cursors.filing[update.commentId] ?? 0)) return noop(state);
-      const known = base.filings.some((filing) => filing.commentId === update.commentId);
-      const filings: LiveFiling[] = known
-        ? base.filings.map((filing) =>
+      // BOOK-220 M1 — the frame is a broadcast and `live.filings` is the viewer's own list: a
+      // filing the page does not hold is somebody else's, and the own list is seeded by
+      // `hello`/`state:snapshot` alone. An unknown id moves the delivery cursor and nothing
+      // else — never a row, never a read of `/api/me/filings` by another reader's filing.
+      if (!base.filings.some((filing) => filing.commentId === update.commentId)) return { state: base, effects };
+      return {
+        state: {
+          ...base,
+          filings: base.filings.map((filing) =>
             filing.commentId === update.commentId
               ? {
                   ...filing,
@@ -416,23 +423,7 @@ export function applyFrame(
                   changeId: update.changeId,
                 }
               : filing,
-          )
-        : [
-            {
-              commentId: update.commentId,
-              chapter: update.chapter,
-              state: update.state,
-              attempts: update.attempts,
-              attemptsLeft: update.attemptsLeft,
-              changeId: update.changeId,
-              at: new Date(update.at).toISOString(),
-            },
-            ...base.filings,
-          ];
-      return {
-        state: {
-          ...base,
-          filings,
+          ),
           filingUpdates: { ...base.filingUpdates, [update.commentId]: update },
           cursors: { ...base.cursors, filing: { ...base.cursors.filing, [update.commentId]: update.at } },
         },

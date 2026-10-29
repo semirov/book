@@ -142,6 +142,20 @@ describe('the register’s counters', () => {
       />,
     );
     expect(text(html)).toContain('впереди 2');
+    // BOOK-220 m5 — a change that is next says so: «впереди 0» is not a place a reader is in.
+    const next = renderToStaticMarkup(
+      <Discussion
+        depth={3}
+        complete
+        comments={[mine]}
+        pending={[
+          { id: 'chg_2', chapter: 4, seq: 2, ahead: 0, kind: 'edit', enqueuedAt: '2026-10-29T10:00:00Z' },
+        ]}
+        live
+      />,
+    );
+    expect(text(next)).toContain('ваша правка — следующая');
+    expect(text(next)).not.toContain('впереди 0');
     // Nothing waiting of the reader's own: the queue's own line stands.
     const other = renderToStaticMarkup(
       <Discussion depth={1} comments={[]} pending={[{ id: 'chg_9', chapter: 4, seq: 1, ahead: 0, kind: 'edit', enqueuedAt: '2026-10-29T10:00:00Z' }]} live />,

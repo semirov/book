@@ -225,15 +225,6 @@ export function openPassesOf(state: ClientState): LivePass[] {
   return [...held.values()].sort((left, right) => right.since - left.since);
 }
 
-/** The chapters a pass is working on right now: the page's `passActive` fact. */
-export function workingChapters(state: ClientState): ReadonlySet<number> {
-  const set = new Set<number>();
-  for (const pass of openPassesOf(state)) {
-    if (typeof pass.chapter === 'number') set.add(pass.chapter);
-  }
-  return set;
-}
-
 /** The stage log's own chapter → pass fold, for the surfaces that still read it. */
 export function passesOf(state: ClientState): ReturnType<typeof inFlightOf> {
   return inFlightOf(state.stages);

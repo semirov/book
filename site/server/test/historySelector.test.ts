@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(import.meta.dirname, '../..');
 const WEB_SRC = join(ROOT, 'web', 'src');
 const SOURCE = /\.(ts|tsx)$/u;
-const IS_TEST = /\.test\.(ts|tsx)$/u;
+/** Fixtures are data, not readers: `lib/framesFixtures.ts` spells the DTO's `readerChanges`. */
+const IS_TEST = /(?:\.test|Fixtures)\.(ts|tsx)$/u;
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

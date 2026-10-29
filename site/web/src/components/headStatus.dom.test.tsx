@@ -98,7 +98,8 @@ let container: HTMLDivElement;
 async function mount(
   options: {
     passes?: readonly LivePass[];
-    engine?: { status: StateSnapshot['engine']['status'] } | null;
+    engine?: { status: StateSnapshot['engine']['status']; reason?: string | null } | null;
+    lane?: { passesToday: number; maxPasses: number } | null;
     appliedAt?: number | null;
     nowMs?: number;
     /** A page hands no clock in: the component reads `Date.now` (a fake clock in the test). */
@@ -116,6 +117,7 @@ async function mount(
         live
         passes={options.passes}
         engine={options.engine}
+        lane={options.lane}
         appliedAt={options.appliedAt}
         nowMs={options.live === true ? undefined : (options.nowMs ?? AT + 20_000)}
         reading={{ n: 12, page: 1 }}
@@ -201,6 +203,24 @@ describe('the head names what the machine is doing', () => {
     expect(status()).toBeNull();
   });
 
+  it('adds the day’s cap beside the stage’s word, never instead of it (BOOK-220 M2)', async () => {
+    await mount({ passes: [PASS], lane: { passesToday: 4, maxPasses: 4 } });
+    expect(word()).toBe('сейчас пишется');
+    expect(container.querySelector('.head-note')?.textContent).toBe('на сегодня всё');
+    // BOOK-207: no count on the head — the lane's numbers only decide that the sentence shows.
+    expect(container.querySelector('.head-note')?.textContent ?? '').not.toMatch(/\d/u);
+    await mount({ passes: [PASS], lane: { passesToday: 3, maxPasses: 4 } });
+    expect(container.querySelector('.head-note')).toBeNull();
+  });
+
+  it('prints the engine’s own reason when the head has no word to print (BOOK-220 M2)', async () => {
+    await mount({ passes: [], engine: { status: 'paused', reason: 'правки приостановлены' } });
+    // No pass, no word — the sentence is the only thing the head owes.
+    expect(word()).toBeNull();
+    expect(status()?.textContent).toBe('правки приостановлены');
+    expect(status()?.querySelector('.head-nib')).toBeNull();
+  });
+
   it('goes quiet past the pass’s own deadline, without a look at the clock by the reader', async () => {
     await mount({ passes: [PASS], nowMs: PASS.since + STAGE_DEADLINE_MS + 1 });
     expect(status()?.getAttribute('data-kind')).toBe('quiet');
@@ -234,6 +254,8 @@ describe('the head’s height does not move', () => {
     expect(line).toContain('line-height: 1.35');
     expect(line).toContain('flex: none');
     expect(line).toContain('margin-inline-start: auto');
+    // BOOK-220 B3 — the reserve before the folio's fixed box; the CDP script measures the rects.
+    expect(line).toContain('margin-inline-end: 16px');
     expect(line).toContain('text-transform: none');
     expect(line).not.toMatch(/(?:^|;)\s*(?:min-)?height\s*:/u);
     expect(line).not.toMatch(/(?:^|;)\s*padding/u);

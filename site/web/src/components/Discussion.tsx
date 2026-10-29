@@ -158,7 +158,7 @@ export function Discussion({
       </header>
       <div className="qline">
         <span>{queueLabel(queue.count)}</span>
-        <span>{place === null ? 'правки идут по одной, в порядке записи' : `впереди ${place.ahead}`}</span>
+        <span>{place === null ? 'правки идут по одной, в порядке записи' : place.ahead > 0 ? `впереди ${place.ahead}` : 'ваша правка — следующая'}</span>
       </div>
 
       <p className="fine teach">

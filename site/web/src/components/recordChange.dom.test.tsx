@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { resetChangeCache } from '../lib/changeCache.ts';
+import type { ChangeLine } from '../lib/clientState.ts';
+import { publishLiveChange, resetLiveChange } from '../lib/liveChange.ts';
+import { resetPassStages } from '../lib/passStages.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { closeRecord, resetRecordMemory } from '../lib/record.ts';
 import { anchorFor } from '../lib/seam.ts';
@@ -23,6 +26,7 @@ import { Record } from './Record.tsx';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
+const AT = 1_764_000_000_000;
 const BLOCK_ID = 'ch08#change';
 const TEXT = 'Я вошёл в пустую комнату. Её освещал яркий свет. Свет был включён до меня.';
 
@@ -122,6 +126,8 @@ beforeEach(() => {
   resetParagraphChainCache();
   resetChangeCache();
   resetRecordMemory();
+  resetLiveChange();
+  resetPassStages();
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,
@@ -257,5 +263,132 @@ describe('the record’s `правка` section (a change, not a surface)', () =
     expect(section('правка')?.getAttribute('aria-expanded')).toBe('true');
     expect(container.querySelector('.rec-change')).toBeNull();
     expect(container.querySelector('.rec-sections')?.textContent).toContain('правка не прочиталась');
+  });
+
+  /**
+   * BOOK-220 B2 — the change's own frames are read where the change lives. One assertion per
+   * frame: the section prints the queued place, the claim, the narrowed intent and the moved
+   * basis, without a reload and without a second surface of its own.
+   */
+  it('prints the change’s own line for every change frame', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/api/changes/chg_1')) {
+          return new Response(JSON.stringify(CHANGE), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    const cases: Array<[ChangeLine, string]> = [
+      [{ kind: 'queued', at: AT, eventSeq: 1, ahead: 2, depth: 3 }, 'в очереди · впереди 2'],
+      [{ kind: 'processing', at: AT, eventSeq: 2, ahead: 0, attempt: 1 }, 'идёт · попытка 1'],
+      [{ kind: 'adapted', at: AT, eventSeq: 3, intent: 'ровный свет', reason: 'не про эту сцену' }, 'сужено · ровный свет · не про эту сцену'],
+      [{ kind: 'stale', at: AT, eventSeq: 4, grade: 'weak', evidence: [], options: [] }, 'основа изменилась, решается заново'],
+    ];
+    for (const [line, word] of cases) {
+      publishLiveChange({ lines: { chg_1: line }, passes: {} });
+      await mount('chg_1');
+      const live = container.querySelector('.rec-change-live');
+      expect(live?.textContent, line.kind).toBe(word);
+      expect(live?.getAttribute('data-line')).toBe(line.kind);
+      await act(async () => root?.render(<></>));
+      resetChangeCache();
+      resetPassStages();
+    }
+  });
+
+  /**
+   * BOOK-220 B2/M3 — a closed pass is the writer's own sentence, and its stages are read back
+   * for a reader who was not connected when it ran: one pass, on open, from the store.
+   */
+  it('prints the pass’s own sentence and reads that one pass’s stages on open', async () => {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/changes/chg_1')) {
+          return new Response(JSON.stringify(CHANGE), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (url.includes('/api/chapters/8/stages')) {
+          asked.push(url);
+          return new Response(
+            JSON.stringify({
+              stages: [
+                { passId: 'stp_1', chapter: 8, stageSeq: 1, stage: 'queued', at: AT, actor: { process: 'engine', model: null }, changeId: 'chg_1', summary: '', span: null, tokens: null, costUsd: null },
+                { passId: 'stp_1', chapter: 8, stageSeq: 2, stage: 'refused', at: AT + 1_000, actor: { process: 'writer', model: null }, changeId: 'chg_1', summary: '', span: null, tokens: null, costUsd: null },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    publishLiveChange({
+      lines: {},
+      passes: {
+        stp_1: {
+          stepId: 'stp_1',
+          changeId: 'chg_1',
+          chapter: 8,
+          pass: 'change',
+          outcome: 'refused',
+          sentence: 'текст не менялся',
+          at: AT,
+          closeFailed: false,
+          costUsd: null,
+          tokens: null,
+        },
+      },
+    });
+    await mount('chg_1');
+    expect(container.querySelector('.rec-change-pass')?.textContent).toBe('текст не менялся');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('pass=stp_1');
+    expect(asked[0]).toContain('limit=50');
+    expect([...container.querySelectorAll('.rec-change-stage')].map((node) => node.textContent)).toEqual([
+      'в очереди',
+      'отказ',
+    ]);
+    // The memo answers the second open: one pass is one read.
+    await act(async () => root?.render(<></>));
+    resetChangeCache();
+    await mount('chg_1');
+    expect(asked).toHaveLength(1);
+  });
+
+  it('says a pass’s stages could not be read instead of leaving an empty list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/api/changes/chg_1')) {
+          return new Response(JSON.stringify(CHANGE), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response('{}', { status: 500 });
+      }),
+    );
+    publishLiveChange({
+      lines: {},
+      passes: {
+        stp_1: {
+          stepId: 'stp_1',
+          changeId: 'chg_1',
+          chapter: 8,
+          pass: 'change',
+          outcome: 'refused',
+          sentence: 'текст не менялся',
+          at: AT,
+          closeFailed: false,
+          costUsd: null,
+          tokens: null,
+        },
+      },
+    });
+    await mount('chg_1');
+    expect(container.querySelector('.rec-change-pass')?.textContent).toBe('текст не менялся');
+    expect(container.querySelector('.rec-change-stages')).toBeNull();
+    expect(container.textContent).toContain('ход правки не прочитался');
   });
 });

@@ -3,7 +3,7 @@ import type { CatalogEntry, LiveFiling, LivePass, StateSnapshot, FilingUpdatePay
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { Colophon } from './Colophon.tsx';
-import type { HeadEngine } from '../lib/headStatus.ts';
+import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { TrailPage } from './TrailPage.tsx';
 
@@ -23,6 +23,7 @@ export function TrailView({
   live,
   passes,
   engine,
+  lane,
   appliedAt,
   closedAt,
   reading,
@@ -42,6 +43,8 @@ export function TrailView({
   live: boolean;
   passes?: readonly LivePass[];
   engine?: HeadEngine;
+  /** BOOK-220 M2 — the lane's day bound, printed beside the head's word. */
+  lane?: HeadLane;
   appliedAt?: number | null;
   closedAt?: number | null;
   /** The viewer's own filings from `hello.live.filings` / `filing:update` (no mount-only fetch). */
@@ -65,6 +68,7 @@ export function TrailView({
         live={live}
         passes={passes}
         engine={engine}
+        lane={lane}
         appliedAt={appliedAt}
         closedAt={closedAt}
         reading={reading}

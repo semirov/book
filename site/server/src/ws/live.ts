@@ -92,12 +92,16 @@ function openPasses(deps: LiveDeps): LivePass[] {
   return passes;
 }
 
-/** The last write, if it is still inside its print window and small enough to print. */
+/** The last write, if a pass made it and it is still inside its print window and small enough. */
 function appliedWithin(deps: LiveDeps, nowMs: number): LiveApplied | null {
   const row = deps.db
-    .prepare('SELECT chapter, rev FROM revisions ORDER BY rowid DESC LIMIT 1')
-    .get() as { chapter: number; rev: number } | undefined;
+    .prepare('SELECT chapter, rev, step_id FROM revisions ORDER BY rowid DESC LIMIT 1')
+    .get() as { chapter: number; rev: number; step_id: string | null } | undefined;
   if (row === undefined) return null;
+  // BOOK-220 m9 — only a pass's write prints: an import, a restore or an operator's revision
+  // carries no step, and a fresh page must not join an ink no pass laid (`chapter:applied` for
+  // such a row is a cross-fade by design, never a print).
+  if (row.step_id === null) return null;
   const read = readApplied({ db: deps.db, dataDir: deps.dataDir, chapter: row.chapter, rev: row.rev });
   if (read === null) return null;
   if (nowMs - read.appliedAt > LIVE_APPLIED_WINDOW_MS) return null;

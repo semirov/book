@@ -24,9 +24,11 @@ import { withFreshFront, withRevision, type BookData } from './lib/bookState.ts'
 import { escalationMarkers } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
+import { publishLiveChange } from './lib/liveChange.ts';
 import {
   applyFrame,
   initialClientState,
+  laneOf,
   openPassesOf,
   type ClientState,
   type FrameEffect,
@@ -81,6 +83,9 @@ export function App() {
   /** One write of the page: the ref and React's state move together, never apart. */
   const commit = useCallback((next: ClientState) => {
     pageRef.current = next;
+    // BOOK-220 B2 — the record's `правка` section is a leaf: the change's live line and its
+    // closed pass reach it through the facts store, and identity is the whole diff.
+    publishLiveChange({ lines: next.lines, passes: next.passes });
     setPage(next);
   }, []);
   const update = useCallback(
@@ -307,6 +312,7 @@ export function App() {
   const markers = spineMarkers(state);
   const currentChapter = state.current !== null && state.current.chapter !== 'front' ? state.current.chapter : null;
   const passes = openPassesOf(page);
+  const lane = laneOf(page);
   const engine = page.engine ?? { status: state.engine.status };
   const appliedAt = page.applied?.appliedAt ?? null;
   const closedAt =
@@ -357,7 +363,7 @@ export function App() {
         <TrailView
           state={state} ribbon={page.ribbon} catalog={catalog}
           markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-          live={history} passes={passes} engine={engine} appliedAt={appliedAt} closedAt={closedAt}
+          live={history} passes={passes} engine={engine} lane={lane} appliedAt={appliedAt} closedAt={closedAt}
           reading={reading} viewer={page.viewer}
           filings={page.filings} filingUpdates={page.filingUpdates}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
@@ -405,7 +411,7 @@ export function App() {
         onViewChange={setView}
         motion={page.titleMotion}
         live={history} chronicle={chronicle}
-        passes={passes} engine={engine} appliedAt={appliedAt} closedAt={closedAt}
+        passes={passes} engine={engine} lane={lane} appliedAt={appliedAt} closedAt={closedAt}
         reading={reading}
       />
       <ConsentBanner />

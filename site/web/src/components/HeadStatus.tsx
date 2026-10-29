@@ -1,7 +1,7 @@
 import type { LivePass } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
-import { headStatusOf, type HeadEngine, type HeadKind } from '../lib/headStatus.ts';
+import { headStatusOf, type HeadEngine, type HeadKind, type HeadLane } from '../lib/headStatus.ts';
 
 /**
  * BOOK-207 / BOOK-DOC-84 D3 — the head's one word, drawn from the facts the frames carry.
@@ -21,6 +21,7 @@ import { headStatusOf, type HeadEngine, type HeadKind } from '../lib/headStatus.
 export function HeadStatus({
   passes,
   engine,
+  lane,
   appliedAt,
   closedAt,
   nowMs,
@@ -29,6 +30,8 @@ export function HeadStatus({
   passes?: readonly LivePass[];
   /** The engine's own line; `down`/`absent` makes the head quiet whatever a stage says. */
   engine?: HeadEngine;
+  /** BOOK-220 M2 — the lane's day: its cap is the one sentence the head owes the reader. */
+  lane?: HeadLane;
   /** The write's own clock (`chapter:applied` / `live.applied`). */
   appliedAt?: number | null;
   /** The newest `pass:closed`. */
@@ -44,11 +47,12 @@ export function HeadStatus({
   useEffect(() => {
     if (fixed) return;
     setClock(Date.now());
-  }, [fixed, passes, engine, appliedAt, closedAt]);
+  }, [fixed, passes, engine, lane, appliedAt, closedAt]);
 
   const status = headStatusOf({
     passes,
     engine,
+    lane,
     appliedAt,
     closedAt,
     nowMs: fixed ? nowMs : clock,
@@ -70,7 +74,7 @@ export function HeadStatus({
     spoken.current = status.kind;
   }, [status.kind]);
 
-  if (status.kind === 'idle' || status.full === null) return null;
+  if (status.full === null && status.note === null) return null;
 
   return (
     <span
@@ -81,8 +85,16 @@ export function HeadStatus({
     >
       {/* The nib is the pass's own mark, --live: five pixels on the baseline, no motion. The
           quiet word carries no nib: nothing is being written. */}
-      {status.kind === 'quiet' ? null : <span className="head-nib" aria-hidden="true" />}
-      <span className="head-status-full">{status.full}</span>
+      {status.kind === 'quiet' || status.full === null ? null : <span className="head-nib" aria-hidden="true" />}
+      {status.full === null ? null : <span className="head-status-full">{status.full}</span>}
+      {/* BOOK-220 M2 — the bound's own sentence, in the same line and the same register: the
+          stage's word stays what the book is doing, this says when it stops. */}
+      {status.note === null ? null : (
+        <>
+          {status.full === null ? null : <span className="head-sep" aria-hidden="true">·</span>}
+          <span className="head-note">{status.note}</span>
+        </>
+      )}
     </span>
   );
 }

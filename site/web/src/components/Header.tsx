@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
-import type { HeadEngine } from '../lib/headStatus.ts';
+import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { HeadStatus } from './HeadStatus.tsx';
 import { PageNumber } from './PageNumber.tsx';
@@ -50,6 +50,7 @@ export function Header({
   live,
   passes,
   engine,
+  lane,
   appliedAt,
   closedAt,
   nowMs,
@@ -66,6 +67,8 @@ export function Header({
   passes?: readonly LivePass[];
   /** The engine's own line (`engine:state`); `down`/`absent` makes the head quiet. */
   engine?: HeadEngine;
+  /** BOOK-220 M2 — the lane's day bound, printed beside the word, never instead of it. */
+  lane?: HeadLane;
   /** The write's own clock, so «сейчас записывает» lasts two seconds after `appliedAt`. */
   appliedAt?: number | null;
   /** The newest close, the same two-second word after a pass ends. */
@@ -126,6 +129,7 @@ export function Header({
           <HeadStatus
             passes={passes}
             engine={engine}
+            lane={lane}
             appliedAt={appliedAt}
             closedAt={closedAt}
             nowMs={nowMs}

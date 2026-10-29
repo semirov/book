@@ -286,6 +286,9 @@ export async function arrivals({ cdp, run, dir, stepId, check, log, shot }) {
     });
     const first = seen.find((item) => item.pass === true) ?? null;
     const elapsed = first === null ? null : first.t - at;
+    // When the page *heard* of the write, on the write's own clock: the one number that says
+    // whether a print that never appeared was already over (the poll, not a missing frame).
+    const heardAt = frame === null ? null : frame.t - at;
     const revealed = first === null ? null : first.clusters - first.pending;
     // The slowest legal clock: a 700 ms split and one grapheme per 60 ms. A run shorter than
     // that is already fully inked, so the floor is capped by the run itself; a restart shows 0.
@@ -303,6 +306,7 @@ export async function arrivals({ cdp, run, dir, stepId, check, log, shot }) {
       appliedAt: at,
       frameAt: frame?.t ?? null,
       elapsedAtFirstSightMs: elapsed,
+      heardAtMs: heardAt,
       revealedAtFirstSight: revealed,
       slowestClockFloor: floor,
       observedShare: settledAt === null || elapsed === null ? null : Math.round((elapsed / (settledAt - at)) * 1_000) / 1_000,
@@ -311,16 +315,18 @@ export async function arrivals({ cdp, run, dir, stepId, check, log, shot }) {
       shot: arrivalShot,
     });
     // Two honest outcomes, one forbidden one. Joined: the ink is already where the clock says.
-    // Ended: the page heard of the write after its print was over, so it paints the settled frame.
+    // Ended: the page heard of the write after its print was over, so it paints the settled frame
+    // — and that case is only legal when the back-dating really passed the print's own end.
     // Forbidden: a `.p-pass` that starts again from zero at that elapsed time.
     const joined = first !== null;
+    const ended = heardAt !== null && printMs !== null && heardAt >= printMs;
     const effective = Math.round((backdate / (printMs ?? 1)) * 1_000) / 1_000;
     check(
-      `arrival/${run.width} at ${String(Math.round(share * 100))} % joins the current frame, never restarts`,
-      joined ? revealed !== null && floor !== null && revealed >= floor : true,
+      `arrival/${run.width} at ${String(Math.round(share * 100))} % joins the current frame — or settles past its print, never restarts`,
+      joined ? revealed !== null && floor !== null && revealed >= floor : ended,
       joined
         ? `${String(elapsed)} ms of ink already painted (${String(effective)} of the print): ${String(revealed)} graphemes, the slowest legal clock needs ${String(floor)}`
-        : `${String(backdate)} ms back-dated: the print had already ended when the page heard of it, and nothing replayed`,
+        : `${String(backdate)} ms back-dated of a ${String(printMs)} ms print, heard at ${String(heardAt)} ms: the print had already ended, and nothing replayed`,
     );
   }
   return { rev: prime.rev, frameAt: primeFrame?.t ?? null, printMs, samples: primeSamples.length, rows };
@@ -353,6 +359,115 @@ export async function tooLate({ cdp, run, dir, stepId, check, shot }) {
     `${String(samples.length)} samples over 2 s: pass ${String(result.passSeen)}, data-pass ${String(result.dataPassSeen)}`,
   );
   return result;
+}
+
+/**
+ * BOOK-220 B3 — the head's word and the folio never touch.
+ *
+ * The word ends at the column's right edge; the folio's box starts 20 px outside it, so a
+ * three-digit folio leans back into the column and a four-digit one leans 8.8 px — the
+ * «сейчас тихо154» the owner saw. The reserve in `head-status.css` is the gap, and this stage
+ * measures it: the word is forced the honest way (a write lands and the head says «сейчас
+ * записывает» for its two seconds, or an open pass says its stage), and both rects are read
+ * while it does — at 1440, 768 and 390. The folio is then widened to the four-digit case the
+ * reserve is sized for, in the same face and the same position: a two-digit number would prove
+ * nothing about the defect.
+ */
+export async function folioGap({ cdp, run, dir, stepId, check }) {
+  const probe = `(() => {
+    const word = document.querySelector('.head-status');
+    const folio = document.querySelector('.folio');
+    if (word === null || folio === null) return { text: null, folioText: null, rects: null };
+    const a = word.getBoundingClientRect();
+    const b = folio.getBoundingClientRect();
+    const round = (value) => Math.round(value * 10) / 10;
+    return {
+      text: (word.textContent || '').trim(),
+      folioText: (folio.textContent || '').trim(),
+      rects: {
+        word: { left: round(a.left), right: round(a.right), top: round(a.top), bottom: round(a.bottom) },
+        folio: { left: round(b.left), right: round(b.right), top: round(b.top), bottom: round(b.bottom) },
+      },
+    };
+  })()`;
+  const evaluate = async (expression) => {
+    const answer = await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
+    return answer.result.value;
+  };
+  /** The two boxes as read, plus the folio's left edge at the four-digit width of its own face. */
+  const judge = (value) => {
+    const rects = value.rects;
+    if (rects === null) return { rects: null, overlap: true, gap: null, wideLeft: null, wideGap: null };
+    const overlap =
+      rects.word.left < rects.folio.right &&
+      rects.folio.left < rects.word.right &&
+      rects.word.top < rects.folio.bottom &&
+      rects.folio.top < rects.word.bottom;
+    // PT Mono is 0.6 em per glyph, so the folio's own width divides by its digits: the widest
+    // number the design names is four of them, and its left edge moves back by the difference.
+    const digits = /^\d+$/u.test(String(value.folioText)) ? String(value.folioText).length : null;
+    const perDigit = digits === null || digits === 0 ? null : (rects.folio.right - rects.folio.left) / digits;
+    const wideLeft = perDigit === null ? null : Math.round((rects.folio.right - perDigit * 4) * 10) / 10;
+    return {
+      rects,
+      overlap,
+      gap: Math.round((rects.folio.left - rects.word.right) * 10) / 10,
+      wideLeft,
+      wideGap: wideLeft === null ? null : Math.round((wideLeft - rects.word.right) * 10) / 10,
+    };
+  };
+
+  const rows = [];
+  for (const width of [1440, 768, 390]) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: width === 390 ? 844 : 900,
+      deviceScaleFactor: 1,
+      mobile: width < 600,
+    });
+    await sleep(250);
+    const edit = run.edits.find((entry) => entry.id === `folio-${String(width)}`);
+    const write = writeRevision(dir, run.chapter, { ...edit, at: Date.now(), stepId });
+    const frame = await waitFrame(cdp, write.rev);
+    const actual = await evaluate(probe);
+    const here = judge(actual);
+    rows.push({
+      width,
+      text: actual.text,
+      folioText: actual.folioText,
+      frameAt: frame?.t ?? null,
+      word: here.rects?.word ?? null,
+      folio: here.rects?.folio ?? null,
+      gapPx: here.gap,
+      overlap: here.overlap,
+      fourDigitLeftPx: here.wideLeft,
+      fourDigitGapPx: here.wideGap,
+    });
+    // ≥768 the folio is a fixed box in the margin, the word the row's right end: a real gap.
+    // At 390 both are items of the row, so the contract is the same order, not the same reserve.
+    const floor = width >= 768 ? 4 : 1;
+    const numbers = (left, gap) =>
+      here.rects === null
+        ? 'no .head-status or no .folio on the page'
+        : `word «${actual.text}» ends ${String(here.rects.word.right)} px, folio starts ${String(left)} px — gap ${String(gap)} px`;
+    check(
+      `folio/${width} the head's word and the folio do not touch`,
+      here.overlap === false && typeof actual.text === 'string' && actual.text.length > 0 && here.gap !== null && here.gap >= floor,
+      numbers(here.rects?.folio.left ?? null, here.gap),
+    );
+    check(
+      `folio/${width} the reserve clears a four-digit folio`,
+      here.overlap === false && here.wideGap !== null && here.wideGap >= floor,
+      numbers(here.wideLeft, here.wideGap),
+    );
+  }
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: run.width,
+    height: run.height,
+    deviceScaleFactor: 1,
+    mobile: run.width < 600,
+  });
+  return rows;
 }
 
 /** Screenshots go beside the report; the path in the report is worktree-relative. */

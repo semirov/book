@@ -60,6 +60,40 @@ describe('the head’s word, per stage', () => {
   });
 });
 
+describe('the bound’s sentence beside the word (BOOK-220 M2)', () => {
+  it('prints the day’s cap only when the lane has reached it, and never instead of the word', () => {
+    const capped = headStatusOf({ passes: [pass('drafting')], lane: { passesToday: 4, maxPasses: 4 }, nowMs: AT + 1_000 });
+    // The word stays the stage's own: the note is the bound, not a second state.
+    expect(capped.full).toBe(HEAD_WRITING);
+    expect(capped.note).toBe('на сегодня всё');
+    // BOOK-207: the head prints the bound, never a count that can lie.
+    expect(capped.note).not.toMatch(/\d/u);
+    expect(
+      headStatusOf({ passes: [pass('drafting')], lane: { passesToday: 3, maxPasses: 4 }, nowMs: AT + 1_000 }).note,
+    ).toBeNull();
+    // No lane in the payload (an older snapshot), no note — never a guessed cap.
+    expect(headStatusOf({ passes: [], nowMs: AT }).note).toBeNull();
+  });
+
+  it('prints the engine’s own reason while it is paused, and nothing while it works', () => {
+    const paused = headStatusOf({
+      passes: [],
+      engine: { status: 'paused', reason: 'правки приостановлены' },
+      nowMs: AT,
+    });
+    // A paused engine has no pass to name, so the head has no word — only the sentence.
+    expect(paused.kind).toBe('idle');
+    expect(paused.note).toBe('правки приостановлены');
+    expect(
+      headStatusOf({ passes: [], engine: { status: 'throttled', reason: 'дневной лимит правок' }, nowMs: AT }).note,
+    ).toBe('дневной лимит правок');
+    expect(
+      headStatusOf({ passes: [], engine: { status: 'running', reason: 'движок работает' }, nowMs: AT }).note,
+    ).toBeNull();
+    expect(headStatusOf({ passes: [], engine: { status: 'paused', reason: null }, nowMs: AT }).note).toBeNull();
+  });
+});
+
 describe('the two exits', () => {
   it('prints nothing at all when no pass is open — idle is not a word', () => {
     const status = headStatusOf({ passes: [], nowMs: AT });

@@ -33,7 +33,8 @@ export const HEAD_QUIET = 'сейчас тихо';
 
 export type HeadKind = 'reading' | 'writing' | 'checking' | 'applying' | 'quiet' | 'idle';
 
-export type HeadStatus = {
+/** The word and its end: everything the head says about what the machine is doing now. */
+export type HeadWord = {
   kind: HeadKind;
   /** The one word, or `null` when the head prints nothing at all. */
   full: string | null;
@@ -41,8 +42,23 @@ export type HeadStatus = {
   untilMs: number | null;
 };
 
+export type HeadStatus = HeadWord & {
+  /**
+   * BOOK-220 M2 — the bound's own sentence beside the word («на сегодня всё»,
+   * «правки приостановлены»). It never replaces the stage's word, and it is absent unless the
+   * fact is true: a lane below its cap and a running engine say nothing here.
+   *
+   * BOOK-207 — no count in the head: the lane's numbers decide *whether* the sentence shows and
+   * are never printed, because a counter on the head can lie the moment a frame is late.
+   */
+  note: string | null;
+};
+
 /** The one field the head reads from the engine: whether the machine is working at all. */
-export type HeadEngine = { status: EngineStatus } | null;
+export type HeadEngine = { status: EngineStatus; reason?: string | null } | null;
+
+/** The lane's day bound, as `engine:state`/`hello.live.lane` carry it. */
+export type HeadLane = { passesToday: number; maxPasses: number } | null;
 
 export type HeadInput = {
   /** The open passes of `live.passes` (or the page's own fold of them). */
@@ -51,6 +67,8 @@ export type HeadInput = {
   stages?: StagesLog | null;
   /** The engine's reason line (`engine:state`) or the snapshot's own engine block. */
   engine?: HeadEngine;
+  /** The lane's day (`live.lane` / `engine:state`): its cap is the one sentence the head owes. */
+  lane?: HeadLane;
   /** The write's own clock (`chapter:applied` / `live.applied`). */
   appliedAt?: number | null;
   /** The newest `pass:closed`. */
@@ -66,8 +84,8 @@ const WORDS: Record<string, string> = {
   typing: HEAD_WRITING,
 };
 
-const idle: HeadStatus = { kind: 'idle', full: null, untilMs: null };
-const quiet: HeadStatus = { kind: 'quiet', full: HEAD_QUIET, untilMs: null };
+const idle: HeadWord = { kind: 'idle', full: null, untilMs: null };
+const quiet: HeadWord = { kind: 'quiet', full: HEAD_QUIET, untilMs: null };
 
 /** The pass's own latest stage: the log's event when one arrived, else the snapshot's stage. */
 function latestStage(pass: LivePass, stages: StagesLog | null | undefined): { stage: string; since: number } {
@@ -84,7 +102,8 @@ function latestStage(pass: LivePass, stages: StagesLog | null | undefined): { st
   return newest === null ? { stage: pass.stage, since: pass.since } : { stage: newest.stage, since: newest.since };
 }
 
-export function headStatusOf({ passes, stages, engine, appliedAt, closedAt, nowMs }: HeadInput): HeadStatus {
+/** The word itself, without the bound's note: the stage's own name and its end. */
+function wordOf({ passes, stages, engine, appliedAt, closedAt, nowMs }: HeadInput): HeadWord {
   // An engine that is gone cannot be working: the honest word is quiet, not a stale stage.
   if (engine !== null && engine !== undefined && (engine.status === 'down' || engine.status === 'absent')) {
     return quiet;
@@ -111,4 +130,27 @@ export function headStatusOf({ passes, stages, engine, appliedAt, closedAt, nowM
   if (full === undefined) return { kind: 'quiet', full: HEAD_QUIET, untilMs: deadlineAt };
   const kind: HeadKind = full === HEAD_READING ? 'reading' : full === HEAD_CHECKING ? 'checking' : 'writing';
   return { kind, full, untilMs: deadlineAt };
+}
+
+/**
+ * The bound's own sentence (BOOK-220 M2), beside the word and never instead of it: the lane's
+ * day cap and the engine's own reason. Only a true fact is printed — a lane below its cap, an
+ * engine that is working, and an engine with no reason of its own say nothing at all.
+ */
+function noteOf({ engine, lane }: HeadInput): string | null {
+  // BOOK-207: the lane's numbers are the question, never the answer — the head prints the bound
+  // as one sentence and no count beside it.
+  if (lane !== null && lane !== undefined && lane.maxPasses > 0 && lane.passesToday >= lane.maxPasses) {
+    return 'на сегодня всё';
+  }
+  if (engine === null || engine === undefined) return null;
+  const reason = engine.reason?.trim() ?? '';
+  if (reason.length === 0) return null;
+  // `engine:state.reason` is the server's own sentence («правки приостановлены», «дневной
+  // лимит правок»); a working engine's line says nothing a reader needs twice.
+  return engine.status === 'paused' || engine.status === 'throttled' ? reason : null;
+}
+
+export function headStatusOf(input: HeadInput): HeadStatus {
+  return { ...wordOf(input), note: noteOf(input) };
 }

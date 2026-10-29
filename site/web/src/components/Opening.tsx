@@ -4,7 +4,7 @@ import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
-import type { HeadEngine } from '../lib/headStatus.ts';
+import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { HowTheBookIsMade } from './HowTheBookIsMade.tsx';
 import { TitleSheet } from './TitleSheet.tsx';
@@ -45,6 +45,7 @@ export function Opening({
   chronicle,
   passes,
   engine,
+  lane,
   appliedAt,
   closedAt,
   reading,
@@ -69,6 +70,8 @@ export function Opening({
   /** BOOK-DOC-84 §2.2/D3: the open passes, the engine's line, and the write's clock. */
   passes?: readonly LivePass[];
   engine?: HeadEngine;
+  /** BOOK-220 M2 — the lane's day bound, printed beside the head's word. */
+  lane?: HeadLane;
   appliedAt?: number | null;
   closedAt?: number | null;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
@@ -96,6 +99,7 @@ export function Opening({
         live={live}
         passes={passes}
         engine={engine}
+        lane={lane}
         appliedAt={appliedAt}
         closedAt={closedAt}
         reading={reading}

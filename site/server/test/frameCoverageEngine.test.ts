@@ -10,6 +10,7 @@ import { recordAttempt } from '../src/comments/attempts.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
 import { emitFilingUpdate } from '../src/feedback/filingFrame.ts';
 import { appendChangeEvent, appendEvent } from '../src/history/log.ts';
+import { insertStep, updateStep } from '../src/engine/store.ts';
 import { fileOn, runStubStep } from './engine/helpers.ts';
 import { first, engineRig, siteRig, T0, type Frame } from './frameRig.ts';
 
@@ -37,6 +38,38 @@ describe('§2.1 — the pass rows', () => {
       expect(closed.data).toMatchObject({ stepId: run?.stepId, pass: 'draft', outcome: 'closed' });
       expect(typeof closed.data.sentence).toBe('string');
       expect(closed.data.closeFailed).toBe(false);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('#14 a theme pass names its own chapter: a `front` step is not announced as chapter 1', () => {
+    const { fixture, frames, bridge } = engineRig();
+    try {
+      insertStep(fixture.db, {
+        stepId: 'stp_front',
+        cascadeId: null,
+        seq: 2,
+        wave: 0,
+        lane: null,
+        pass: 'front',
+        chapter: null,
+        boundary: 'front',
+        seamsIn: '[]',
+        revBefore: null,
+        at: new Date(T0).toISOString(),
+      });
+      appendEvent(fixture.db, { kind: 'step.opened', stepId: 'stp_front', isFront: true });
+      bridge.tick();
+      // No claim: the step has no chapter, and a number invented here would put a title pass in
+      // chapter 1 on every reader's page.
+      expect(frames.filter((frame) => frame.type === 'pass:accepted')).toHaveLength(0);
+      updateStep(fixture.db, 'stp_front', { outcome: 'escalated' });
+      appendEvent(fixture.db, { kind: 'step.closed', stepId: 'stp_front', isFront: true });
+      bridge.tick();
+      const closed = first(frames, 'pass:closed');
+      // The close still speaks, with the null chapter the step actually has.
+      expect(closed.data).toMatchObject({ stepId: 'stp_front', pass: 'front', chapter: null });
     } finally {
       fixture.close();
     }

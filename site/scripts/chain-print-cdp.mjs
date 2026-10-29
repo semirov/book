@@ -50,13 +50,9 @@
  *                                                   working dir (a diagnostic: see below)
  *
  * The frame's own shape is asserted before anything is measured: `patchTruncated` and `span` are
- * the numbers a print either has or does not. Before BOOK-220's fix the site's `EngineBridge` was
- * built without `dataDir` (head `fbca4d5`), so it read `versions/…` from `site/`, found nothing,
- * and every live `chapter:applied` carried `patchTruncated: true, span: null, patch: 0` — the
- * write could not print. The bridge is now built by `engineState/wiring.ts` from `config`, so the
- * default run reads the copy's own snapshots; `serverProbe` still reads the same revision
- * independently, which is how a wrong root would be told apart. `--data-cwd` (start the process
- * with the copy's data dir as its cwd) is kept as a diagnostic, not as the shipped shape.
+ * the numbers a print either has or does not. The bridge is built by `engineState/wiring.ts`
+ * from `config`, so the default run reads the copy's own snapshots; `serverProbe` still reads
+ * the same revision independently, which is how a wrong root would be told apart.
  *
  * Exit: 0 pass · 1 an assertion failed (the failing one and its numbers are printed) ·
  * 2 the harness cannot run (no volume, port in use, build, no Chromium).
@@ -76,7 +72,7 @@ import {
   storedRevisions,
   WATCH_SOURCE,
 } from './lib/chainPrint.mjs';
-import { arrivals, carets, chain, checker, reducedMotion, shotter, STAGE, tooLate } from './lib/chainStages.mjs';
+import { arrivals, carets, chain, checker, folioGap, reducedMotion, shotter, STAGE, tooLate } from './lib/chainStages.mjs';
 import { buildSite, PROD_DB, prepareTemp, SITE, WORKTREE } from './lib/passBook.mjs';
 
 const PORT = 8092;
@@ -178,6 +174,11 @@ const RUNS = [
           'не читая. Очередь за спиной дышала и переступала, и я перестал понимать, зачем стою и чего жду.',
       },
       { id: 'late', phrase: 'чего жду.', replacement: 'чего жду и куда пойду.' },
+      // BOOK-220 B3 — the folio gap's three forced words, each a write of its own so the head
+      // says «сейчас записывает» while the rects are read at that width (`folioGap`).
+      { id: 'folio-1440', phrase: 'чего жду и куда пойду.', replacement: 'чего жду, куда пойду и зачем.' },
+      { id: 'folio-768', phrase: 'куда пойду и зачем.', replacement: 'куда пойду и зачем — не знаю.' },
+      { id: 'folio-390', phrase: 'зачем — не знаю.', replacement: 'зачем — не знаю, и это честно.' },
     ],
   },
 ];
@@ -187,12 +188,9 @@ const keepTemp = args.includes('--keep');
 const skipBuild = args.includes('--no-build');
 const chainOnly = args.includes('--chain');
 /**
- * `--data-cwd` starts the site with the snapshot root as its working directory. It is a
- * diagnostic, not the shipped shape: `EngineBridge` is built without `dataDir`, so it reads
- * `versions/…` relative to the process's cwd, and from `site/` that root does not exist —
- * every live `chapter:applied` then carries `patchTruncated: true, span: null` and nothing
- * prints. With this flag the same code, the same rows and the same snapshots do resolve, so
- * the client's print can be measured while the wiring defect stays reported.
+ * `--data-cwd` starts the site with the copy's data dir as its working directory: a diagnostic
+ * that proves where a snapshot root is read from. The shipped shape takes it from `config`;
+ * with this flag the same rows and the same snapshots resolve through the process's cwd.
  */
 const dataCwd = args.includes('--data-cwd');
 const outIndex = args.indexOf('--out');
@@ -420,6 +418,9 @@ async function main() {
       await openPage(cdp, run);
       runs.push(await runOnce({ cdp, run, dir, consoleLog, check, log, shot }));
     }
+    // B3 — the head's word against the folio, at the three widths, after every print is done.
+    const last = RUNS[RUNS.length - 1];
+    const folio = await folioGap({ cdp, run: last, dir, stepId: pickStepId(dir, last.chapter), check });
 
     const errors = runs
       .flatMap((run) => run.console)
@@ -447,6 +448,7 @@ async function main() {
         writes: runs.flatMap((run) => run.writes.map((write) => ({ rev: write.rev, at: write.atIso, phrase: write.phrase }))),
       },
       runs,
+      folio,
       assertions,
       console: { errors, entries: runs.flatMap((run) => run.console) },
       network: { failures: requestsFailed },

@@ -44,7 +44,11 @@ export type PrintViewport = (blockId: string | null) => boolean;
 export type PrintPlan = {
   /** The renderer's identity: one write, one block, never re-keyed. */
   key: string;
-  /** The block the write named (the pre-revision id, or `null` for a block it created). */
+  /**
+   * The block as the write left it — the **post**-revision id (`applied.ts` reads `newId ?? id`,
+   * and a `remove` names the block that left), or `null` when the patch names none. It is the
+   * key the page's current chapter answers to once the prose is re-read.
+   */
   blockId: string | null;
   /** The block's final text, and the span the ink lays out around. */
   before: string;

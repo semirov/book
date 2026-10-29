@@ -42,6 +42,9 @@ export type ChangeLines = {
   tone: 'waiting' | 'live' | 'done' | 'quiet' | 'escalated';
 };
 
+/** BOOK-220 B2 — the stale change's one sentence, shared by the row and the live frame's line. */
+export const CHANGE_STALE_LINE = 'основа изменилась, решается заново';
+
 /** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
 export function stampCopy(
   change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean; premiseLanded?: boolean },
@@ -129,7 +132,7 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
     return { first, second: turnLine(change.position), tone: 'waiting' };
   }
   if (change.status === 'stale') {
-    return { first, second: 'основа изменилась, решается заново', tone: 'live' };
+    return { first, second: CHANGE_STALE_LINE, tone: 'live' };
   }
   if (change.status === 'processing') {
     // BOOK-218 line 7 — the chapter is being drafted. The summary carries no start moment (the

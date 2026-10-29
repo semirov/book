@@ -9,7 +9,7 @@ import {
   openPassesOf,
   passesOf,
   stagesFromLive,
-  workingChapters,
+  type ClientState,
 } from './frames.ts';
 import {
   AT,
@@ -261,6 +261,40 @@ describe('the transport and the engine', () => {
   });
 });
 
+describe('a reconnect is a new delivery sequence (BOOK-220 B1)', () => {
+  const helloOf = (): HelloPayload => ({
+    connId: 'c2',
+    protocolVersion: 4,
+    serverTime: NOW,
+    limits: { commentsPerHour: 5, maxCommentChars: 1_200, maxEditChars: 800, queueSoftCap: 50, maxConnections: 500, perIp: 8, editSubmissionsPerDay: 3, maxWave: 2 },
+    viewer: { signedIn: true, displayName: 'Аня' },
+    composer: EMPTY_COMPOSER,
+    front: { title: 'Бланк', about: null, rev: 1, imprint: { author: 'А', copyright: '© А' }, authors: { count: 1, measuredAt: NOW } },
+    catalog,
+    state: STATE,
+    live: LIVE,
+    currentChapter: null,
+    comments: { open: 0 },
+  });
+
+  it('applies a hello below the dead connection’s cursor, and seeds the live block from it', () => {
+    const dead = { ...start(), seq: 500, queue: [], filings: [] };
+    const result = applyFrame(dead, { v: 1, type: 'hello', seq: 1, ts: NOW, data: helloOf() } as never);
+    expect(result.state).not.toBe(dead);
+    // The word and the stage log come from the new connection, never from the dead one.
+    expect(result.state.seq).toBe(1);
+    expect(result.state.stages[3]?.[0]?.stage).toBe('drafting');
+    expect(result.state.queue).toEqual(LIVE.queue.pending);
+    expect(result.state.filings).toEqual(LIVE.filings);
+    // The next frame of this connection is contiguous: a reconnect asks for no snapshot.
+    const next = applyFrame(result.state, { v: 1, type: 'authors:update', seq: 2, ts: NOW, data: { count: 3, measuredAt: NOW } } as never);
+    expect(next.effects.some((effect) => effect.kind === 'resync')).toBe(false);
+    // Only `hello` is exempt from the cursor: a low `seq` in place is still a repeat.
+    const stale = applyFrame({ ...start(), seq: 500 }, { v: 1, type: 'authors:update', seq: 2, ts: NOW, data: { count: 3, measuredAt: NOW } } as never);
+    expect(stale.state.seq).toBe(500);
+  });
+});
+
 describe('state:updated', () => {
   it('replaces the snapshot and the queue’s waiting list', () => {
     const snapshot: StateUpdatedPayload = {
@@ -308,12 +342,22 @@ describe('the remaining carriers', () => {
     expect(state.historyTick).toBe(0);
   });
 
-  it('adds a filing the page had never read, then patches it in place', () => {
-    const fresh = apply(start(), 'filing:update', filing);
-    expect(fresh.state.filings.map((row) => row.commentId)).toEqual(['cmt_1']);
-    const patched = apply(fresh.state, 'filing:update', { ...filing, state: 'accepted', at: AT + 5_000, attemptsLeft: 0 });
+  it('patches only a filing the page holds and ignores a foreign one (BOOK-220 M1)', () => {
+    // BOOK-220 M1 — the own list comes from `hello`/`state:snapshot` only: a broadcast for a
+    // filing this page does not hold is somebody else's, and it is not adopted.
+    const foreign = apply(start(), 'filing:update', filing);
+    expect(foreign.state.filings).toEqual([]);
+    expect(foreign.state.filingUpdates).toEqual({});
+    expect(foreign.effects).toEqual([]);
+    // A filing the page holds moves in place, with no read.
+    const held: ClientState = {
+      ...start(),
+      filings: [LIVE.filings[0] as NonNullable<(typeof LIVE.filings)[number]>],
+    };
+    const patched = apply(held, 'filing:update', { ...filing, state: 'accepted', at: AT + 5_000, attemptsLeft: 0 });
     expect(patched.state.filings[0]?.state).toBe('accepted');
     expect(patched.state.filings[0]?.attemptsLeft).toBe(0);
+    expect(patched.effects).toEqual([]);
   });
 
   it('falls back to the register’s read when an older server sends no DTO', () => {
@@ -334,12 +378,12 @@ describe('the remaining carriers', () => {
 });
 
 describe('the live block’s own fold', () => {
-  it('names the chapters a pass works on and the stage log’s pass map', () => {
+  it('folds a claim into the open passes and maps the stage log by chapter', () => {
     const seeded = apply(start(), 'state:snapshot', { state: STATE, live: LIVE }).state;
     const accepted = apply(seeded, 'pass:accepted', {
       stepId: 'stp_2', chapter: 6, lane: 'forward', pass: 'change', premiseChangeId: null, at: AT, ahead: 1,
     }).state;
-    expect([...workingChapters(accepted)].sort()).toEqual([3, 6]);
+    expect(openPassesOf(accepted).map((pass) => pass.passId).sort()).toEqual(['stp_1', 'stp_2']);
     expect(Object.keys(passesOf(accepted))).toEqual(['3']);
     expect(stagesFromLive(LIVE.passes)[3]).toHaveLength(1);
   });
