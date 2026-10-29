@@ -63,6 +63,11 @@ printf '%s\\n' "$value"`;
  * boot of a new build does to the volume — the pre-migration dump, once. The volume marker is NOT
  * written: `boot.ts` never refreshes `schema=`, so a driver that read it would compare one number
  * with itself.
+ *
+ * BOOK-232: `sqlite3 -readonly <db> 'PRAGMA user_version;'` answers `FAKE_SQLITE_SCHEMA` — the number
+ * the guard must decide on, in the shape the real tool prints. Unset means "the file cannot be read"
+ * (the real tool's exit 1 with its message), which is the `unknown` the guard must refuse rather than
+ * round to "not migrated".
  */
 export function fakeTools(
   stateDir: string,
@@ -90,6 +95,9 @@ case "$1" in
 esac
 exit 0`,
     plutil: fakePlutil(),
+    sqlite3: `[ "$1" = "-readonly" ] || { echo "Usage: sqlite3 [-readonly] FILE" >&2; exit 1; }
+[ -n "\${FAKE_SQLITE_SCHEMA:-}" ] || { echo "Error: unable to open database file" >&2; exit 1; }
+printf '%s\\n' "\${FAKE_SQLITE_SCHEMA}"`,
   });
 }
 
@@ -112,7 +120,7 @@ export function runDeploy(args: string[], env: Record<string, string>): Promise<
 
 /** Every tool the driven path has to see from the fake bin dir; a macOS-only tool resolved from
  * `/usr/bin` instead would pass here and die on the ubuntu-latest gate job. */
-const ON_PATH = ['plutil', 'launchctl'];
+const ON_PATH = ['plutil', 'launchctl', 'sqlite3'];
 
 /** The fakes must shadow the box's own tools: `command -v`, as a shell would resolve them. */
 function assertFaked(env: Record<string, string>, bin: string): void {

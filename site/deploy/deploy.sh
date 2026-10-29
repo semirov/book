@@ -72,14 +72,20 @@
 #     reached the restart prints exactly one `recovery:` line (`lib.sh:recovery_line`, four fixed
 #     sentences: roll-forward, dump-restore, image-rollback, none) and audits `recovery=`; a failure
 #     before the restart never booted and prints none;
-#   * BOOK-217 — A MIGRATION IS RECORDED, so `--rollback` cannot walk into it: a run that migrated
-#     (red or green) writes `$STATE_DIR/volume-migrated` with the `SCHEMA_VERSION` of the deployed
-#     build, read from `git show <sha>:site/server/src/db/schema.ts` (`schema=unknown` when it cannot
-#     be read; absent when nothing migrated). `--rollback` reads the record, reads the TARGET's
-#     constant the same way, and refuses (exit 1, nothing fetched, checked out or built) when the
-#     target understands an older schema — putting an older build on a migrated volume is the
-#     incident. A successful dump-restore removes the record (the volume is back on the old schema);
-#     an unknown or absent record keeps today's behaviour and says so in one line;
+#   * BOOK-217/BOOK-232 — A MIGRATION IS RECORDED, AND THE ROLLBACK IS DECIDED FROM THE VOLUME:
+#     a run that migrated (red or green) writes `$STATE_DIR/volume-migrated` with the VOLUME's own
+#     `PRAGMA user_version` (`schema=unknown` when the file cannot be read; absent when nothing
+#     migrated) — a note for a human, the same fact compose writes there. `--rollback` reads the
+#     volume itself (two opens: `sqlite3 -readonly` while the service holds the file, a plain
+#     `sqlite3` when it is cleanly closed — a read-only open cannot make the `-shm` a WAL database
+#     needs, measured exit 14), reads the TARGET's `SCHEMA_VERSION` from `git show`, and decides with
+#     the same pure rule as the compose release (`lib.sh:rollback_schema_verdict`): a target that
+#     understands an older schema is refused, and so is a volume whose number cannot be read at all.
+#     THE RECORD MAY ONLY STRENGTHEN A REFUSAL, never authorise a swap: with an unreadable volume, a
+#     record past the target is one more reason to refuse and anything else is `unknown` — it never
+#     prints "safe". Exit 1, one line naming both numbers or the unreadable side, nothing fetched,
+#     checked out, built or restarted. Putting an older build on a migrated volume is the incident. A
+#     successful dump-restore removes the record (the volume is back on the old schema);
 #   * BOOK-217 — A CRASH LOOP IS THE RUN'S TO REPORT: `launchctl print` is read before the restart and
 #     after a failed window. A job that respawned more than the deploy's own kickstart
 #     (`runs > runs_before + 1`) prints `CRASH LOOP: <label> resumed <n> time(s), last exit code <m>
@@ -611,43 +617,94 @@ schema_of_commit() { # (sha) -> the SCHEMA_VERSION that commit carries, or nothi
   return 0
 }
 
-# The record a migrating run leaves: `schema=<n>`, or `schema=unknown` when the constant cannot be
-# read (the record then says "migrated, schema unknown" and `--rollback` keeps today's behaviour
-# rather than inventing a number). Written on the green path too: a green deploy that migrated is
-# still a migrated volume.
+# The record a migrating run leaves: the VOLUME's own number (`schema=<n>`), or `schema=unknown` when
+# the file could not be read. The deployed build's constant is NOT written: that is a different fact
+# (what the new build understands, not what the file is on), and compose writes the volume's number
+# into the same file — so the file means one thing in both drivers. It is a NOTE (BOOK-232): the guard
+# reads the volume itself, and a record can only strengthen a refusal. Written on the green path too:
+# a green deploy that migrated is still a migrated volume.
 record_volume_migrated() {
-  local sha="" schema=""
+  local schema=""
   [ "$MIGRATED" = "1" ] || return 0
-  sha="${GOOD:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
-  schema="$(schema_of_commit "$sha")"
+  schema="$(volume_schema "${DATA_DIR_SITE:-$(data_dir_of_service)}")"
   mkdir -p "$STATE_DIR"
   printf 'schema=%s\n' "${schema:-unknown}" >"$VOLUME_MIGRATED_FILE"
-  say "volume-migrated: recorded schema=${schema:-unknown} in $VOLUME_MIGRATED_FILE — --rollback will refuse a build that predates it"
+  say "volume-migrated: recorded schema=${schema:-unknown} in $VOLUME_MIGRATED_FILE — a note: the guard reads the volume itself, and only a record past the target strengthens a refusal"
 }
 
-# The guard `--rollback` runs before anything is fetched, checked out or built. A build that
-# understands an older schema than the record names is refused with nothing started; an absent or
-# unreadable record keeps today's behaviour and says so in one line.
+# `sqlite3` on PATH, or nothing. A host WITHOUT the tool is a named refusal of its own later: it must
+# not read as "the volume could not be read", because that sentence points an operator at the file.
+sqlite3_tool() { command -v sqlite3 2>/dev/null || true; }
+
+# The schema the volume is really on, read from the file itself (BOOK-232). Two opens, in this order,
+# because neither form is correct alone:
+#
+#   1. `-readonly` is the form that is right while the service HOLDS the file: a WAL database needs
+#      the `-shm` the live connection made, and a read-only open may not create one.
+#   2. A CLEANLY CLOSED WAL database is exactly the state a rollback exists for (the service is
+#      down), and there `sqlite3 -readonly` answers NOTHING: measured on this box with sqlite3 3.51,
+#      `Error: stepping, unable to open database file (14)`, exit 14 — the same file that answers 33
+#      while a handle holds it. So the same PRAGMA is retried with a PLAIN open, which replays the
+#      `-wal` the way the service's own open would; the empty `-wal`/`-shm` it leaves behind are what
+#      the next boot expects anyway.
+#
+# `?immutable=1` is deliberately NOT an option: it ignores a non-empty `-wal` and reports the last
+# checkpoint — the dangerous direction, an UNDER-reported version that would authorise a swap the
+# file is already past. A read that fails both ways is an EMPTY answer, never a 0, and a missing file
+# is never created by the retry.
+volume_schema() { # (data dir) -> the DB's `PRAGMA user_version`, or nothing
+  local dir="$1" tool="" out="" n=""
+  [ -n "$dir" ] || return 0
+  [ -f "${dir%/}/book.db" ] || return 0
+  tool="$(sqlite3_tool)"
+  [ -n "$tool" ] || return 0
+  out="$("$tool" -readonly "${dir%/}/book.db" 'PRAGMA user_version;' 2>/dev/null)" || out=""
+  n="$(printf '%s\n' "$out" | sed -n 's/^\([0-9][0-9]*\)$/\1/p' | head -n 1 || true)"
+  if is_number "$n" && [ "$n" -gt 0 ]; then printf '%s' "$n"; return 0; fi
+  out="$("$tool" "${dir%/}/book.db" 'PRAGMA user_version;' 2>/dev/null)" || out=""
+  n="$(printf '%s\n' "$out" | sed -n 's/^\([0-9][0-9]*\)$/\1/p' | head -n 1 || true)"
+  if is_number "$n" && [ "$n" -gt 0 ]; then printf '%s' "$n"; fi
+  return 0
+}
+
+# The guard `--rollback` runs before anything is fetched, checked out or built, and the dry run runs
+# it too. BOOK-232: the SAME rule as `compose-release.sh`, decided by the same pure helper
+# (`lib.sh:rollback_schema_verdict`) — the volume's own `user_version` against the target's
+# `SCHEMA_VERSION`. `refuse` AND `unknown` both refuse: an older build on a newer volume refuses the
+# boot (`SCHEMA_FUTURE`) and crash-loops, and "the volume's number is unreadable" is not a reason to
+# put a build on it.
+#
+# THE RECORD MAY ONLY STRENGTHEN A REFUSAL, NEVER AUTHORISE A SWAP. `$STATE_DIR/volume-migrated` is a
+# note an earlier run wrote (and compose writes the volume's own number into it, this driver the same
+# now) — so when the file itself cannot be read, a record that names a schema the target predates is
+# one more reason to refuse, and a record that does not is no reason to proceed. It never prints
+# "safe". Nothing is fetched, checked out, built or restarted on any of these paths.
 volume_migrated_guard() { # (target sha or tag)
-  local target="$1" recorded="" target_schema=""
-  if [ ! -f "$VOLUME_MIGRATED_FILE" ]; then
-    say "volume-migrated: no record at $VOLUME_MIGRATED_FILE — nothing says a deploy moved the volume, so the rollback proceeds as usual (a migration this host did not record cannot be ruled out)"
-    return 0
-  fi
-  recorded="$(sed -n 's/^schema=//p' "$VOLUME_MIGRATED_FILE" | head -n 1 || true)"
-  if ! is_number "$recorded"; then
-    say "volume-migrated: the record says schema=${recorded:-nothing}, not a number — the volume was migrated but its schema is unknown, so the rollback proceeds as usual"
-    return 0
-  fi
+  local target="$1" recorded="" target_schema="" db_schema="" verdict="" line="" dir="" where="" tool=""
+  dir="${DATA_DIR_SITE:-}"
+  [ -n "$dir" ] || dir="$(data_dir_of_service)"
+  where="$dir"
+  [ -n "$where" ] || where="the service's DATA_DIR"
   target_schema="$(schema_of_commit "${target##*:}")"
-  if ! is_number "$target_schema"; then
-    say "volume-migrated: the volume is at schema v${recorded}; the target build carries no readable SCHEMA_VERSION, so the rollback proceeds as usual"
-    return 0
+  tool="$(sqlite3_tool)"
+  if [ -z "$tool" ]; then
+    die "no sqlite3 on PATH, so the volume's schema cannot be read and a rollback cannot be shown safe: install it (macOS ships /usr/bin/sqlite3) and re-run — nothing was fetched, checked out or built"
   fi
-  if [ "$target_schema" -lt "$recorded" ]; then
-    die "the volume is at schema v${recorded} (a deploy migrated it) and the build being rolled back to understands v${target_schema} — putting it on that volume would refuse the schema and crash-loop; restore a dump instead: the volume dump restore is the deploy's own path (or an explicit operator restore of a dump into the service's DATA_DIR; site/deploy/restore-drill.sh restores into a scratch copy and never touches the volume), and $VOLUME_MIGRATED_FILE is the record that must be deleted to override this refusal deliberately; nothing was fetched, checked out or built"
+  db_schema="$(volume_schema "$dir")"
+  if is_number "$db_schema"; then
+    verdict="$(rollback_schema_verdict "$db_schema" "$target_schema")"
+    if [ "$verdict" = "safe" ]; then
+      say "schema: the volume is at v${db_schema} and the build being rolled back to understands v${target_schema} — the rollback is safe on this volume"
+      return 0
+    fi
+    line="$(rollback_schema_line "$verdict" "$db_schema" "$target_schema" "the build being rolled back to")"
+    die "${line} — nothing was fetched, checked out or built"
   fi
-  say "volume-migrated: the volume is at schema v${recorded} and the target build understands v${target_schema} — the rollback is safe on this volume"
+  recorded="$(sed -n 's/^schema=//p' "$VOLUME_MIGRATED_FILE" 2>/dev/null | head -n 1 || true)"
+  if is_number "$recorded" && is_number "$target_schema" && [ "$recorded" -gt "$target_schema" ]; then
+    die "the volume's own schema could not be read from ${where}/book.db, and the record at $VOLUME_MIGRATED_FILE says v${recorded} (a deploy migrated it) while the build being rolled back to understands v${target_schema} — an older build on a volume like that refuses the boot (SCHEMA_FUTURE) and crash-loops, so the rollback is refused; nothing was fetched, checked out or built"
+  fi
+  die "the volume's own schema could not be read from ${where}/book.db${recorded:+ (the record says schema=${recorded}, which does not put the volume past the target either)}, so the rollback is refused rather than risked — read it with sqlite3 ${where}/book.db 'PRAGMA user_version;', or bring the service up so the file can be opened as the WAL database it is; nothing was fetched, checked out or built"
 }
 
 # Read the fact ONCE per run (the green record, the audit and the recovery must all name the same

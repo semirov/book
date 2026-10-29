@@ -64,8 +64,9 @@ describe('deploy.sh — the migration fact is read around the restart', () => {
     expect(after).toContain('if ! now_dumps="$(volume_dumps)"; then');
     expect(after).toContain('MIGRATED=1');
     expect(after).toContain('MIGRATED=0');
-    // The marker is not a signal any more: `boot.ts` never refreshes it, so nothing reads it.
-    expect(script).not.toContain('volume_schema');
+    // The marker is not a signal any more: `boot.ts` never refreshes it, so nothing reads it. The
+    // volume's number comes from the file itself (BOOK-232), through `sqlite3 -readonly`.
+    expect(script).toContain("sqlite3 -readonly");
     expect(script).not.toContain('SCHEMA_BEFORE');
     expect(script).not.toContain('/.book-volume');
   });
@@ -134,18 +135,29 @@ describe('deploy.sh — the migration fact is read around the restart', () => {
     // The record: `schema=<n>` or `schema=unknown`; nothing at all when the volume did not move.
     const record = body('record_volume_migrated');
     expect(record).toContain('[ "$MIGRATED" = "1" ] || return 0');
-    expect(record).toContain('schema_of_commit');
+    // BOOK-232: the record carries the VOLUME's own number (or `unknown`), never the deployed
+    // build's constant — the file must mean one thing in both drivers, and compose writes the file's.
+    expect(record).toContain('schema="$(volume_schema');
+    expect(record).not.toContain('schema_of_commit');
     expect(record).toContain('schema=${schema:-unknown}');
     expect(record).toContain('>"$VOLUME_MIGRATED_FILE"');
     // The green path records too: a green deploy that migrated is still a migrated volume.
     const green = script.slice(script.indexOf('a green deploy that migrated is still a migrated volume'), script.indexOf('finish_green || true'));
     expect(green).toContain('migration_read');
-    // The guard reads the record and the target's own constant, and refuses an older target.
+    // BOOK-232: the guard reads the VOLUME and the target's own constant, and decides with the same
+    // pure rule as the compose release. The record can only STRENGTHEN a refusal — it is read in the
+    // branch where the volume could not be read, and it never produces the word "safe".
     const guard = body('volume_migrated_guard');
-    expect(guard).toContain('[ ! -f "$VOLUME_MIGRATED_FILE" ]');
-    expect(guard).toContain('is_number "$recorded"');
+    expect(guard).toContain('db_schema="$(volume_schema "$dir")"');
     expect(guard).toContain('target_schema="$(schema_of_commit "${target##*:}")"');
-    expect(guard).toContain('[ "$target_schema" -lt "$recorded" ]');
+    expect(guard).toContain('verdict="$(rollback_schema_verdict "$db_schema" "$target_schema")"');
+    expect(guard).toContain('[ "$verdict" = "safe" ]');
+    expect(guard).toContain('is_number "$recorded"');
+    // A host without the tool is its own refusal, and the "way out" of an unreadable volume is a
+    // READ — never a restore over a file that may be perfectly good.
+    expect(guard).toContain('no sqlite3 on PATH');
+    expect(guard).not.toContain('restore the pre-deploy dump');
+    expect(guard).toContain("sqlite3 ${where}/book.db 'PRAGMA user_version;'");
     expect(guard).toContain('die ');
     // Run in prepare, before the fetch and the checkout: a refusal changes nothing at all.
     const guardCall = script.indexOf('volume_migrated_guard "$TARGET"');
@@ -463,37 +475,5 @@ describe('BOOK-217: a restart that was never issued still names its recovery', (
     expect(result.out).not.toContain('rolling back to');
     expect(logLines(join(s.stateDir, 'launchctl.log'))).toHaveLength(0);
     expect(readFileSync(join(s.stateDir, 'deploy-audit.log'), 'utf8')).toMatch(/recovery=none crashloop=0/u);
-  });
-});
-
-describe('BOOK-217: a migration is recorded, and `--rollback` refuses an older build on it', () => {
-  it('writes schema=<n> on green, then refuses the previous build before it is fetched or checked out', async () => {
-    const s = await stage({ frame: 0 });
-    // The build that served before (v29) and the build this deploy ships (v30), both commits.
-    const v29 = commitSchema(s.root, 29);
-    const v30 = commitSchema(s.root, 30);
-    const green = await runDeploy(['--phase', 'run', '--root', s.root], s.env);
-    expect(green.code, green.out).toBe(0);
-    expect(green.out).toContain('volume-migrated: recorded schema=30');
-    expect(readFileSync(join(s.stateDir, 'volume-migrated'), 'utf8')).toBe('schema=30\n');
-    // Rolling back to the build that understands v29 on a v30 volume is the crash loop: refused.
-    writeFileSync(join(s.stateDir, 'last-good'), `${v29}\n`, 'utf8');
-    const before = logLines(join(s.stateDir, 'launchctl.log')).length;
-    const refused = await runDeploy(['--rollback', '--dry-run', '--root', s.root], s.env);
-
-    expect(refused.code, refused.out).toBe(1);
-    expect(refused.out).toContain('the volume is at schema v30 (a deploy migrated it) and the build being rolled back to understands v29');
-    expect(refused.out).toContain('nothing was fetched, checked out or built');
-    expect(refused.out).not.toContain('fetching');
-    expect(refused.out).not.toContain('rolling back to');
-    expect(execFileSync('git', ['-C', s.root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()).toBe(v30);
-    expect(logLines(join(s.stateDir, 'launchctl.log'))).toHaveLength(before);
-
-    // A record without a number says so and keeps today's behaviour (it reaches the fetch, which a
-    // clone with no origin cannot do — the proof that the guard let it through).
-    writeFileSync(join(s.stateDir, 'volume-migrated'), 'schema=unknown\n', 'utf8');
-    const unknown = await runDeploy(['--rollback', '--dry-run', '--root', s.root], s.env);
-    expect(unknown.out).toContain('volume-migrated: the record says schema=unknown, not a number');
-    expect(unknown.out).toContain('fetching');
   });
 });

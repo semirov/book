@@ -42,48 +42,49 @@
 #     `/healthz` over a writing lane that stays down until the next deploy. A red post-up check takes
 #     the recovery path below and `last-good` is not written. `--rollback` skips the gate on purpose,
 #     because an image older than BOOK-187 does not carry the commands;
-#   * BOOK-217 — THE RECOVERY IS DECIDED FROM ONE FACT: did the boot of the new image write a
-#     pre-migration dump? `server/src/db/boot.ts` writes `backups/pre-v<from>-<stamp>.db` BEFORE any
-#     DDL, and only when it is about to migrate — so ONE listing of `backups/` before `up` and ONE
-#     after it is the whole fact: a name that was not there before and is there after is this run's
-#     migration, and no new name means the boot ran no DDL. The volume marker is NOT a second signal:
-#     the boot writes `.book-volume` with `flag:'wx'` and rewrites only a LEGACY marker, so `schema=`
-#     is never refreshed after the first boot, and comparing it around `up` compares one number with
-#     itself. Both listings are STATUS-CHECKED: a listing that failed is not "no migration", it is
-#     `unknown`, and an unknown fact is never rounded to either — nothing is swapped, nothing is
-#     restored, and `recovery: none` says a human must look. Migrated and the new image answers →
-#     roll-forward: the previous image is NOT put back (it would refuse the future schema and
-#     crash-loop), nothing is restarted, exit 1, `last-good` not written. Migrated and nothing serves
-#     → the stack is STOPPED first (`dc stop site engine writer`, never `down -v`) and only then is
-#     the pre-deploy dump copied over `book.db` inside the volume, then the ordinary image rollback.
-#     A stop that fails is a refusal: `book.db` is not replaced and the run dies naming it, because a
-#     v30 container could boot between the `mv` and the previous image's `up`, open the restored v29
-#     file and migrate it straight BACK (the incident, produced by its own recovery), and a live
-#     process would recreate `book.db-wal` beside the restored file. No migration → the ordinary
-#     image rollback. Every failed run that reached `up` prints exactly one `recovery:` line
-#     (`lib.sh:recovery_line`, four fixed sentences: roll-forward, dump-restore, image-rollback,
-#     none) and audits `recovery=`. A failure before `up` has no migration and prints no such line;
-#   * BOOK-217 — A MIGRATION IS RECORDED, so `--rollback` cannot walk into it: a run that migrated
-#     (red or green) writes `$STATE_DIR/volume-migrated` with the `SCHEMA_VERSION` of the deployed
-#     image, read from `git show <sha>:site/server/src/db/schema.ts` (`schema=unknown` when it cannot
-#     be read; absent when nothing migrated). `--rollback` reads the record, reads the TARGET image's
-#     constant the same way, and refuses (exit 1, no `up`, no gate) when the target understands an
-#     older schema — an image swap onto a migrated volume is the incident. A successful dump-restore
-#     removes the record (the volume is back on the old schema); an unknown or absent record keeps
-#     today's behaviour and says so in one line;
-#   * BOOK-217 — A CRASH LOOP IS THE RUN'S TO REPORT: each service's `RestartCount` is snapshotted
-#     BEFORE the first `up` (a weeks-old count on a container the failed `up` never recreated is not
-#     this run's loop), and after a decisive container failure or a failed health window a service is
-#     reported only when its `State.Status` is `restarting`, `exited`, `dead` or `paused`, or when
-#     its count grew: `CRASH LOOP: <service> restarted <n> time(s) <status> — the stack cannot boot;
-#     prod is not serving` (also as `::error::` under GitHub Actions; the audit says `crashloop=1`).
-#     A restarting container is never a 0, and an unchanged count is never a loop;
+#   * BOOK-232 — A MIGRATION IS WHAT MAKES A ROLLBACK UNSAFE, AND IT IS READ FROM THE VOLUME ITSELF.
+#     The one fact is the database's own `user_version` against the `SCHEMA_VERSION` the target image
+#     understands (`lib.sh:rollback_schema_verdict`): `db > target` is the incident — a v32 image booted
+#     on a v33 volume refuses it (`SCHEMA_FUTURE`) and crash-loops, prod 502 — while equal or lower is
+#     an ordinary swap. Either number unreadable is `unknown`, and unknown refuses too (fail closed).
+#     The DB's number is the LARGER of two reads: ONE read-only one-shot inside the volume (`dc run
+#     --rm --no-deps --entrypoint node site -e …`, `PRAGMA user_version`, no boot so no DDL) and
+#     `/healthz`'s `schema_version` — `meta.schema_version` is written AFTER the migrations, so a boot
+#     killed in between reports less than the file holds, and the smaller number is the one that would
+#     authorise the swap; nothing when neither answers. The target's comes from
+#     `git show <sha>:site/server/src/db/schema.ts` first and a probe of the image itself second. The
+#     guard lives in `rollback_to()` — the single choke point every swap passes through (the automatic
+#     recovery, the swap after a dump restore, and `--rollback`, dry run included) — and a refusal
+#     starts nothing and names both numbers and the way back (restore the pre-deploy dump). There is no
+#     env override. `red()` therefore decides the four outcomes from the schema comparison, not from
+#     "a new dump appeared": the dump listing only names THIS run's pre-migration dump (the copy a
+#     `dump-restore` puts back), and a run that migrated yet cannot name one has nothing to restore —
+#     `recovery: none`, nothing touched;
+#   * BOOK-217 — A MIGRATION IS RECORDED, so a human can read what happened: a run that migrated (red
+#     or green) writes `$STATE_DIR/volume-migrated` with the volume's schema (absent when nothing
+#     migrated, `schema=unknown` when it could not be read). Since BOOK-232 the record is the
+#     operator's note, not the guard: `--rollback` reads the volume itself, so a stale or missing
+#     record cannot authorise a swap. A successful dump-restore removes the record (the volume is back
+#     on the old schema).
+#   * BOOK-217/BOOK-232 — A CRASH LOOP IS THE RUN'S TO REPORT: each service's `RestartCount` is
+#     snapshotted BEFORE the first `up` (a weeks-old count on a container the failed `up` never
+#     recreated is not this run's loop), and after a decisive container failure or a failed health
+#     window a service is reported only when its `State.Status` is `restarting`, `exited`, `dead` or
+#     `paused`, or when its count grew: `CRASH LOOP: <service> restarted <n> time(s) <status> — the
+#     stack cannot boot; prod is not serving` (the audit says `crashloop=1`). A restarting container
+#     is never a 0, and an unchanged count is never a loop. A run that ends with `CRASHLOOP=1` is
+#     never green: it dies before the green exit;
+#   * BOOK-232 — ONE ALERT PER FAILED RUN: `alert()` prints exactly one
+#     `FAILED at <step>: <cause> — prod: serving <commit> at <url>` (or `prod: NOT serving (<why>)`)
+#     and, under GitHub Actions, exactly one `::error::` with that same line. `die()`, every `red()`
+#     outcome and the unexplained death in the EXIT trap go through it, so a run can never annotate
+#     itself twice and a crash loop can never be reported as a successful deploy;
 #   * THE GATE DOES NOT RACE THE WRITER (BOOK-159): no `npm`, no node on the HOST, no manuscript
 #     check and no host process against the data dir run here — Docker and curl only, and the one
 #     node that runs (the home gate) runs in a container, on the same volume, one kernel. The full
-#     test suite is CI's (gate.yml); the deploy's own gate is the container health gate, five HTTP
-#     reads, the volume's home gate and, when the host carries a usable OAuth client id, the sign-in
-#     redirect (BOOK-205);
+#     test suite is CI's (gate.yml); the deploy's own gate is the container health gate, the HTTP
+#     reads in `smoke()`, the volume's home gate and, when the host carries a usable OAuth client id,
+#     the sign-in redirect (BOOK-205);
 #   * the data dir is the named volume `${BOOK_DATA_VOLUME:-book-data}`, never a host bind (BOOK-183):
 #     a volume without `book.db` is refused with a named reason BEFORE anything is built or started, and
 #     a rollback does not run either — a stack on an empty volume is a 500, not a deploy. Only a
@@ -125,8 +126,17 @@ BUILD_TIMEOUT="${BOOK_BUILD_TIMEOUT:-1200}"
 KEEP_IMAGES="${BOOK_KEEP_IMAGES:-5}"
 LAST_GOOD_IMAGE="${STATE_DIR}/last-good-image"
 PREV_IMAGE_FILE="${STATE_DIR}/previous-image"
-# BOOK-217: what a migrating deploy leaves for `--rollback` — `schema=<n>` or `schema=unknown`.
+# BOOK-217: what a migrating deploy leaves for the operator — `schema=<n>` or `schema=unknown`.
 VOLUME_MIGRATED_FILE="${STATE_DIR}/volume-migrated"
+# BOOK-232: the volume's own schema and what an image understands. The one fact every image swap is
+# decided on; empty is `unknown`, and unknown refuses.
+SCHEMA_DB=""
+SCHEMA_TARGET=""
+SCHEMA_VERDICT=""
+# Why an image swap was refused (BOOK-232), printed with the refusal and the death.
+GUARD_WHY=""
+# 1 once the run printed its one alert (BOOK-232): exactly one per failed run, ever.
+ALERTED=0
 # The bind source for the entrypoint's per-role `flock` files. It MUST be created by the invoking
 # uid: left to Docker the source appears owned by root, uid 501 cannot write it, and every service
 # exits 75 on its own lock file.
@@ -212,18 +222,46 @@ audit() {
 die() {
   if [ "$REASON_PRINTED" = 1 ]; then exit 1; fi
   REASON_PRINTED=1
-  say "FAILED at ${STEP}: $* — nothing further will be started"
+  alert "$*"
   audit "failed mode=${MODE} runtime=compose image=${IMAGE_TAG:-none} commit=${SHA7:-none} prev=${PREV_IMAGE:-none} step=${STEP} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} recovery=${RECOVERY_CHOICE:-none} crashloop=${CRASHLOOP} cause=$*"
   exit 1
+}
+
+# BOOK-232: ONE ALERT PER FAILED RUN, and it is the truth about prod, not a guess. The alarm is the
+# run, not a human noticing a 502 two minutes later, so the line says where the run stopped and what
+# answers now — "prod still serves book:<sha>" and "prod answers nothing" lead an operator to
+# different places. Under GitHub Actions the same line is the workflow's only `::error::` annotation:
+# the flag is what makes "exactly one" true even when several layers notice the same failure.
+prod_state() {
+  health_read "${SITE_URL}/healthz"
+  if [ "$R_OK" = 1 ]; then
+    printf 'prod: serving %s at %s' "${R_COMMIT:-no commit}" "${SITE_URL}"
+    return 0
+  fi
+  printf 'prod: NOT serving (nothing answered 200 at %s: curl exit %s, status %s)' "${SITE_URL}" "${R_CODE}" "${R_STATUS}"
+}
+
+alert() { # (cause)
+  local line=""
+  [ "$ALERTED" = 0 ] || return 0
+  ALERTED=1
+  line="FAILED at ${STEP}: $1 — $(prod_state)"
+  say "$line"
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then printf '::error::%s\n' "$line"; fi
+  return 0
 }
 
 # A death nobody explained still owes one line and one audit record (deploy.sh's rule).
 on_exit() {
   local code=$?
+  # BOOK-232: the ERR reporter ends with `exit 1`, so a failure inside this exit path would turn a
+  # status the interface documents — 3, "another deploy holds the lock" — into a red deploy. The exit
+  # path reports; it never re-enters the reporter.
+  trap - ERR
   if [ "$code" -ne 0 ] && [ "$code" -ne 2 ] && [ "$code" -ne 3 ]; then
     if [ "$REASON_PRINTED" != 1 ]; then
       REASON_PRINTED=1
-      say "FAILED at ${STEP}: no reason recorded"
+      alert "no reason recorded (exit ${code})"
     fi
     if [ "$AUDIT_WRITTEN" != 1 ]; then
       audit "failed mode=${MODE} runtime=compose image=${IMAGE_TAG:-none} commit=${SHA7:-none} step=${STEP} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} recovery=${RECOVERY_CHOICE:-none} crashloop=${CRASHLOOP} cause=unexplained"
@@ -427,31 +465,94 @@ signin_smoke() {
   return 1
 }
 
-# Five HTTP reads a browser would notice: the poll, the опись, one chapter from the volume, the
-# install manifest and the worker. `/api/state` and `/api/chapters` answer plain JSON (an object and
-# an array, no `ok` envelope), so the shape is checked, not a wrapper. Plus the conditional sign-in
-# read (BOOK-205): it only speaks when the host carries the OAuth client id.
+# The HTTP reads a browser would notice, in the order a reader meets them: the poll, the опись, one
+# chapter from the volume, the install manifest and the worker. `/api/state` and `/api/chapters` answer
+# plain JSON (an object and an array, no `ok` envelope), so the shape is checked, not a wrapper.
+#
+# THE CHAPTER READ AND THE AGE GATE (BOOK-225, BOOK-232). `/api/chapters/:n` — like
+# `/api/history/chapters/:n` and `/book.fb2` — is refused `403 AGE_GATE` until the reader has answered the
+# book's 18+ question. The mechanism, which is the whole runbook for this step:
+#
+#   POST /api/age            (no body, no credential)
+#     -> 200 + `Set-Cookie: book_age=YYYY-MM-DD; Max-Age=31536000; Path=/; SameSite=Lax`
+#        (value = the site's own UTC day; **not signed by design** — it names a day, not a person,
+#        and forging it buys exactly the book a reader gets after one click)
+#   GET /api/chapters/1      without that cookie -> 403 `{"code":"AGE_GATE", …}`
+#   GET /api/chapters/1      with `Cookie: book_age=…` -> 200, or 404 `NOT_WRITTEN` on an empty book
+#
+# So a machine that wants to read a chapter obtains the cookie from the POST's own `Set-Cookie` — never
+# by computing a day itself and never by guessing the clock: the site writes its day, the site reads it
+# back, and the round trip is the proof that a reader CAN get past the gate. `/healthz` carries no gate
+# flag today (adding one is product code, and this script does not change product code), so the gate's
+# identity is the machine-readable `AGE_GATE` code in the refusal plus the `/api/age` readiness answer.
+# That is why this smoke accepts a 403 only when the body names `AGE_GATE`, and then only when the
+# acknowledgement it obtains really lifts it: "a 403 is fine" would pass a site whose gate is broken in
+# either direction, and a 403 for any other reason is red. The cookie is used in this request only: no
+# route, header or config here lets a reader skip the gate.
+#
+# Plus the conditional sign-in read (BOOK-205): it only speaks when the host carries the OAuth client id.
 smoke() {
-  local code ct cc body
+  local code="" ct="" cc="" body="" reply="" ack="" cookie=""
   code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${SITE_URL}/api/state" 2>/dev/null || true)"
   [ "$code" = "200" ] || { SMOKE_WHY="/api/state answered ${code:-nothing}"; return 1; }
-  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${SITE_URL}/api/chapters/1" 2>/dev/null || true)"
-  if [ "$code" != "200" ]; then
-    # An empty slot answers 404 `NOT_WRITTEN` (BOOK-137's reset empties the book): that still proves
-    # the volume is mounted and the DB readable, and must not turn every deploy red.
-    body="$(curl -sS --max-time 5 "${SITE_URL}/api/chapters/1" 2>/dev/null | head -c 200 || true)"
-    case "$body" in
-      *'"code":"NOT_WRITTEN"'*) say "smoke: /api/chapters/1 is NOT_WRITTEN (the book is empty — accepted)" ;;
-      *) SMOKE_WHY="/api/chapters/1 answered ${code:-nothing}"; return 1 ;;
-    esac
-  fi
-  body="$(curl -sS --max-time 5 "${SITE_URL}/api/chapters" 2>/dev/null | head -c 64 || true)"
-  case "$body" in \[*) ;; *) SMOKE_WHY="/api/chapters is not a JSON array"; return 1 ;; esac
+  # The catalog is an entry point, not just a shape: a 500 that happens to start with `[` is not a
+  # healthy опись, so the status is required and only then the array.
+  reply="$(curl -sS --max-time 5 -w 'SMOKE_HTTP=%{http_code}' "${SITE_URL}/api/chapters" 2>/dev/null || true)"
+  code="${reply##*SMOKE_HTTP=}"
+  body="${reply%%SMOKE_HTTP=*}"
+  [ "$code" = "200" ] || { SMOKE_WHY="/api/chapters answered ${code:-nothing}"; return 1; }
+  case "${body:0:1}" in \[) ;; *) SMOKE_WHY="/api/chapters is not a JSON array"; return 1 ;; esac
+  STEP="smoke: /api/chapters/1"
+  reply="$(curl -sS --max-time 5 -w 'SMOKE_HTTP=%{http_code}' "${SITE_URL}/api/chapters/1" 2>/dev/null || true)"
+  code="${reply##*SMOKE_HTTP=}"
+  body="${reply%%SMOKE_HTTP=*}"
+  case "$code" in
+    200) ;;
+    404)
+      # An empty slot answers 404 `NOT_WRITTEN` (BOOK-137's reset empties the book): that still proves
+      # the volume is mounted and the DB readable, and must not turn every deploy red.
+      case "$body" in
+        *'"code":"NOT_WRITTEN"'*) say "smoke: /api/chapters/1 is NOT_WRITTEN (the book is empty — accepted)" ;;
+        *) SMOKE_WHY="/api/chapters/1 answered 404 without the NOT_WRITTEN code"; return 1 ;;
+      esac ;;
+    403)
+      case "$body" in
+        *'"code":"AGE_GATE"'*) ;;
+        *) SMOKE_WHY="/api/chapters/1 answered 403 without the AGE_GATE code — prod refuses the prose for a reason this deploy does not know"; return 1 ;;
+      esac
+      # The gate is proved by the round trip, not by the refusal: ask the site for its own day, carry
+      # exactly that cookie back, and require the chapter. Nothing is computed here.
+      STEP="smoke: /api/age acknowledgement"
+      ack="$(curl -sS -D - -o /dev/null --max-time 5 -X POST "${SITE_URL}/api/age" 2>/dev/null || true)"
+      cookie="$(printf '%s\n' "$ack" | tr -d '\r' | sed -n 's/^[Ss]et-[Cc]ookie: *\(book_age=[^;]*\).*$/\1/p' | head -n 1)"
+      if [ -z "$cookie" ]; then
+        SMOKE_WHY="POST /api/age answered no book_age cookie, so a reader cannot get past the gate"
+        return 1
+      fi
+      STEP="smoke: /api/chapters/1 with the acknowledgement"
+      reply="$(curl -sS --max-time 5 -H "Cookie: ${cookie}" -w 'SMOKE_HTTP=%{http_code}' "${SITE_URL}/api/chapters/1" 2>/dev/null || true)"
+      code="${reply##*SMOKE_HTTP=}"
+      body="${reply%%SMOKE_HTTP=*}"
+      case "$code" in
+        200) say "smoke: the age gate is satisfied by its own acknowledgement (/api/age -> 200 on /api/chapters/1)" ;;
+        404)
+          case "$body" in
+            *'"code":"NOT_WRITTEN"'*) say "smoke: the age gate is satisfied and /api/chapters/1 is NOT_WRITTEN (the book is empty — accepted)" ;;
+            *) SMOKE_WHY="/api/chapters/1 answered 404 with the acknowledgement, without the NOT_WRITTEN code"; return 1 ;;
+          esac ;;
+        403) SMOKE_WHY="/api/chapters/1 answered 403 AGE_GATE even with the cookie /api/age itself issued — the gate does not let a reader through"; return 1 ;;
+        *) SMOKE_WHY="/api/chapters/1 answered ${code:-nothing} with the acknowledgement"; return 1 ;;
+      esac ;;
+    *) SMOKE_WHY="/api/chapters/1 answered ${code:-nothing}"; return 1 ;;
+  esac
+  # The chapter checks above carry their own step; what follows is the smoke's own contract, so a
+  # failure here is attributed to `smoke` and not to the last sub-check that happened to run.
+  STEP="smoke"
   ct="$(curl -sSI --max-time 5 "${SITE_URL}/manifest.webmanifest" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ontent-[Tt]ype: *//p' | head -n 1)"
   case "$ct" in *+json*) ;; *) SMOKE_WHY="/manifest.webmanifest content-type '${ct:-none}'"; return 1 ;; esac
   cc="$(curl -sSI --max-time 5 "${SITE_URL}/sw.js" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p' | head -n 1)"
   case "$cc" in *no-cache*) ;; *) SMOKE_WHY="/sw.js cache-control '${cc:-none}'"; return 1 ;; esac
-  # BOOK-205, last and separate: sign-in is a different contract from the five reads above, and a
+  # BOOK-205, last and separate: sign-in is a different contract from the reads above, and a
   # rollback exists to get the book serving again. `ROLLING_BACK` — set for an automatic rollback and
   # for `--rollback` — is what keeps this read from refusing one; the compose file mounts the same two
   # files for any image, so an older image with sign-in off is never a reason to reject the swap back.
@@ -569,25 +670,96 @@ home_check_post() {
   return 0
 }
 
-# --- the migration fact, and the recovery it decides (BOOK-217) ---------------------------------
+# --- the migration fact, and the recovery it decides (BOOK-217, BOOK-232) ------------------------
 #
-# The boot writes `backups/pre-v<from>-<stamp>.db` BEFORE any DDL (`server/src/db/boot.ts`), and only
-# when it is about to migrate. That makes ONE listing of `backups/` before `up` and one after it the
-# entire fact: a name that was not in the first and is in the second is this run's migration, and no
-# new name means the boot ran no DDL. The volume marker is NOT a second signal — the boot writes
-# `.book-volume` with `flag:'wx'` and rewrites only a legacy marker, so `schema=` is never refreshed
-# after the first boot and comparing it around `up` compares one number with itself.
+# The boot writes `backups/pre-v<from>-<stamp>.db` BEFORE any DDL (`server/src/db/boot.ts`), so one
+# listing of `backups/` before `up` and one after it names THIS run's pre-migration dump — the copy a
+# `dump-restore` puts back. That is all the listing is for (BOOK-232): whether the volume MOVED, and
+# whether an image swap is safe, is the database's own `user_version` against the target image's
+# constant (`schema_fact`), because a dump says a copy was taken and not what `book.db` holds now. The
+# volume marker is not a signal either: the boot writes `.book-volume` with `flag:'wx'` and rewrites
+# only a legacy marker, so `schema=` is never refreshed after the first boot.
 #
 # Both listings are read with ONE-SHOT `sh` on the new image: `--entrypoint sh` and no service
 # command means no boot, so reading around `up` can never migrate anything itself. Their STATUS is
-# part of the answer: a listing that failed is `unknown`, never "no migration". (An after-read that
-# failed would otherwise call a migrated volume unmigrated and put a v29 image on a v30 schema; a
-# before-read that failed would make every pre-existing dump look new, and the "newest new" dump
-# would be restored over the live book — silent data loss reported as success.)
+# part of the answer: a listing that failed means the dump cannot be NAMED, and then a dump-restore
+# has nothing to put back (never "restore the newest file there" — a pre-existing dump is somebody
+# else's, and writing it over the live book is silent data loss reported as success).
 
 # One `sh` on the site image and the volume. Its output is the answer; its status is the caller's.
 volume_sh() { # (script)
   dc run --rm -T --no-deps --entrypoint sh site -c "$1" </dev/null 2>&1
+}
+
+# --- the volume's own schema, and the one an image understands (BOOK-232) ------------------------
+#
+# The dump listing says a copy was taken; it cannot say what `book.db` holds now, and a rollback's
+# safety is exactly that. So the number is read from the database itself: one read-only one-shot on
+# the site image, `--entrypoint node` (no boot, so no DDL and no migration), `readonly` + `fileMustExist`
+# (so the probe can neither create a file nor write a WAL), filtered on a marker line — `docker
+# compose run` writes its own lifecycle lines into the same stream, the same reason `restore_dump`
+# filters `^restored `. A probe that fails is an EMPTY answer, never a 0: 0 is not a schema version,
+# and the caller treats empty as `unknown` (which refuses).
+
+# The probe's own program, in ONE variable so a test can run THIS text against a real database
+# (`server/test/schemaProbe.test.ts`): `better-sqlite3` exports the constructor itself — there is no
+# `.default` — and a destructured `.default` is `undefined`, i.e. "D is not a constructor", a failed
+# probe and a silent fall back to `/healthz`. The path is an argument, so the text is runnable as is.
+SCHEMA_PROBE_JS='let v;try{const D=require("better-sqlite3");const db=new D(process.argv[1]||"/data/book.db",{readonly:true,fileMustExist:true});v=db.pragma("user_version",{simple:true});db.close();}catch(e){console.error(String(e&&e.message));process.exit(1);}console.log("BOOK_SCHEMA="+v);'
+
+# The volume's schema: the LARGER of the file's own `user_version` and what `/healthz` reports, or
+# nothing when neither answered. The probe is one read-only one-shot on the site image, no boot, so
+# reading around a swap can never migrate anything itself; `readonly` + `fileMustExist` mean it
+# cannot create a file or write a WAL either. The stream is filtered on a marker line because
+# `docker compose run` writes its own lifecycle lines into it (the same reason `restore_dump`
+# filters `^restored `). A failed probe is SAID, never swallowed: without that line a typo in the
+# program looks exactly like a volume that cannot be read, and the deploy quietly falls back.
+volume_schema() { # -> the volume's schema, or nothing
+  local out="" code=0 n="" probe=0 health=0 last=""
+  # `trap - ERR` INSIDE the substitution on purpose: a volume the probe cannot read is an expected
+  # answer (it becomes `unknown`, which refuses), and the ERR reporter must not turn that answer into
+  # the run's death line — nor write that line into the output captured here.
+  out="$(trap - ERR; dc run --rm -T --no-deps --entrypoint node site -e "$SCHEMA_PROBE_JS" /data/book.db </dev/null 2>&1)" || code=$?
+  # The marker is read loosely first, so a probe that ANSWERED with something unusable says that,
+  # instead of being reported as a file it never managed to open.
+  n="$(printf '%s\n' "$out" | sed -n 's/^BOOK_SCHEMA=//p' | head -n 1 || true)"
+  if is_number "$n" && [ "$n" -gt 0 ]; then
+    probe="$n"
+  elif [ -n "$n" ]; then
+    say "schema: the volume probe answered BOOK_SCHEMA=${n}, which is not a version — the volume's schema is unknown"
+  else
+    # The last non-empty line is the probe's own complaint (the lifecycle lines come first); it names
+    # a failure, never a row or a value, and the length is bounded so a wall of output stays one line.
+    last="$(printf '%s\n' "$out" | sed '/^[[:space:]]*$/d' | tail -n 1 | head -c 200 || true)"
+    say "schema: the volume probe could not read book.db (exit ${code}): ${last:-no output}"
+  fi
+  # The fallback is the site's own answer — and the number is the MAX of the two, never the fallback
+  # alone, because the smaller one is the dangerous one: `meta.schema_version` is written AFTER the
+  # migrations (`boot.ts:writeStamps`), so a boot killed between the DDL and the stamp leaves it
+  # BELOW the file's `user_version`, and the lower number is exactly the one that would authorise a
+  # swap the volume is already past. Over-reporting can only mean "migrated", which refuses;
+  # under-reporting means the crash loop. 0 is "no reading", never a version.
+  health_read "${SITE_URL}/healthz"
+  if is_number "${R_SCHEMA:-}" && [ "$R_SCHEMA" -gt 0 ]; then health="$R_SCHEMA"; fi
+  if [ "$health" -gt "$probe" ]; then probe="$health"; fi
+  if [ "$probe" -gt 0 ]; then printf '%s' "$probe"; fi
+  return 0
+}
+
+# The schema an image understands: the image's own constant in the repo at its commit first (no
+# container is started for a question git can answer), and the image itself second — an old tag whose
+# commit is no longer in this clone still knows what it can open.
+candidate_schema() { # (image tag) -> the SCHEMA_VERSION that image carries, or nothing
+  local tag="$1" n="" out=""
+  [ -n "$tag" ] || return 0
+  n="$(schema_of_commit "${tag##*:}")"
+  if is_number "$n"; then printf '%s' "$n"; return 0; fi
+  # Same reason as `volume_schema`: an image that cannot be probed is an empty answer, not a death.
+  out="$(trap - ERR; "$DOCKER" run --rm --entrypoint node "$tag" -e \
+    'import("/app/server/dist/db/schema.js").then(m=>{console.log("BOOK_SCHEMA="+m.SCHEMA_VERSION)}).catch(e=>{console.error(String(e&&e.message));process.exit(1)});' \
+    </dev/null 2>&1)" || out=""
+  printf '%s\n' "$out" | sed -n 's/^BOOK_SCHEMA=\([0-9][0-9]*\)$/\1/p' | head -n 1 || true
+  return 0
 }
 
 # The pre-migration dumps in the volume, bare names, sorted. The names are filtered on THIS side of
@@ -630,20 +802,19 @@ dump_from_version() {
   printf '%s\n' "$1" | sed -n 's/^pre-v\([0-9][0-9]*\)-.*$/\1/p' | head -n 1 || true
 }
 
-# After a failure that reached `up` (and on the green path): did the boot migrate? A new dump is the
-# whole fact; a listing that failed either side is `unknown`, the state that refuses both an image
-# swap and a restore.
+# After `up`: WHICH dump is this run's own. Not whether the volume moved — the schema says that
+# (BOOK-232) — but the name a `dump-restore` puts back over `book.db`, so the two answers cannot drift.
+# A listing that failed only means the copy cannot be NAMED: the schema still says whether the volume
+# moved, and a run that cannot name a dump simply has nothing to restore.
 migration_after() {
   local now_dumps="" name="" new="" from=""
-  MIGRATED="unknown"; MIGRATION_DUMP=""; MIGRATION_WHY=""
+  MIGRATION_DUMP=""
   if [ "$DUMPS_KNOWN" != 1 ]; then
-    MIGRATION_WHY="the listing of backups/ before up failed, so whether the boot migrated the volume cannot be known"
-    say "migration: unknown — ${MIGRATION_WHY}"
+    say "migration: the listing of backups/ before up failed, so this run's own dump cannot be named"
     return 0
   fi
   if ! now_dumps="$(volume_dumps)"; then
-    MIGRATION_WHY="the listing of backups/ after up failed, so whether the boot migrated the volume cannot be known"
-    say "migration: unknown — ${MIGRATION_WHY}"
+    say "migration: the listing of backups/ after up failed, so this run's own dump cannot be named"
     return 0
   fi
   while IFS= read -r name; do
@@ -654,20 +825,59 @@ migration_after() {
 $now_dumps
 EOF
   if [ -n "$new" ]; then
-    MIGRATED=1
     MIGRATION_DUMP="$new"
     from="$(dump_from_version "$new")"
-    if [ -n "$from" ]; then
-      MIGRATION_WHY="the boot dumped v${from} before migrating (backups/${new})"
-    else
-      MIGRATION_WHY="the boot dumped the volume before migrating (backups/${new})"
-    fi
-    say "migration: the volume moved under this run — ${MIGRATION_WHY}"
+    say "migration: the boot dumped ${from:+v${from} }before migrating (backups/${new}) — this run's pre-deploy copy"
     return 0
   fi
-  MIGRATED=0
-  MIGRATION_WHY="no new dump in backups/, so the boot ran no DDL"
-  say "migration: none — ${MIGRATION_WHY}"
+  say "migration: no new dump in backups/, so the boot ran no DDL"
+}
+
+# BOOK-232: THE ONE FACT. The volume's own `user_version` against the `SCHEMA_VERSION` of the image a
+# rollback would put back. `refuse` means the volume moved past that image and a swap is the crash
+# loop; `safe` means the swap is the ordinary one; `unknown` (either number unreadable) is neither and
+# refuses. `MIGRATED` is kept as the tri-state `recovery_choice` reads, but it is now DERIVED from the
+# versions — the dump listing no longer decides it — and `MIGRATION_WHY` is a fact about the two
+# numbers, because that is what an operator has to act on.
+schema_fact() { # (target image tag) -> SCHEMA_DB, SCHEMA_TARGET, SCHEMA_VERDICT, MIGRATED, MIGRATION_WHY
+  local target="${1:-}"
+  SCHEMA_DB="$(volume_schema)"
+  SCHEMA_TARGET=""
+  if [ -n "$target" ]; then SCHEMA_TARGET="$(candidate_schema "$target")"; fi
+  SCHEMA_VERDICT="$(rollback_schema_verdict "$SCHEMA_DB" "$SCHEMA_TARGET")"
+  case "$SCHEMA_VERDICT" in
+    refuse)
+      MIGRATED=1
+      MIGRATION_WHY="the volume is at schema v${SCHEMA_DB} and ${target} understands v${SCHEMA_TARGET}" ;;
+    safe)
+      MIGRATED=0
+      MIGRATION_WHY="the volume is at schema v${SCHEMA_DB} and ${target:-the image being rolled back to} understands v${SCHEMA_TARGET}" ;;
+    *)
+      MIGRATED="unknown"
+      MIGRATION_WHY="the volume's schema (${SCHEMA_DB:-not readable}) and the target image's (${SCHEMA_TARGET:-not readable}) cannot be compared" ;;
+  esac
+  say "schema: ${MIGRATION_WHY} — ${SCHEMA_VERDICT}"
+  return 0
+}
+
+# The guard every image swap runs, read-only, BEFORE anything is started. It is called from
+# `rollback_to()` (the single choke point) and from `--rollback --dry-run`, so an operator sees the
+# same refusal a real run would meet. There is no override: an env switch for "I know better" is the
+# switch that turns a v33 volume into two crash-looping v32 containers and a 502.
+rollback_schema_guard() { # (target image tag) -> 0 safe, 1 refused with GUARD_WHY
+  local tag="$1"
+  GUARD_WHY=""
+  STEP="rollback: schema guard"
+  SCHEMA_DB="$(volume_schema)"
+  SCHEMA_TARGET="$(candidate_schema "$tag")"
+  SCHEMA_VERDICT="$(rollback_schema_verdict "$SCHEMA_DB" "$SCHEMA_TARGET")"
+  if [ "$SCHEMA_VERDICT" = "safe" ]; then
+    say "schema: the volume is at v${SCHEMA_DB} and ${tag} understands v${SCHEMA_TARGET} — the swap cannot meet a future schema"
+    return 0
+  fi
+  GUARD_WHY="$(rollback_schema_line "$SCHEMA_VERDICT" "$SCHEMA_DB" "$SCHEMA_TARGET" "$tag")"
+  say "schema: refused — ${GUARD_WHY}"
+  return 1
 }
 
 # Put the pre-deploy dump back over book.db, INSIDE the volume — with the stack STOPPED first.
@@ -790,9 +1000,9 @@ crash_loop_line() { # (service, restarts, status)
   local line="CRASH LOOP: ${1} restarted ${2} time(s) ${3:-unknown} — the stack cannot boot; prod is not serving"
   CRASHLOOP=1
   say "$line"
-  # The workflow reads `::error::` as a failed step annotation: the alarm is the run, not a human
-  # noticing a 502 two minutes later.
-  if [ -n "${GITHUB_ACTIONS:-}" ]; then printf '::error::%s\n' "$line"; fi
+  # No `::error::` here on purpose (BOOK-232): a loop is evidence for the verdict, and the run's ONE
+  # annotation is the alert its failure path prints. Two annotations for one run is how a reader
+  # learns to ignore them.
 }
 
 # Old commit-tagged images are kept bounded: the running one + `KEEP_IMAGES` newest survive.
@@ -899,25 +1109,25 @@ up_and_gate() { # (image tag, expected commit)
   return 0
 }
 
-# What answers right now, for a failure line. A failed rollback does not imply a dead prod: the stack
-# may still be serving the image that was already running (the rollback `up` can fail before it
-# touches anything), and the difference decides what a human does next.
-serving_now() {
-  health_read "${SITE_URL}/healthz"
-  if [ "$R_OK" = 1 ]; then
-    printf 'prod still answers %s at %s' "${R_COMMIT:-no commit}" "${SITE_URL}"
-  else
-    printf 'prod answers nothing at %s (curl exit %s, status %s)' "${SITE_URL}" "${R_CODE}" "${R_STATUS}"
-  fi
-}
-
 # The rollback: swap the tag, same gate, no rebuild — and a rollback swaps the IMAGE, not the tree.
 # The compose file is packaging and must come from the deployed release; checking the root out at a
 # pre-BOOK-172 commit would make `docker compose` read the old single-service file (measured: an
 # `env_file: .env` the clone does not have) and the rollback would never happen.
+#
+# BOOK-232: THE ONE CHOKE POINT. Every swap — the automatic recovery, the swap after a dump restore,
+# and `--rollback` — passes through here, so "may this image serve this volume?" is asked in exactly
+# one place, from the volume's own `user_version` and the target's own constant. A refusal starts
+# nothing: an older image on a newer book refuses the boot (`SCHEMA_FUTURE`) and crash-loops, and that
+# crash loop is the incident this exists to prevent. `IMAGE_TAG` is pointed at the target first, so the
+# probe runs on the very image that would serve (the volume read is a `compose run` on the service).
 rollback_to() { # (image tag, expected commit)
-  local tag="$1" expect="$2"
+  local tag="$1" expect="$2" probe="$IMAGE_TAG"
   "$DOCKER" image inspect "$tag" >/dev/null 2>&1 || { say "rollback: ${tag} is not on disk"; return 1; }
+  IMAGE_TAG="$tag"
+  if ! rollback_schema_guard "$tag"; then
+    IMAGE_TAG="$probe"
+    return 1
+  fi
   say "rollback: $tag (${expect})"
   # BOOK-205: from here on the gate judges an image that is going back into service, not a release, so
   # the sign-in read reports instead of refusing — an automatic rollback must not become red because of
@@ -927,57 +1137,43 @@ rollback_to() { # (image tag, expected commit)
   up_and_gate "$tag" "$expect"
 }
 
-# --- the migration record a `--rollback` reads (BOOK-217) ---------------------------------------
+# --- the migration record (BOOK-217, BOOK-232) --------------------------------------------------
 #
-# A deploy that migrated leaves the fact on the host, with the schema the new image understands. An
-# old image put on that volume would refuse the boot (`SCHEMA_FUTURE`) and crash-loop — the incident
-# — so `--rollback` asks before it starts anything. The number comes from the image's own constant in
-# the repo at its commit; a read that fails is never a 0.
+# A deploy that migrated leaves a note on the host: `schema=<n>`, or `schema=unknown` when the volume
+# could not be read. It is for the operator (and `--status`), not for the guard: since BOOK-232 the
+# decision is read from the volume itself at the moment of the swap, so a stale or missing record can
+# neither authorise an older image nor block a legitimate rollback.
 
-# The record a migrating run leaves: `schema=<n>`, or `schema=unknown` when the constant cannot be
-# read (the record then says "migrated, schema unknown" and `--rollback` keeps today's behaviour
-# rather than inventing a number).
+# The record a migrating run leaves. "Migrated" is `MIGRATED=1` (the volume is past the target image)
+# or a dump this run named for itself (a green deploy with no recorded predecessor: the boot wrote the
+# copy, so the volume moved). The number is the volume's OWN, and when it could not be read the record
+# says `schema=unknown` — never the deployed image's constant, which is a different fact (what the new
+# image understands, not what the file is on) and would make an unread volume look identified.
+# `MIGRATED=0` is the opposite fact and removes a note an earlier run left: the volume is
+# demonstrably not past the image it would be rolled back to.
 record_volume_migrated() {
-  local schema=""
-  [ "$MIGRATED" = 1 ] || return 0
-  schema="$(schema_of_commit "${SHA:-${IMAGE_TAG##*:}}")"
+  local schema="${SCHEMA_DB:-}"
+  if [ "$MIGRATED" = 0 ] && [ -z "$MIGRATION_DUMP" ]; then
+    if [ -f "$VOLUME_MIGRATED_FILE" ]; then
+      rm -f "$VOLUME_MIGRATED_FILE"
+      say "volume-migrated: the volume is not past ${PREV_IMAGE:-the target image}, so the old note is cleared"
+    fi
+    return 0
+  fi
+  [ "$MIGRATED" = 1 ] || [ -n "$MIGRATION_DUMP" ] || return 0
   mkdir -p "$STATE_DIR"
   printf 'schema=%s\n' "${schema:-unknown}" >"$VOLUME_MIGRATED_FILE"
-  say "volume-migrated: recorded schema=${schema:-unknown} in ${VOLUME_MIGRATED_FILE} — --rollback will refuse an image that predates it"
+  say "volume-migrated: recorded schema=${schema:-unknown} in ${VOLUME_MIGRATED_FILE} — the note an operator and --status read; the swap itself is decided from the volume"
 }
 
-# The guard `--rollback` runs before its `up` and its gate. An image that understands an older schema
-# than the record names is refused with nothing started; an absent or unreadable record keeps today's
-# behaviour and says so in one line.
-volume_migrated_guard() { # (target image tag)
-  local target="$1" recorded="" target_schema=""
-  if [ ! -f "$VOLUME_MIGRATED_FILE" ]; then
-    say "volume-migrated: no record at ${VOLUME_MIGRATED_FILE} — nothing says a deploy moved the volume, so the image swap proceeds as usual (a migration this host did not record cannot be ruled out)"
-    return 0
-  fi
-  recorded="$(sed -n 's/^schema=//p' "$VOLUME_MIGRATED_FILE" | head -n 1 || true)"
-  if ! is_number "$recorded"; then
-    say "volume-migrated: the record says schema=${recorded:-nothing}, not a number — the volume was migrated but its schema is unknown, so the image swap proceeds as usual"
-    return 0
-  fi
-  target_schema="$(schema_of_commit "${target##*:}")"
-  if ! is_number "$target_schema"; then
-    say "volume-migrated: the volume is at schema v${recorded}; ${target} carries no readable SCHEMA_VERSION, so the image swap proceeds as usual"
-    return 0
-  fi
-  if [ "$target_schema" -lt "$recorded" ]; then
-    die "the volume is at schema v${recorded} (a deploy migrated it) and ${target} understands v${target_schema} — an image swap would refuse the schema and crash-loop; restore a dump instead: the volume dump restore is the deploy's own path (or an explicit operator restore of a dump into the volume ${DATA_VOLUME}; site/deploy/restore-drill.sh restores into a scratch copy and never touches the volume), and ${VOLUME_MIGRATED_FILE} is the record that must be deleted to override this refusal deliberately; nothing was started and nothing was rolled back"
-  fi
-  say "volume-migrated: the volume is at schema v${recorded} and ${target} understands v${target_schema} — the image swap is safe"
-}
-
-# The failed release: one recovery line, and exactly one of the four outcomes (BOOK-217).
+# The failed release: one recovery line, and exactly one of the four outcomes (BOOK-217, BOOK-232).
 #
-# The fact comes first — did the boot write a pre-migration dump? — because it decides what a
-# rollback would mean. On a migrated volume the previous image cannot boot (`SCHEMA_FUTURE`), so
-# putting it back is how a red deploy becomes a 502; when the new image answers, it keeps serving
-# instead (degraded but alive), when nothing answers the dump is the way back, and when the fact could
-# not be read nothing is touched at all.
+# The fact comes first — the volume's own schema against the image a rollback would put back — because
+# it decides what a rollback would MEAN. Past the target image, putting it back is how a red deploy
+# becomes a 502: the older build refuses the schema (`SCHEMA_FUTURE`) and crash-loops. So when the new
+# image answers it keeps serving (degraded but alive); when nothing answers, this run's pre-migration
+# dump is the way back; and when a number could not be read, or a migrated volume has no dump this run
+# can name, nothing is touched at all.
 red() { # (why)
   local target="$PREV_IMAGE" target_commit="$PREV_SHA7" from="$IMAGE_TAG" serving=0 choice=""
   STEP="rollback"
@@ -987,8 +1183,6 @@ red() { # (why)
     migration_after
     STEP="rollback"
   fi
-  # A migrated volume is a fact a later `--rollback` must see, whatever this run decides next.
-  if [ "$MIGRATED" = 1 ]; then record_volume_migrated; fi
   case "$HEALTH" in fast|late) serving=1 ;; *) serving=0 ;; esac
   # BOOK-217: on a decisive container failure (`up` exited non-zero, a service is not up) the health
   # window never ran, so `HEALTH=none` is the ABSENCE of a measurement, not evidence that nothing
@@ -1004,23 +1198,35 @@ red() { # (why)
     STEP="rollback"
   fi
   if [ "$REACHED_UP" = 1 ]; then
+    STEP="schema"
+    schema_fact "$target"
+    STEP="rollback"
     choice="$(recovery_choice "$MIGRATED" "$serving")"
+    # BOOK-232: a migrated volume whose dump this run cannot name has nothing to put back. The old
+    # rule would restore "the newest new file in backups/", which after a failed listing is somebody
+    # else's copy — an old book written over the live one, reported as a recovery.
+    if [ "$choice" = "dump-restore" ] && [ -z "$MIGRATION_DUMP" ]; then
+      MIGRATION_WHY="${MIGRATION_WHY}, and no pre-deploy dump was named this run, so there is nothing to put back over book.db"
+      choice="none"
+    fi
     RECOVERY_CHOICE="$choice"
   fi
+  # The record a later human reads is written whatever this run decides next.
+  record_volume_migrated
   if [ "$choice" = "none" ]; then
-    # The fact is unknown: an image swap on a volume that may have migrated is the crash loop, and a
-    # restore on a volume that may not have is an old copy over the live book. Touch nothing.
+    # Nothing is swapped and nothing restored: an image swap on a volume that is past the target is
+    # the crash loop, a restore with no dump of this run's own is an old copy over the live book.
     say "$(recovery_line none "$MIGRATION_WHY")"
-    die "$1 — the migration fact is unknown (${MIGRATION_WHY}), so no image was swapped and no dump was restored; a human must look"
+    die "$1 — the recovery cannot be decided safely (${MIGRATION_WHY}), so no image was swapped and no dump was restored; a human must look"
   fi
   if [ "$choice" = "roll-forward" ]; then
     # The new image answers and the volume already moved: the previous image would refuse the schema
     # and take prod down with it. Nothing is swapped, nothing is restarted, and it is not green.
     say "$(recovery_line "$choice" "$MIGRATION_WHY")"
     STEP="roll-forward"
-    audit "roll-forward runtime=compose image=${from} commit=${SHA7:-none} prev=${PREV_IMAGE:-none} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} recovery=${choice} crashloop=${CRASHLOOP} cause=$1"
+    audit "roll-forward runtime=compose image=${from} commit=${SHA7:-none} prev=${PREV_IMAGE:-none} schema_db=${SCHEMA_DB:-unknown} schema_target=${SCHEMA_TARGET:-unknown} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} recovery=${choice} crashloop=${CRASHLOOP} cause=$1"
     REASON_PRINTED=1
-    say "FAILED at ${STEP}: $1 — ${from} keeps serving (degraded); last-good was not written, a human must look"
+    alert "$1 — ${from} keeps serving (degraded); last-good was not written, a human must look"
     exit 1
   fi
   if [ "$choice" = "dump-restore" ]; then
@@ -1037,21 +1243,26 @@ red() { # (why)
     say "$(recovery_line "$choice" "$MIGRATION_WHY")"
   fi
   if [ -n "$target" ] && [ "$target" != "$IMAGE_TAG" ]; then
+    # The swap re-reads the volume (after a restore it holds the dump's schema, and that is the
+    # number the guard must judge) and refuses rather than start an image the volume is past.
     if rollback_to "$target" "$target_commit"; then
       printf '%s\n' "$target" >"$LAST_GOOD_IMAGE"
       audit "rollback ok runtime=compose image=${target} commit=${target_commit} health=${HEALTH} health_ms=${HEALTH_MS} from=${from} recovery=${RECOVERY_CHOICE:-none} crashloop=${CRASHLOOP} cause=$1"
       REASON_PRINTED=1
-      say "FAILED at ${STEP}: $1 — back on ${target}, which answers ${target_commit}; the new image is red"
+      alert "$1 — back on ${target}, which answers ${target_commit}; the new image is red"
       exit 1
     fi
-    die "$1 — and the rollback to ${target} did not come up either; $(serving_now) — a human must look"
+    if [ -n "$GUARD_WHY" ]; then
+      die "$1 — and the swap back to ${target} was refused: ${GUARD_WHY}"
+    fi
+    die "$1 — and the rollback to ${target} did not come up either; a human must look"
   fi
   if [ "$choice" = "dump-restore" ]; then
     # The volume was put back on the pre-deploy schema but there is no image to run on it: say so
     # loudly instead of leaving an operator to guess what the volume holds now.
-    die "$1 — the pre-deploy dump was restored over book.db, but there is no previous image to run on it; prod is NOT healthy, a human must look"
+    die "$1 — the pre-deploy dump was restored over book.db, but there is no previous image to run on it; a human must look"
   fi
-  die "$1 — there is no previous image to roll back to; prod is NOT healthy, a human must look"
+  die "$1 — there is no previous image to roll back to; a human must look"
 }
 
 # --- status (read-only) -------------------------------------------------------------------------
@@ -1075,6 +1286,7 @@ status() {
       say "site /data: ${data_mount:-no mountinfo entry for /data (is the container up?)}"
     fi
   done
+  say "volume-migrated: $(cat "$VOLUME_MIGRATED_FILE" 2>/dev/null || echo none) (the note a migrating run leaves; a swap is decided from the volume)"
   say "last-good-image: $(cat "$LAST_GOOD_IMAGE" 2>/dev/null || echo none)"
   say "previous-image: $(cat "$PREV_IMAGE_FILE" 2>/dev/null || echo none)"
 }
@@ -1120,19 +1332,39 @@ if [ "$MODE" = "rollback" ]; then
   PREV_IMAGE="$ROLLBACK_IMAGE"
   ROLLBACK_SHA7="$(sha7 "${PREV_IMAGE##*:}")"
   SHA7="$ROLLBACK_SHA7"
+  # BOOK-232: the guard reads the volume with a one-shot `compose run`, and the compose file mounts
+  # the lock dir for that service — Docker would create an absent source as root and the containers
+  # (uid 501) could not write their own lock files afterwards. Only the DRY RUN creates it here: the
+  # real path takes the lock first, so a refused takeover (exit 3) still starts nothing at all.
   STEP="dry run"
   if [ "$DRY_RUN" -eq 1 ]; then
-    # BOOK-217: the guard is read-only (a file and `git show`), so a dry run runs it too — an
-    # operator must see the refusal a real `--rollback` would meet, not a plan built on a target the
-    # volume would refuse. `deploy.sh` refuses on its dry-run path for the same reason.
-    STEP="rollback: volume guard"
-    volume_migrated_guard "$PREV_IMAGE"
+    # BOOK-217/BOOK-232: the guard is read-only (one `compose run`, no boot; one `git show`), so a dry
+    # run runs it too — an operator must see the refusal a real `--rollback` would meet, not a plan
+    # built on a target the volume would refuse. `deploy.sh` refuses on its dry-run path for the same
+    # reason.
+    # Said before the guard, because it is true of the whole run: the one-shot needs the lock source
+    # to exist, and Docker would create an absent one as root.
+    say "dry run: lock $(lock_report) — this run may create ${LOCKS_DIR} for its one-shot, and touches nothing else"
+    ensure_locks_dir
+    IMAGE_TAG="$PREV_IMAGE"
+    if ! rollback_schema_guard "$PREV_IMAGE"; then
+      die "the rollback to ${PREV_IMAGE} is refused: ${GUARD_WHY}"
+    fi
     say "dry run: would roll back to ${PREV_IMAGE} (${ROLLBACK_SHA7}) and gate ${SITE_URL}/healthz for it"
     exit 0
   fi
   if [ "$ROLLBACK_IMAGE" = "$CURRENT_IMAGE" ]; then
-    say "already serving ${ROLLBACK_IMAGE} — nothing to roll back"
-    exit 0
+    # BOOK-232: "the file names what the stack runs" is not "prod serves it". A rollback that failed
+    # its gate leaves `previous-image` behind while the stack is dead, and this branch used to print
+    # `already serving` and exit 0 without a single HTTP read — a green run over a 502. So the claim
+    # is only made when `/healthz` confirms the commit; otherwise the run goes through the guarded
+    # swap below (an `up` of the image that should be there) instead of reporting success.
+    health_read "${SITE_URL}/healthz"
+    if [ "$R_OK" = 1 ] && names_commit "${R_COMMIT:-}" "$ROLLBACK_SHA7"; then
+      say "already serving ${ROLLBACK_IMAGE} — nothing to roll back"
+      exit 0
+    fi
+    say "rollback: the recorded image ${ROLLBACK_IMAGE} is what the stack was started from, but ${SITE_URL}/healthz does not confirm it (reported ${R_COMMIT:-nothing}, status ${R_STATUS}) — bringing it up through the guarded swap"
   fi
   STEP="lock"
   take_lock
@@ -1146,15 +1378,10 @@ if [ "$MODE" = "rollback" ]; then
   # A rollback has no "previous build" of its own to classify as stale: the only identity that
   # matters is the one the target image carries.
   PREV_SHA7=""
-  # BOOK-217: a volume a deploy migrated is not one an older image may serve — the record is asked
-  # before anything is started, and a target that understands an older schema is refused here.
-  STEP="rollback: volume guard"
-  volume_migrated_guard "$PREV_IMAGE"
-  # BOOK-205: what `rollback_to()` sets for an automatic rollback — this path must never be refused
-  # because the older image answers 503 on sign-in.
-  ROLLING_BACK=1
   roll_code=0
-  up_and_gate "$PREV_IMAGE" "$ROLLBACK_SHA7" || roll_code=$?
+  # BOOK-232: `rollback_to` is the choke point — it reads the volume's schema against this image's
+  # constant and refuses before anything is started. A refusal is exit 1 and nothing was swapped.
+  rollback_to "$PREV_IMAGE" "$ROLLBACK_SHA7" || roll_code=$?
   if [ "$roll_code" -eq 0 ]; then
     printf '%s\n' "$PREV_IMAGE" >"$LAST_GOOD_IMAGE"
     rm -f "$PREV_IMAGE_FILE"
@@ -1162,7 +1389,10 @@ if [ "$MODE" = "rollback" ]; then
     audit "rollback ok mode=rollback runtime=compose image=${PREV_IMAGE} commit=${ROLLBACK_SHA7} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} lock=${LOCK}"
     exit 0
   fi
-  die "the rollback to ${PREV_IMAGE} did not come up (health=${HEALTH}, ${HEALTH_MS} ms, ${WINDOW_READS} reads${GATE_REFUSED:+, refused: ${GATE_REFUSED}}); $(serving_now) — a human must look"
+  if [ -n "$GUARD_WHY" ]; then
+    die "the rollback to ${PREV_IMAGE} was refused: ${GUARD_WHY}"
+  fi
+  die "the rollback to ${PREV_IMAGE} did not come up (health=${HEALTH}, ${HEALTH_MS} ms, ${WINDOW_READS} reads${GATE_REFUSED:+, refused: ${GATE_REFUSED}}); a human must look"
 fi
 
 STEP="dry run"
@@ -1177,8 +1407,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
   if ! resolve_ref "$REF"; then die "cannot resolve '$REF' in $ROOT"; fi
   say "dry run: would build ${IMAGE_REPO}:${SHA} (commit $(sha7 "$SHA"), timeout ${BUILD_TIMEOUT}s)"
   say "dry run: then, BEFORE the first up and in that image on the volume, dc run --rm -T --no-deps --entrypoint node site bin/home-migrate.mjs --apply, then ... bin/home-check.mjs --data-dir /data — a volume it refuses stops the deploy before any DDL, with the current stack still serving"
-  say "dry run: then record prev=$(running_image), up -d --wait, gate ${SITE_URL}/healthz for $(sha7 "$SHA") (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms), smoke 5 reads, then bin/home-check.mjs once more (never --apply again)"
-  say "dry run: a red one picks one of four (did the boot dump? is the image serving? could backups/ be listed?): roll-forward (no image swap, last-good not written), dump-restore (stop site engine writer FIRST, then backups/pre-v*.db over book.db, then the previous image), image-rollback (no new dump: no migration ran), none (the fact is unknown — nothing swapped, nothing restored); one recovery: line and crashloop= in the audit, one volume-migrated record when the volume moved, exit 1"
+  say "dry run: then record prev=$(running_image), up -d --wait, gate ${SITE_URL}/healthz for $(sha7 "$SHA") (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms), the smokes (the age gate is proved by POST /api/age and the cookie it issues), then bin/home-check.mjs once more (never --apply again)"
+  say "dry run: a red one picks one of four from the volume's own schema against the image a rollback would put back (db > target ⇒ migrated; db <= target ⇒ an ordinary swap; either number unreadable ⇒ none): roll-forward (migrated and the new image answers — no swap, last-good not written), dump-restore (migrated and nothing answers — stop site engine writer FIRST, then this run's backups/pre-v*.db over book.db, then the previous image), image-rollback (no migration), none (unknown, or no dump of this run's own — nothing swapped, nothing restored); one recovery: line and crashloop= in the audit, one volume-migrated note when the volume moved, one alert, exit 1. --rollback and --rollback --dry-run run the same guard in rollback_to(): a target that understands an older schema than the volume is refused and nothing is started"
   exit 0
 fi
 
@@ -1240,14 +1470,22 @@ if [ "$gate_code" -eq 0 ]; then
   if ! home_check_post; then
     red "the home gate is red on ${IMAGE_TAG}: ${HOME_WHY}"
   fi
-  # BOOK-217: a GREEN deploy that migrated is still a migrated volume — the fact is read here too and
-  # recorded, so a later `--rollback` cannot put an older image on it. An unknown fact (a listing
-  # that failed after the boot) is not green-rollbacked either: it says so and writes no record.
+  # BOOK-232: a GREEN deploy that migrated is still a migrated volume — the volume is read once more,
+  # against the image `--rollback` would go back to, and the note is written so a human can see what
+  # happened. The guard does not need it (it reads the volume itself), so an unread fact costs a note,
+  # never a green release.
   STEP="migration: after"
   migration_after
+  STEP="schema"
+  schema_fact "$PREV_IMAGE"
   record_volume_migrated
   if [ "$MIGRATED" = "unknown" ]; then
-    say "volume-migrated: the fact is unknown (${MIGRATION_WHY}) — no record was written, so --rollback keeps its usual behaviour and cannot rule a migration out"
+    say "volume-migrated: the fact is unknown (${MIGRATION_WHY}) — no record was written, and --rollback reads the volume itself rather than this note"
+  fi
+  # BOOK-232: a crash loop is never a successful deploy. The engines' own record said a service of
+  # this stack cannot boot; a `/healthz` that answered in between does not make that a green release.
+  if [ "$CRASHLOOP" = 1 ]; then
+    red "a container of this stack crash-looped under this run (CRASH LOOP above), so ${IMAGE_TAG} cannot boot"
   fi
   STEP="green"
   printf '%s\n' "$IMAGE_TAG" >"$LAST_GOOD_IMAGE"
@@ -1261,11 +1499,13 @@ fi
 
 if [ "$gate_code" -eq 2 ]; then
   # Refused for lack of evidence: restarting prod on one slow read is how a green deploy turns red.
-  # BOOK-217: this run reached `up` and refuses to roll back, so it still owes the fact and exactly
-  # one `recovery:` line — nothing was rolled back and nothing was restored: `none`. A migrated
-  # volume is recorded all the same, so a later `--rollback` cannot walk into it.
+  # BOOK-217/BOOK-232: this run reached `up` and refuses to roll back, so it still owes the fact and
+  # exactly one `recovery:` line — nothing was rolled back and nothing was restored: `none`. The
+  # volume's schema is read and recorded all the same, so a human can see what the run was looking at.
   STEP="migration: after"
   migration_after
+  STEP="schema"
+  schema_fact "$PREV_IMAGE"
   record_volume_migrated
   STEP="refused"
   RECOVERY_CHOICE="none"
