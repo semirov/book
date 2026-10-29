@@ -16,11 +16,12 @@
   display: flow-root;
   margin-top: 72px;
 }
-/* BOOK-128 §1 (audit 7) — the numeral is one line, the meta a second; the hairline is shared. */
+/* BOOK-128 §1 (audit 7) — the numeral is one line, the meta a second, the wait sentence a
+   third; the hairline is shared. Steps on the 4 px grid: 12 px air, a 32 px numeral box, 8 px. */
 .ch-h {
   display: block;
   border-top: 1px solid var(--ink);
-  padding-top: 10px;
+  padding-top: 12px;
   margin-bottom: 24px;
 }
 .ch-id { display: block; }
@@ -28,13 +29,14 @@
   font-family: var(--serif);
   font-weight: 700;
   font-size: 26px;
-  line-height: 1;
+  line-height: 32px;
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
-/* Not a chip (BOOK-70): its own line under the numeral, left-aligned, one mark face. */
+/* Not a chip (BOOK-70): its own line under the numeral, left-aligned, one mark face — 8 px below its box. */
 .ch-meta {
   display: block;
+  margin-top: 8px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   letter-spacing: 0;
@@ -43,11 +45,11 @@
   font-variant-numeric: tabular-nums;
 }
 /* The wait sentence has its own block line (BOOK-199 m5): it is the surface's sentence, not
-   the apparatus's data, so it sits under `.ch-meta` instead of inside it — mono 12, no chip
-   glyph. `.ch-meta` keeps `знаки · время` and the printing chip alone. */
+   the apparatus's data, so it sits under `.ch-meta` — mono 12, no chip glyph, 4 px down.
+   `.ch-meta` keeps `знаки · время` and the printing chip alone. */
 .ch-status {
   display: block;
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   font-weight: 400;
