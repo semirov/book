@@ -49,7 +49,48 @@
 #   * a checkout that predates the frame check (BOOK-107) deploys without it — the step says so,
 #     so an old ref can still be deployed and rolled back to;
 #   * a failed health or frame check rolls the clone back to the previously deployed commit,
-#     rebuilds, republishes, restarts, and re-checks — then exits 1 either way, so CI stays red.
+#     rebuilds, republishes, restarts, and re-checks — then exits 1 either way, so CI stays red;
+#   * BOOK-217 — THE RECOVERY IS DECIDED FROM ONE FACT: did the boot of this run write a
+#     pre-migration dump? `server/src/db/boot.ts` writes `backups/pre-v<from>-<stamp>.db` BEFORE any
+#     DDL, and only when it is about to migrate — so ONE listing of `backups/` before the restart and
+#     ONE after it is the whole fact: a name that was not there before and is there after is this
+#     run's migration, and no new name means the boot ran no DDL. The volume marker is NOT a second
+#     signal: the boot writes `.book-volume` with `flag:'wx'` and rewrites only a LEGACY marker, so
+#     `schema=` is never refreshed after the first boot, and comparing it around the restart compares
+#     one number with itself (pinned by `server/test/boot.test.ts`). Both listings are
+#     STATUS-CHECKED: a listing that failed is not "no migration", it is `unknown`, and an unknown
+#     fact is never rounded to either — nothing is checked out, nothing is restored, nothing is
+#     restarted, and `recovery: none` says a human must look. (An after-read that failed would put
+#     the previous build on a volume that may have migrated — `SCHEMA_FUTURE`, the incident; a
+#     before-read that failed would make every pre-existing dump look new, and the restore would
+#     write an old copy over the live book.) Migrated and this build answers → roll-forward: the
+#     previous build is NOT put back (it would refuse the future schema and crash-loop), nothing is
+#     checked out, rebuilt or restarted, `last-good` is not written, exit 1. Migrated and nothing
+#     serves → the service is unloaded first (`launchctl bootout`, never a live writer over the file
+#     being replaced), then the pre-deploy dump goes back over `book.db` and the ordinary rollback
+#     runs on the schema the dump brought back. No migration → the ordinary rollback. Every path that
+#     reached the restart prints exactly one `recovery:` line (`lib.sh:recovery_line`, four fixed
+#     sentences: roll-forward, dump-restore, image-rollback, none) and audits `recovery=`; a failure
+#     before the restart never booted and prints none;
+#   * BOOK-217 — A MIGRATION IS RECORDED, so `--rollback` cannot walk into it: a run that migrated
+#     (red or green) writes `$STATE_DIR/volume-migrated` with the `SCHEMA_VERSION` of the deployed
+#     build, read from `git show <sha>:site/server/src/db/schema.ts` (`schema=unknown` when it cannot
+#     be read; absent when nothing migrated). `--rollback` reads the record, reads the TARGET's
+#     constant the same way, and refuses (exit 1, nothing fetched, checked out or built) when the
+#     target understands an older schema — putting an older build on a migrated volume is the
+#     incident. A successful dump-restore removes the record (the volume is back on the old schema);
+#     an unknown or absent record keeps today's behaviour and says so in one line;
+#   * BOOK-217 — A CRASH LOOP IS THE RUN'S TO REPORT: `launchctl print` is read before the restart and
+#     after a failed window. A job that respawned more than the deploy's own kickstart
+#     (`runs > runs_before + 1`) prints `CRASH LOOP: <label> resumed <n> time(s), last exit code <m>
+#     — the service cannot boot; prod is not serving` (also as `::error::` under GitHub Actions; the
+#     audit says `crashloop=1`). A non-zero `last exit code` is evidence only when the job respawned
+#     under this run AND the code is not the one snapshotted before it: a code a previous deploy left
+#     behind would otherwise turn a slow-but-green run red and roll prod back. A `print` that does
+#     not answer is `unknown`, never `fine`, and a respawning job is never a 0;
+#   * the order is the safety on this driver too: the volume's home gate and `home-migrate --apply`
+#     run before the build and before `kickstart` (the boot is what runs the DDL), so a refusal stops
+#     a deploy whose boot never ran a migration — the same order the compose driver keeps before `up`.
 #
 # BOOK-119 hotfix (the deploys of 523f234 and 230a62f that went red while succeeding):
 #   * **one probe, one result shape.** `lib.sh:health_read` is a plain `curl --max-time 2` — the
@@ -141,6 +182,32 @@ PERCENT=0
 FRAME="n/a"
 PWA="n/a"
 KICKSTART_T0=""
+
+# BOOK-217: the fact a recovery is decided from, and what the job's own record says. `REACHED_RESTART`
+# is 0 until `kickstart` is issued: a failure before it never booted, so it has no migration, no crash
+# loop and owes no `recovery:` line. `RECOVERY_CHOICE` names the recovery that actually ran (`none`
+# on a path that refused the rollback), and `RECOVERY_PICK` is the rule's answer before it acts.
+REACHED_RESTART=0
+# Tri-state, like the rule in lib.sh: `1` the boot dumped before migrating, `0` no new dump,
+# `unknown` a listing failed — which is neither, and refuses both an image swap and a restore.
+MIGRATED="unknown"
+MIGRATION_DUMP=""
+MIGRATION_WHY=""
+DUMPS_BEFORE=""
+# 1 once the listing of `backups/` before the restart was read successfully: the fact needs both.
+DUMPS_KNOWN=0
+# 1 once the fact was read for this run: the green record, the audit and the recovery all name ONE
+# listing, never a second one taken after the first (the volume could have moved in between).
+MIGRATION_READ=0
+RECOVERY_PICK=""
+RECOVERY_CHOICE=""
+CRASHLOOP=0
+RUNS_BEFORE=""
+EXIT_BEFORE=""
+RUNS_AFTER=""
+EXIT_AFTER=""
+# BOOK-217: what a migrating run leaves for `--rollback` — `schema=<n>` or `schema=unknown`.
+VOLUME_MIGRATED_FILE="${STATE_DIR}/volume-migrated"
 
 # Where the run is, so a death names it. `REASON_PRINTED` keeps two reporters from both speaking,
 # `AUDIT_WRITTEN` keeps a red run from writing a second audit line.
@@ -382,6 +449,313 @@ finish_green() { # (optional: keep)
   return 1
 }
 
+# --- the migration fact, and the recovery it decides (BOOK-217) ---------------------------------
+#
+# The boot writes `backups/pre-v<from>-<stamp>.db` BEFORE any DDL (`server/src/db/boot.ts`), so a
+# dump that was not in the volume before the restart and is there after it is the fact: this run
+# moved the volume's schema, and no new name means it ran no DDL. That is why ONE listing each side
+# is enough, and why the marker is not a second signal: `boot.ts` writes `.book-volume` with
+# `flag:'wx'` and rewrites only a LEGACY marker, so `schema=` is never refreshed after the first boot
+# (`server/test/boot.test.ts` pins it) and comparing it around the restart compares one number with
+# itself.
+#
+# The volume is a host path here (`$DATA_DIR_SITE`), so both reads are plain file reads — and their
+# STATUS is part of the answer. A listing that failed is `unknown`: an after-read that failed would
+# call a migrated volume unmigrated and put the previous build on a future schema (`SCHEMA_FUTURE`,
+# the crash loop), and a before-read that failed would make every pre-existing dump look new, so the
+# restore would write an old copy over the live book — data loss reported as success. The sentence a
+# human reads is the shared one (`lib.sh:recovery_line`), never a copy per driver.
+
+# The pre-migration dumps in the volume, bare names, sorted. The names are filtered here, and an
+# empty list is a real answer — but the exit status is the caller's: an EXISTING `backups/` that
+# cannot be listed says nothing at all about the volume, so it is a failure, never "none". An
+# ABSENT `backups/` is an empty listing: the boot creates it only when it takes a dump.
+volume_dumps() {
+  local dir="${DATA_DIR_SITE%/}/backups" out=""
+  if [ -d "$dir" ]; then
+    out="$(ls -1 "$dir" 2>/dev/null)" || return 1
+  fi
+  printf '%s\n' "$out" | grep -E '^pre-v.*[.]db$' | sort || true
+  return 0
+}
+
+dump_count() { # (newline-separated names) -> how many
+  local n=0 line=""
+  while IFS= read -r line; do [ -n "$line" ] && n=$(( n + 1 )); done <<EOF
+${1:-}
+EOF
+  printf '%s' "$n"
+}
+
+# The `v<from>` in a boot dump's name (`pre-v29-20261029T085300Z.db`), empty when the name is not one
+# the boot writes.
+dump_from_version() {
+  printf '%s\n' "$1" | sed -n 's/^pre-v\([0-9][0-9]*\)-.*$/\1/p' | head -n 1 || true
+}
+
+# Before the restart: the volume while it is still the previous build's.
+migration_before() {
+  STEP="migration: before"
+  if DUMPS_BEFORE="$(volume_dumps)"; then
+    DUMPS_KNOWN=1
+    say "migration: before the restart — $(dump_count "$DUMPS_BEFORE") dump(s) in backups/"
+  else
+    DUMPS_BEFORE=""
+    DUMPS_KNOWN=0
+    say "migration: before the restart — backups/ could not be listed; whether the boot migrates will be unknown"
+  fi
+}
+
+# After the boot: did the volume move? A dump that was not in the successfully-read before-list and is
+# there now is the whole fact; a listing that failed on either side is `unknown`, the state that
+# refuses both an image swap and a restore. `MIGRATION_DUMP` is the newest such name (sorted).
+migration_after() {
+  local now_dumps="" name="" new="" from=""
+  MIGRATED="unknown"; MIGRATION_DUMP=""; MIGRATION_WHY=""
+  if [ "$DUMPS_KNOWN" != "1" ]; then
+    MIGRATION_WHY="the listing of backups/ before the restart failed, so whether the boot migrated the volume cannot be known"
+    say "migration: unknown — ${MIGRATION_WHY}"
+    return 0
+  fi
+  if ! now_dumps="$(volume_dumps)"; then
+    MIGRATION_WHY="the listing of backups/ after the restart failed, so whether the boot migrated the volume cannot be known"
+    say "migration: unknown — ${MIGRATION_WHY}"
+    return 0
+  fi
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if printf '%s\n' "$DUMPS_BEFORE" | grep -Fxq -- "$name"; then continue; fi
+    new="$name"
+  done <<EOF
+$now_dumps
+EOF
+  if [ -n "$new" ]; then
+    MIGRATED=1
+    MIGRATION_DUMP="$new"
+    from="$(dump_from_version "$new")"
+    if [ -n "$from" ]; then
+      MIGRATION_WHY="the boot dumped v${from} before migrating (backups/${new})"
+    else
+      MIGRATION_WHY="the boot dumped the volume before migrating (backups/${new})"
+    fi
+    say "migration: the volume moved under this run — ${MIGRATION_WHY}"
+    return 0
+  fi
+  MIGRATED=0
+  MIGRATION_WHY="no new dump in backups/, so the boot ran no DDL"
+  say "migration: none — ${MIGRATION_WHY}"
+}
+
+# Put the pre-deploy dump back over `book.db` (BOOK-217). WAL and SHM go first (a stale WAL beside a
+# restored db is how a copy reads back as something else), the copy lands under a temp name inside the
+# allow-listed `backups/` (a `.restoring` file beside `book.db` would be a stray the home gate
+# refuses) and is `mv`ed over it; the dump stays where it was.
+#
+# Only a name that was absent from the SUCCESSFULLY-read before-list may be restored: one that was
+# already there is somebody's older dump, not this run's, and overwriting the live book with it is the
+# silent data loss this check exists for. A dump that is not there, or a copy that fails, is a hard
+# failure: the ordinary rollback over a migrated schema is the incident.
+restore_dump() {
+  local dir="${DATA_DIR_SITE%/}"
+  local dump="${dir}/backups/${MIGRATION_DUMP}"
+  local dest="${dir}/book.db"
+  local tmp="${dir}/backups/.book.db.restoring"
+  if [ -z "$MIGRATION_DUMP" ]; then
+    say "restore: the migration named no dump — nothing can be put back over book.db"
+    return 1
+  fi
+  if printf '%s\n' "$DUMPS_BEFORE" | grep -Fxq -- "$MIGRATION_DUMP"; then
+    say "restore: backups/${MIGRATION_DUMP} was already in the volume before this run, so it is not this run's pre-migration dump; refusing to overwrite book.db with an old copy"
+    return 1
+  fi
+  if [ ! -f "$dump" ]; then
+    say "restore: backups/${MIGRATION_DUMP} is not there — refusing to put the previous build on a migrated volume"
+    return 1
+  fi
+  say "restore: backups/${MIGRATION_DUMP} over book.db (WAL and SHM first, a temp name in backups/, then mv)"
+  if ! rm -f "${dest}-wal" "${dest}-shm"; then
+    say "restore: cannot remove the WAL/SHM beside ${dest} — book.db was NOT replaced"
+    return 1
+  fi
+  if ! cp "$dump" "$tmp"; then
+    rm -f "$tmp" 2>/dev/null || true
+    say "restore: cp of backups/${MIGRATION_DUMP} failed — book.db was NOT replaced"
+    return 1
+  fi
+  if ! mv "$tmp" "$dest"; then
+    rm -f "$tmp" 2>/dev/null || true
+    say "restore: mv of ${tmp} over ${dest} failed — the old book.db is still in place"
+    return 1
+  fi
+  # The volume is back on the pre-deploy schema: the record a `--rollback` reads no longer applies.
+  rm -f "$VOLUME_MIGRATED_FILE"
+  say "restore: restored backups/${MIGRATION_DUMP} over book.db — the volume is back on the pre-deploy schema and volume-migrated is cleared"
+  return 0
+}
+
+# --- the migration record a `--rollback` reads (BOOK-217) ---------------------------------------
+#
+# A run that migrated leaves the fact on the host, with the schema the deployed build understands. An
+# older build put on that volume would refuse the boot (`SCHEMA_FUTURE`) and crash-loop — the
+# incident — so `--rollback` asks before it fetches, checks out or builds anything. The number comes
+# from the build's own constant in the repo at its commit; a read that fails is never a 0.
+
+# The schema version a commit understands, from `site/server/src/db/schema.ts` at that commit. The
+# deployed build and an old last-good sha are both commits in `$ROOT`, so the question is answered
+# without starting anything; a read that fails is an empty answer, never a 0.
+schema_of_commit() { # (sha) -> the SCHEMA_VERSION that commit carries, or nothing
+  local sha="$1" source=""
+  [ -n "$sha" ] || return 0
+  source="$(git -C "$ROOT" show "${sha}:site/server/src/db/schema.ts" 2>/dev/null)" || return 0
+  printf '%s\n' "$source" | sed -n 's/^export const SCHEMA_VERSION = \([0-9][0-9]*\);.*$/\1/p' | head -n 1 || true
+  return 0
+}
+
+# The record a migrating run leaves: `schema=<n>`, or `schema=unknown` when the constant cannot be
+# read (the record then says "migrated, schema unknown" and `--rollback` keeps today's behaviour
+# rather than inventing a number). Written on the green path too: a green deploy that migrated is
+# still a migrated volume.
+record_volume_migrated() {
+  local sha="" schema=""
+  [ "$MIGRATED" = "1" ] || return 0
+  sha="${GOOD:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
+  schema="$(schema_of_commit "$sha")"
+  mkdir -p "$STATE_DIR"
+  printf 'schema=%s\n' "${schema:-unknown}" >"$VOLUME_MIGRATED_FILE"
+  say "volume-migrated: recorded schema=${schema:-unknown} in $VOLUME_MIGRATED_FILE — --rollback will refuse a build that predates it"
+}
+
+# The guard `--rollback` runs before anything is fetched, checked out or built. A build that
+# understands an older schema than the record names is refused with nothing started; an absent or
+# unreadable record keeps today's behaviour and says so in one line.
+volume_migrated_guard() { # (target sha or tag)
+  local target="$1" recorded="" target_schema=""
+  if [ ! -f "$VOLUME_MIGRATED_FILE" ]; then
+    say "volume-migrated: no record at $VOLUME_MIGRATED_FILE — nothing says a deploy moved the volume, so the rollback proceeds as usual (a migration this host did not record cannot be ruled out)"
+    return 0
+  fi
+  recorded="$(sed -n 's/^schema=//p' "$VOLUME_MIGRATED_FILE" | head -n 1 || true)"
+  if ! is_number "$recorded"; then
+    say "volume-migrated: the record says schema=${recorded:-nothing}, not a number — the volume was migrated but its schema is unknown, so the rollback proceeds as usual"
+    return 0
+  fi
+  target_schema="$(schema_of_commit "${target##*:}")"
+  if ! is_number "$target_schema"; then
+    say "volume-migrated: the volume is at schema v${recorded}; the target build carries no readable SCHEMA_VERSION, so the rollback proceeds as usual"
+    return 0
+  fi
+  if [ "$target_schema" -lt "$recorded" ]; then
+    die "the volume is at schema v${recorded} (a deploy migrated it) and the build being rolled back to understands v${target_schema} — putting it on that volume would refuse the schema and crash-loop; restore a dump instead: the volume dump restore is the deploy's own path (or an explicit operator restore of a dump into the service's DATA_DIR; site/deploy/restore-drill.sh restores into a scratch copy and never touches the volume), and $VOLUME_MIGRATED_FILE is the record that must be deleted to override this refusal deliberately; nothing was fetched, checked out or built"
+  fi
+  say "volume-migrated: the volume is at schema v${recorded} and the target build understands v${target_schema} — the rollback is safe on this volume"
+}
+
+# Read the fact ONCE per run (the green record, the audit and the recovery must all name the same
+# listing), and only after this run reached the restart: a failure before it never booted, has no
+# migration and writes no record. A run that migrated records it whatever it decides next.
+migration_read() {
+  if [ "$MIGRATION_READ" = "1" ] || [ "$REACHED_RESTART" != "1" ]; then return 0; fi
+  STEP="migration: after"
+  MIGRATION_READ=1
+  migration_after
+  record_volume_migrated
+  return 0
+}
+
+# A green deploy whose fact could not be read says so: it is still green, but no record was written,
+# so a later `--rollback` cannot rule a migration out — never a silent no-op.
+note_unknown_migration() {
+  [ "$MIGRATED" = "unknown" ] || return 0
+  say "volume-migrated: the fact is unknown (${MIGRATION_WHY}) — no record was written, so --rollback keeps its usual behaviour and cannot rule a migration out"
+  return 0
+}
+
+# The service is unloaded before a dump goes over its database: a job in a crash loop is still a
+# writer between attempts, and a live process would keep a WAL over the file being replaced.
+recovery_bootout() {
+  local status=0 out=""
+  out="$(launchctl bootout "gui/$(id -u)/$SERVICE_LABEL" 2>&1)" || status=$?
+  if [ "$status" -eq 0 ]; then
+    say "restore: $SERVICE_LABEL is stopped (launchctl bootout) before the dump goes over book.db"
+    return 0
+  fi
+  say "restore: $SERVICE_LABEL was not loaded (${out:-no output}) — nothing to stop before the restore"
+}
+
+# --- the launchd job's own record (BOOK-217) -----------------------------------------------------
+#
+# `launchctl print` is the only place a respawn is visible: `runs = N` counts the spawns and
+# `last exit code = M` the last one that exited. `kickstart -k` is itself one run and leaves no exit
+# code for the process it killed (measured: the line is absent, not a signal number), so an extra run
+# is the job dying on its own — and a code only speaks when it appeared under this run. A `print`
+# that does not answer is `unknown` — it is never read as health.
+
+service_runs() { # (label) -> RUNS, EXIT_CODE
+  local out=""
+  RUNS="unknown"; EXIT_CODE="unknown"
+  out="$(launchctl print "gui/$(id -u)/$1" 2>/dev/null)" || return 0
+  RUNS="$(printf '%s\n' "$out" | sed -n 's/.*runs = \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  EXIT_CODE="$(printf '%s\n' "$out" | sed -n 's/.*last exit code = \(-\{0,1\}[0-9][0-9]*\).*/\1/p' | head -n 1)"
+  [ -n "$RUNS" ] || RUNS="unknown"
+  [ -n "$EXIT_CODE" ] || EXIT_CODE="unknown"
+  return 0
+}
+
+# A code that is not a clean 0: a negative number is a signal, a positive one an ordinary failure.
+exit_nonzero() {
+  case "${1:-}" in
+    ''|unknown|0) return 1 ;;
+    -[0-9]*|[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+
+crash_loop_before() {
+  STEP="crash loop: before"
+  service_runs "$SERVICE_LABEL"
+  RUNS_BEFORE="$RUNS"; EXIT_BEFORE="$EXIT_CODE"
+  say "crash loop: before the restart — runs=${RUNS_BEFORE}, last exit code=${EXIT_BEFORE}"
+}
+
+crash_loop_line() { # (resumed, last exit code)
+  local line="CRASH LOOP: ${SERVICE_LABEL} resumed ${1:-unknown} time(s), last exit code ${2:-unknown} — the service cannot boot; prod is not serving"
+  CRASHLOOP=1
+  say "$line"
+  # The workflow reads `::error::` as a failed step annotation: the alarm is the run, not a human
+  # noticing a 502 two minutes later.
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then printf '::error::%s\n' "$line"; fi
+}
+
+# After a failed window: the job's runs and its last exit are the evidence. `runs_after > runs_before
+# + 1` is a respawn the deploy did not ask for. A non-zero last exit is evidence only when it is a
+# DEATH UNDER THIS RUN: the code is compared with the snapshot taken before the kickstart (a job that
+# exited non-zero weeks ago carries that code into a failed window that never killed it), and the job
+# must have respawned at least once under this run (the deploy's own `kickstart -k` is one run) — an
+# unchanged record says nothing, and it is never a 0 either. An unreadable `print` says `unknown` and
+# claims nothing.
+crash_loop_check() {
+  local resumed=""
+  STEP="crash loop"
+  service_runs "$SERVICE_LABEL"
+  RUNS_AFTER="$RUNS"; EXIT_AFTER="$EXIT_CODE"
+  say "crash loop: after the failed window — runs=${RUNS_AFTER}, last exit code=${EXIT_AFTER}"
+  if [ "$RUNS_AFTER" = "unknown" ]; then
+    say "crash loop: unknown — launchctl print did not answer; a job that cannot be read is not evidence of health"
+    return 0
+  fi
+  if is_number "$RUNS_BEFORE" && [ "$RUNS_AFTER" -gt "$RUNS_BEFORE" ]; then
+    resumed=$(( RUNS_AFTER - RUNS_BEFORE ))
+  fi
+  if [ -n "$resumed" ] && [ "$resumed" -gt 1 ]; then
+    crash_loop_line "$resumed" "$EXIT_AFTER"
+    return 0
+  fi
+  if [ -n "$resumed" ] && [ "$resumed" -ge 1 ] && [ "$EXIT_AFTER" != "$EXIT_BEFORE" ] && exit_nonzero "$EXIT_AFTER"; then
+    crash_loop_line "$resumed" "$EXIT_AFTER"
+  fi
+  return 0
+}
+
 # --- prepare: get the wanted commit into the clone --------------------------------------------
 if [ "$PHASE" = "prepare" ]; then
   mkdir -p "$STATE_DIR"
@@ -401,14 +775,23 @@ if [ "$PHASE" = "prepare" ]; then
     lock_acquire
   fi
 
-  say "fetching $REPO_URL"
-  git -C "$ROOT" fetch --quiet --tags --prune origin || die "git fetch failed"
-
+  # BOOK-217: `--rollback` must not put a build on a volume a deploy migrated. The record is read
+  # BEFORE the fetch and the checkout, so a refusal changes nothing at all — and a target that
+  # understands an older schema is refused here, which is the incident this exists to prevent. The
+  # record and the target's constant are both plain reads (a file and `git show`), so no network,
+  # no build and no restart is needed to know.
   if [ "$MODE" = "rollback" ]; then
     TARGET="$(cat "$STATE_DIR/last-good" 2>/dev/null || true)"
     [ -n "$TARGET" ] || TARGET="$(git -C "$ROOT" rev-parse --verify HEAD^ 2>/dev/null || true)"
     [ -n "$TARGET" ] || die "nothing to roll back to (no last-good record and no previous commit)"
-  else
+    STEP="prepare: volume guard"
+    volume_migrated_guard "$TARGET"
+  fi
+
+  say "fetching $REPO_URL"
+  git -C "$ROOT" fetch --quiet --tags --prune origin || die "git fetch failed"
+
+  if [ "$MODE" != "rollback" ]; then
     TARGET="$(resolve_ref "$REF")" || die "cannot resolve ref '$REF' after fetch"
   fi
 
@@ -539,6 +922,12 @@ esac
 # the publish, with `current` already on the new release and no audit line at all. A failed
 # signal is a health outcome, and the red path below asks whether the previous commit serves.
 STEP="restart"
+# BOOK-217: both reads happen before the boot can move anything — the job's own run record, and the
+# volume as the previous build left it.
+crash_loop_before
+migration_before
+STEP="restart"
+REACHED_RESTART=1
 KICKSTART_T0="$(now_ms)"
 if service_kickstart "$SERVICE_LABEL" "$PLIST"; then
   # A2: a restart was issued, so a window is measured around it — always, with a real elapsed time.
@@ -560,8 +949,21 @@ case "$HEALTH" in
 esac
 if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
   say "time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget; visible downtime ${RESTART_MS} ms (baseline ${BASELINE} at ${BASELINE_AT}, first 200 at ${FIRST_AT})"
+  # BOOK-217: a green deploy that migrated is still a migrated volume — the fact is read and
+  # recorded here, before `last-good` is written, so a later `--rollback` cannot put an older build
+  # on it. A fact that could not be read is said, not silently dropped.
+  migration_read
+  note_unknown_migration
   finish_green || true
 fi
+
+# BOOK-217: a failed window is where a job that cannot boot hides. The job's own record is read once
+# here, before anything below can restart it.
+case "$HEALTH" in fail|stale)
+  STEP="crash loop"
+  crash_loop_check
+  ;;
+esac
 
 STEP="health window"
 # --- red path ----------------------------------------------------------------------------------
@@ -571,15 +973,66 @@ STEP="health window"
 plain_verdict "$URL" "$BUILT_COMMIT" "$PREV" 3 || true
 recompute_window
 if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
-  say "late success: prod serves ${PLAIN_COMMIT:-$BUILT_COMMIT} — the deploy went through and the measurement lost it; no rebuild, no second restart"
-  finish_green || true
+  if [ "$CRASHLOOP" = "1" ]; then
+    # A late 200 does not launder a job that keeps dying: fall through to the red path, where the
+    # migration fact and the recovery are named — a respawning job is never a green deploy.
+    say "late 200, but the job respawned after the failed window — a respawning job is not a green deploy"
+  else
+    say "late success: prod serves ${PLAIN_COMMIT:-$BUILT_COMMIT} — the deploy went through and the measurement lost it; no rebuild, no second restart"
+    migration_read
+    note_unknown_migration
+    finish_green || true
+  fi
+fi
+
+# BOOK-217: the boot had its chance; the volume is read once here (`migration_read` is a no-op if the
+# green path already read it), so every red path below names the same fact. A failure that never
+# reached the restart never booted, has no migration and owes no `recovery:` line.
+migration_read
+
+# The three-way rule (`lib.sh:recovery_choice`). `serving` is *this* build answering, not "something
+# answers": the previous build answering is the state a dump restore is for.
+RECOVERY_SERVING=0
+case "$HEALTH" in fast|late) RECOVERY_SERVING=1 ;; esac
+if names_commit "$PLAIN_COMMIT" "$BUILT_COMMIT"; then RECOVERY_SERVING=1; fi
+if [ "$REACHED_RESTART" = 1 ]; then
+  RECOVERY_PICK="$(recovery_choice "$MIGRATED" "$RECOVERY_SERVING")"
+fi
+
+# Migrated and this build answers: the previous build would refuse the schema (`SCHEMA_FUTURE`) and
+# take prod down with it. Leave this one serving, write no `last-good`, and stay red. This sits in
+# front of the frame and install refusals on purpose — both leave the running build in service, and
+# the honest name for that on a migrated volume is a roll-forward.
+if [ "$RECOVERY_PICK" = "roll-forward" ]; then
+  STEP="recovery"
+  RECOVERY_CHOICE="roll-forward"
+  say "$(recovery_line "$RECOVERY_CHOICE" "$MIGRATION_WHY")"
+  audit "roll-forward mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME pwa=$PWA restart=$(restart_field) recovery=$RECOVERY_CHOICE crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  die "the volume was migrated (${MIGRATION_WHY}) and this build answers, so the previous build is NOT put back — $SHORT keeps serving (degraded, alive); last-good was not written, a human must look"
+fi
+
+# The fact is `unknown` (a listing of `backups/` failed): neither rounding is safe. An image swap on a
+# volume that may have migrated is the crash loop, and a restore on a volume that may not have is an
+# old copy over the live book. So nothing is checked out, nothing is restored and nothing is
+# restarted — the one `recovery: none` line says why, and a human looks. This sits before the
+# "already serving" shortcut too: that shortcut writes `last-good` for a volume it did not read.
+if [ "$RECOVERY_PICK" = "none" ]; then
+  STEP="recovery"
+  RECOVERY_CHOICE="none"
+  say "$(recovery_line none "$MIGRATION_WHY")"
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME pwa=$PWA restart=$(restart_field) recovery=none crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  die "the migration fact is unknown (${MIGRATION_WHY}) — no build was put back and no dump was restored; nothing was checked out, rebuilt or restarted. A human must look"
 fi
 
 # The process already serves the previous commit: nothing was rebuilt, and nothing will be. In
 # `--rollback` mode `PREV` is re-read from `$STATE_DIR/previous`: it is the commit being rolled
 # back *from*, so the skip is deploy-only, and a rollback that did not reach its own commit is
 # `rollback-failed` and never touches `last-good`.
-if [ "$MODE" = "deploy" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PREV"; then
+#
+# BOOK-217: this shortcut is for a volume that did NOT move. A migrated volume with the previous
+# build still answering is a recovery, not a skip — that process refuses the schema on its next
+# restart, so the dump goes back and the ordinary rollback runs (below).
+if [ "$MODE" = "deploy" ] && [ "$MIGRATED" != "1" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PREV"; then
   STEP="frame"
   say "the running process already serves ${PREV:0:7} — checking the frame and the release on disk before anything is written"
   if frame_check; then
@@ -597,7 +1050,7 @@ if [ "$MODE" = "deploy" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PR
     say "the running process already serves ${PREV:0:7} and is healthy — no npm ci, no rebuild, no publish, no second restart"
     mkdir -p "$STATE_DIR"
     echo "$PREV" > "$STATE_DIR/last-good" # `last-good-release` already names $RELEASE
-    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=ok restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=ok restart=skipped recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
     say "deploy of $SHORT is red; prod still serves ${PREV:0:7}, current is back on release $RELEASE — the process was not restarted"
     exit 1
   fi
@@ -605,14 +1058,20 @@ if [ "$MODE" = "deploy" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PR
   # of the same commit would not change what the data says.
   FRAME="fail"
   say "the running process answers ${PREV:0:7} but does not serve the frozen frame; last-good was NOT written — a human must look at the canon"
-  audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=fail restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=fail restart=skipped recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   exit 1
 fi
 
 # A restart that was never issued says nothing about the build: no rollback, no second attempt to
-# signal the same broken job — a human has to look at the service.
+# signal the same broken job — a human has to look at the service. BOOK-217: the header promises one
+# `recovery:` line for every path that reached the restart, and this one did — the signal never
+# reached launchd, so no boot ran and nothing was migrated. The line is `none` for exactly that
+# reason: there is no migration fact to decide from.
 if [ "$HEALTH" = "none" ]; then
-  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=none frame=$FRAME restart=failed $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  STEP="recovery"
+  RECOVERY_CHOICE="none"
+  say "$(recovery_line none "the restart was never issued, so no boot ran and nothing was migrated")"
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=none frame=$FRAME restart=failed recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   die "the restart could not be issued (kickstart failed even after bootstrapping from $PLIST) — nothing was restarted, nothing was rolled back; prod answers ${PLAIN_COMMIT:-nothing} at $URL; a human must look"
 fi
 
@@ -620,7 +1079,7 @@ fi
 # already answering and change nothing about the data — so nothing is restarted, and the message
 # names what answered.
 if [ "$FRAME" = "fail" ]; then
-  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=fail restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=fail restart=skipped recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   if [ -n "$PLAIN_COMMIT" ]; then
     die "prod answers $PLAIN_COMMIT but does not serve the frozen frame (health=$HEALTH after ${HEALTH_MS} ms) — a rollback would restart code that already answers and change nothing about the canon; nothing was restarted. A human must look at the canon"
   fi
@@ -633,14 +1092,14 @@ fi
 # version that already had one may have the same defect — so nothing is restarted again, and the
 # deploy stays red for a human to look at `/sw.js` and `/manifest.webmanifest`.
 if [ "$PWA" = "fail" ]; then
-  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME pwa=fail restart=$(restart_field) $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME pwa=fail restart=$(restart_field) recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   die "prod answers ${PLAIN_COMMIT:-nothing} but does not serve the installable shell (manifest, service worker) — nothing was restarted; a human must look at $URL/sw.js and $URL/manifest.webmanifest"
 fi
 
 # A rollback that did not reach its own commit has nothing better behind it: the generic path
 # below would check out `PREV`, which in this mode is the commit the rollback exists to leave.
 if [ "$MODE" = "rollback" ]; then
-  audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   if [ -n "$PLAIN_COMMIT" ]; then
     die "the rollback did not come up healthy (health=$HEALTH after ${HEALTH_MS} ms of ${BUDGET_MS} ms, frame=$FRAME); prod answers $PLAIN_COMMIT, not the commit the rollback built — a human must look"
   fi
@@ -649,11 +1108,33 @@ fi
 
 # A4: two independent negatives, or prod is not restarted on a guess.
 if ! rollback_allowed "$HEALTH_MS" "$BUDGET_MS" "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
-  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME restart=skipped recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
   die "not rolling back — $ROLLBACK_WHY; a rollback restarts prod, and this verdict has only one negative. Nothing was restarted. A human must look"
 fi
 
 [ -n "$PREV" ] || die "no previous commit to roll back to; prod is NOT serving the build of this run — a human must look"
+
+# BOOK-217: the recovery a rollback means on this volume, decided before the checkout. A dump restore
+# goes first (the service is stopped for it), then the ordinary rollback below runs on the schema the
+# dump brought back. `image-rollback` is the same schema, so nothing is restored. A run that never
+# reached the restart has no pick here and prints no `recovery:` line.
+case "$RECOVERY_PICK" in
+  dump-restore)
+    RECOVERY_CHOICE="dump-restore"
+    recovery_bootout
+    if ! restore_dump; then
+      RECOVERY_CHOICE=""
+      audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE recovery=none crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+      die "the volume was migrated (${MIGRATION_WHY}) and the pre-deploy dump could not be restored; the previous build was NOT put back, so nothing was rolled back — a human must look"
+    fi
+    say "$(recovery_line "$RECOVERY_CHOICE" "$MIGRATION_WHY")"
+    ;;
+  image-rollback)
+    RECOVERY_CHOICE="image-rollback"
+    say "$(recovery_line "$RECOVERY_CHOICE" "$MIGRATION_WHY")"
+    ;;
+esac
+
 STEP="rollback"
 say "rolling back to ${PREV:0:7}: health=$HEALTH after ${HEALTH_MS} ms and prod does not serve ${BUILT_COMMIT}"
 git -C "$ROOT" checkout --quiet --detach "$PREV" || die "rollback checkout failed"
@@ -695,7 +1176,7 @@ if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
     FRAME="ok"
     echo "$PREV" > "$STATE_DIR/last-good"
     if [ -n "$RELEASE" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
-    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=ok restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=ok restart=$(restart_field) release=$RELEASE recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
     say "rolled back to ${PREV:0:7}; prod healthy; the deploy of $SHORT stays red"
     exit 1
   fi
@@ -704,8 +1185,9 @@ if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
 fi
 
 # The process answering with the *deploy's* build after the rollback is the incident's exact
-# state: the site was up the whole time. That is a late success — green, and the audit says it.
-if [ "$HEALTH" = "stale" ] && names_commit "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
+# state: the site was up the whole time. That is a late success — green, and the audit says it. A
+# job seen respawning after the failed window is not: it falls through to `rollback-failed`.
+if [ "$HEALTH" = "stale" ] && [ "$CRASHLOOP" != "1" ] && names_commit "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
   HEALTH="late"
   SLOW=1
   say "late success: prod serves ${PLAIN_COMMIT} (the build of the deploy that was being rolled back) — nothing is restarted again"
@@ -715,7 +1197,7 @@ if [ "$HEALTH" = "stale" ] && names_commit "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
   finish_green keep || true
 fi
 
-audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE recovery=${RECOVERY_CHOICE:-none} crashloop=$CRASHLOOP $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
 if [ -n "$PLAIN_COMMIT" ]; then
   die "rollback did not come up healthy (health=$HEALTH after ${HEALTH_MS} ms, frame=$FRAME); prod answers $PLAIN_COMMIT, not the build of this run — a human must look; the audit names release=${RELEASE:-unknown} (log: ~/Library/Logs/book-site.log)"
 fi

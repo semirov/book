@@ -215,8 +215,46 @@ const NOT_ALLOWED_REASON =
   // migrate tool's business, so the sentence names the route that works for them too.
   'remove it by hand, or — when it is a leftover of the old writer — run bin/home-migrate.mjs --apply once';
 
-/** One depth-one entry judged: allowed, or the reason it is refused — the text printed after its path. */
-export type DataEntryVerdict = { ok: true } | { ok: false; reason: string };
+/**
+ * SQLite writes two sidecars beside an open database — the write-ahead log (`-wal`) and the
+ * shared-memory index (`-shm`) — and deletes them with it.
+ *
+ * **A file's sidecars are that file's files (BOOK-217).** The deploy of `a424300` migrated the
+ * volume to schema v30 and then failed the home gate on `/data/book-before-ch65-drop-…db-shm` and
+ * its `-wal`: the sidecars of an allow-listed pre-migration dump, refused because the allow-list
+ * named the dump's name and not the pair SQLite leaves beside it. So a `-wal`/`-shm` file is
+ * allowed **iff** its base is allowed by the file rules above — `book.db`, a `book-before-*`/
+ * `book-reset-*` dump, a `*.token`, a `cover.*` — and its reason names the base, because that is
+ * the file it belongs to. A sidecar of anything else (`notes.db-wal`) is still a stray, and so is
+ * a name that only looks like one (`book-before-x.db-wal.bak`).
+ */
+const SIDECAR = /^(.+)-(wal|shm)$/u;
+/** Sidecar suffix → what SQLite calls that file, for the reason the verdict carries. */
+const SIDECAR_KINDS: Record<'wal' | 'shm', string> = {
+  wal: 'SQLite write-ahead log',
+  shm: 'SQLite shared-memory index',
+};
+
+/**
+ * The allow-listed file `name` is a sidecar of, or `null` when it is not a sidecar of one: the
+ * base must pass `DATA_ALLOW`'s file rules as itself — and must not itself look like a sidecar
+ * (`book.db-wal-wal` is a sidecar of a sidecar: `book.db-wal` is a file SQLite writes, never a
+ * database it writes one beside).
+ */
+function sidecarOf(name: string): { base: string; kind: string } | null {
+  const match = SIDECAR.exec(name);
+  if (match === null) return null;
+  const [, base = '', suffix = ''] = match;
+  if (SIDECAR.test(base)) return null;
+  if (!DATA_ALLOW.some((entry) => entry.match.test(base))) return null;
+  return { base, kind: SIDECAR_KINDS[suffix === 'shm' ? 'shm' : 'wal'] };
+}
+
+/**
+ * One depth-one entry judged: allowed (the reason says what it is — a sidecar names the file it
+ * belongs to), or refused with the sentence printed after its path.
+ */
+export type DataEntryVerdict = { ok: true; reason?: string } | { ok: false; reason: string };
 
 /**
  * The one classifier of a depth-one data-dir entry — the only place a name is allowed or refused,
@@ -225,7 +263,9 @@ export type DataEntryVerdict = { ok: true } | { ok: false; reason: string };
  *   * a directory is allowed only by name (`DATA_ALLOW_DIRS`), whatever it holds;
  *   * `.book-volume` is a file whose **content** decides (`volumeMarkerProblem`): the named shape
  *     and the legacy number are markers, everything else is not;
- *   * every other file is allowed only by the file rules.
+ *   * every other file is allowed only by the file rules — and a `-wal`/`-shm` file by being the
+ *     sidecar of an allow-listed one (`sidecarOf`), which is the dump's own file, not a second
+ *     thing in the volume (BOOK-217).
  *
  * `markerContent` is the content read once by the caller (`readVolumeMarker`); `null` means the
  * marker could not be read, and an unreadable marker is refused.
@@ -244,9 +284,12 @@ export function classifyDataEntry(input: {
     const problem = volumeMarkerProblem(input.markerContent ?? '');
     return problem === null ? { ok: true } : { ok: false, reason: problem };
   }
-  return DATA_ALLOW.some((entry) => entry.match.test(input.name))
-    ? { ok: true }
-    : { ok: false, reason: NOT_ALLOWED_REASON };
+  if (DATA_ALLOW.some((entry) => entry.match.test(input.name))) return { ok: true };
+  const sidecar = sidecarOf(input.name);
+  if (sidecar !== null) {
+    return { ok: true, reason: `${sidecar.kind} of ${sidecar.base}: that file's own sidecar` };
+  }
+  return { ok: false, reason: NOT_ALLOWED_REASON };
 }
 
 function proseProblem(root: string, entry: HomeEntry): HomeProblem | null {
