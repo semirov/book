@@ -6,11 +6,16 @@
  *
  * Narrow on purpose: only an `escalated` step, only with `landed_at`, and only while the chapter
  * is still the text the step landed. A step whose text moved has nothing left to close.
+ *
+ * The window is fresh in every sense: the attempt counter is reset and `reopened_at` is stamped,
+ * so the step wall is measured again from the reopen (`stepWallOf`) — a step opened before the
+ * wall can still be asked and closed instead of being walled on the next tick.
  */
 
 import { NOTE_MAX_CHARS } from '@book/shared';
 
 import { appendEvent } from '../history/log.ts';
+import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
 import { readChapterRows } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
@@ -39,7 +44,12 @@ export function reopenStep(
       );
     }
   }
-  store.updateStep(db, stepId, { outcome: null, closed_at: null, note: because.slice(0, NOTE_MAX_CHARS) });
+  store.updateStep(db, stepId, {
+    outcome: null,
+    closed_at: null,
+    note: because.slice(0, NOTE_MAX_CHARS),
+    reopened_at: toIso(at), // BOOK-117: the wall's second window starts here (`stepWallOf`).
+  });
   // A reopen is a fresh window, not the fourth attempt of the closed one: the reaper counts
   // expired leases per change, and a step escalated after three of them would be escalated on
   // the next tick instead of being asked anything (`gate_timeout`, seen in prod 2026-10-28).

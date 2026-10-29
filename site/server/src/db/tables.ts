@@ -327,6 +327,7 @@ export const STEPS_COLUMNS = [
   'rights_scan',
   'closed_at',
   'provenance',
+  'reopened_at',
 ] as const;
 
 /**
@@ -371,6 +372,10 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   closed_at   TEXT,
   -- BOOK-117: who ran the pass — 'pipeline' (the lane on the pin) or 'operator' (a repair).
   provenance  TEXT CHECK (provenance IN ('pipeline','operator')),
+  -- BOOK-117: when the step was re-opened to be closed with the verdicts it earned. The step
+  -- wall is measured from MAX(at, reopened_at), so a reopen is a fresh window and a step older
+  -- than the wall can still be closed (at itself never moves: it is the step's opening).
+  reopened_at TEXT,
   UNIQUE (cascade_id, seq)
 );
 CREATE INDEX steps_chapter ON steps(chapter, at);

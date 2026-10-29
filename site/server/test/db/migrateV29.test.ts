@@ -211,7 +211,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
   it('builds the same shape on a fresh and on a migrated install, and keeps every v28 column', () => {
     const fresh = openDatabase(':memory:');
     migrate(fresh);
-    expect(SCHEMA_VERSION).toBe(30);
+    expect(SCHEMA_VERSION).toBe(31);
     const freshShape = {
       facts: info(fresh, 'facts'),
       dependency: info(fresh, 'fact_dependency'),
@@ -247,7 +247,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
     expect(() => db.prepare('SELECT id FROM extraction_runs').all()).toThrow(/no such table/u);
 
     expect(migrate(db)).toEqual({ from: 28, to: SCHEMA_VERSION });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(30);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     // The property: the upgraded tables are the fresh ones, column for column (name, type,
     // NOT NULL, default, key position), index for index, reference for reference.
@@ -293,7 +293,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
     const runs = objectSql(db, 'table', 'extraction_runs');
 
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(30);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect(rebuildFacts(db)).toBe(false);
     expect(objectSql(db, 'table', 'facts')).toBe(built);
     expect(objectSql(db, 'trigger', 'facts_no_delete')).toBe(guard);

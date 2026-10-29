@@ -13,7 +13,7 @@ import { parseSeams } from '@book/shared';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
-import { lastLeaseOfStep, releaseLease, stampEscalatedRelease } from './leases.ts';
+import { lastLeaseOfStep, releaseLease, stampEscalatedRelease, stepWallOf } from './leases.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
 import { isEngineError, type EngineDeps } from './types.ts';
@@ -59,12 +59,12 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
 
   // ── the step wall (BOOK-34) ───────────────────────────────────────────────
   // The engine beats a step's lease by itself while the step is open, so a lease expiry is no
-  // longer the thing that bounds a step. The wall is: past `steps.at` (the opening) +
-  // STEP_WALL_MS the step is stopped and escalated, and its lease released, however healthy
-  // the session looks. A walled step is escalated, never re-issued — three attempts at 45
-  // minutes each is a loop.
+  // longer the thing that bounds a step. The wall is: past the step's window (`stepWallOf` —
+  // its opening, or its reopen if that is later) + STEP_WALL_MS the step is stopped and
+  // escalated, and its lease released, however healthy the session looks. A walled step is
+  // escalated, never re-issued — three attempts at 45 minutes each is a loop.
   for (const step of store.listOpenSteps(db)) {
-    if (Date.parse(step.at) + deps.config.stepWallMs > now) continue;
+    if (stepWallOf(deps, step) > now) continue;
     // Closing a walled step may close its whole cascade (a ripple owns no work in flight),
     // so a later step of the same snapshot may already be closed by the time it is reached.
     if (store.getStep(db, step.step_id)?.outcome !== null) continue;

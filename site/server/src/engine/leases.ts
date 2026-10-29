@@ -126,9 +126,21 @@ export function liveLease(deps: EngineDeps, leaseId: string): LeaseRow {
   return lease;
 }
 
-/** The wall of a step: the latest instant its lease may be pushed to (§BOOK-34). */
+/**
+ * The wall of a step: the latest instant its lease may be pushed to (§BOOK-34).
+ *
+ * BOOK-117: a re-open is a fresh window, so the wall is measured from the later of the opening
+ * (`at`) and the reopen. Without this a step older than the wall could be re-opened to be closed
+ * with the verdicts it earned and be walled again on the very next tick, having been asked
+ * nothing — the reopen door could never close an old step (`at` is never moved: it stays the
+ * step's opening, and `reopened_at` is the only record of the second window).
+ */
 export function stepWallOf(deps: EngineDeps, step: StepRow): number {
-  return Date.parse(step.at) + deps.config.stepWallMs;
+  const opened = Date.parse(step.at);
+  // An unparsable `at` already reads as "past the wall" (`NaN > now` is false); a `reopened_at`
+  // the engine wrote is always an ISO moment, and a broken one keeps the step in that same state.
+  const from = step.reopened_at === null ? opened : Math.max(opened, Date.parse(step.reopened_at));
+  return from + deps.config.stepWallMs;
 }
 
 export type CloseLease = { lease: LeaseRow; expired: boolean };

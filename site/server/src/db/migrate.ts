@@ -1,8 +1,9 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, COMMENT_ATTEMPTS_TABLE_SQL, chaptersTableSql, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, chaptersTableSql, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL } from './schema.ts';
 import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
+import { widenGateRoles } from './widenGateRoles.ts';
 import { widenSpendProvenance } from './widenSpendProvenance.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
@@ -329,6 +330,9 @@ const MIGRATIONS: Migration[] = [
   { to: 29, up: migrateV29 },
   // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict, and every escalated filing re-opened.
   { to: 30, up: migrateV30 },
+  // BOOK-117: `steps.reopened_at` — where the wall's second window starts. Additive and nullable:
+  // a row written before a reopen existed was never re-opened, and no value is invented for it.
+  { to: 31, up(db) { addColumn(db, 'steps', 'reopened_at', 'TEXT'); } },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */
@@ -337,45 +341,6 @@ function addColumn(db: Db, table: string, column: string, definition: string): v
     (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name),
   );
   if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-}
-
-/** The columns both the v13 gate tables and the v14 ones carry — the rebuild copies them. */
-const DISPATCH_COLUMNS = ['step_id', 'role', 'session', 'dispatched_at', 'expires_at'] as const;
-const VERDICT_COLUMNS = [
-  'step_id',
-  'role',
-  'verdict',
-  'findings',
-  'cycles',
-  'model',
-  'tokens_in',
-  'tokens_out',
-  'at',
-  'late',
-] as const;
-
-/**
- * BOOK-61: the two gate tables gain the conditional `rights` role, and `gate_verdicts` couples
- * the verdict to the role. SQLite cannot widen an inline CHECK, so both tables are rebuilt —
- * renamed aside, recreated from the same constant a fresh install uses, copied, dropped. The
- * step is idempotent: a table whose SQL already names `rights` is left alone.
- */
-function widenGateRoles(db: Db): void {
-  const sql = db
-    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'gate_verdicts'`)
-    .get() as { sql: string } | undefined;
-  if (sql === undefined || sql.sql.includes("'rights'")) return;
-  db.exec('ALTER TABLE gate_dispatches RENAME TO gate_dispatches_v13');
-  db.exec('ALTER TABLE gate_verdicts RENAME TO gate_verdicts_v13');
-  db.exec(GATE_TABLES_SQL);
-  const dispatches = DISPATCH_COLUMNS.join(', ');
-  db.exec(
-    `INSERT INTO gate_dispatches (${dispatches}) SELECT ${dispatches} FROM gate_dispatches_v13`,
-  );
-  const verdicts = VERDICT_COLUMNS.join(', ');
-  db.exec(`INSERT INTO gate_verdicts (${verdicts}) SELECT ${verdicts} FROM gate_verdicts_v13`);
-  db.exec('DROP TABLE gate_dispatches_v13');
-  db.exec('DROP TABLE gate_verdicts_v13');
 }
 
 function tableExists(db: Db, name: string): boolean {

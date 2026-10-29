@@ -16,7 +16,10 @@ import { toIso } from '../../src/util/time.ts';
 import { createEngineFixture, type Fixture } from './helpers.ts';
 
 const TOKEN = 'transcript-token';
-const DAY = Date.UTC(2026, 9, 28, 12, 0, 0);
+// The retention cutoff comes from the real clock, so the fixture is anchored to it instead of to a
+// calendar day: one hour before now leaves a wide margin on every edge (29d+1h stays, 31d+1h goes).
+const NOW = Date.now();
+const DAY = NOW - 60 * 60 * 1000;
 
 let closeApp: (() => Promise<void>) | null = null;
 
