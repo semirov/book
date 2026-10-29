@@ -19,7 +19,7 @@ import { hideFiling } from '../lib/useFiling.ts';
  */
 
 export const HEADER_PX = 56;
-/** `--offset-top` as the page gets it: the measured head plus the site's breathing space. */
+/** `--offset-top` as the page gets it: the measured head plus the site's landing air. */
 export const OFFSET_TOP = offsetOf(HEADER_PX);
 export const VIEWPORT = { width: 390, height: 844 } as const;
 export const PLATE_PX = 80;

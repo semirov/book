@@ -142,6 +142,11 @@ describe('when the sequence runs (BOOK-DOC-49 §2b, §2c, §5)', () => {
   it('never runs twice in one document', () => {
     expect(shouldRun({ ...base, ran: true })).toBe(false);
   });
+
+  it('does not run over a remembered place (BOOK-209): the load is a resume, not the cover', () => {
+    expect(shouldRun({ ...base, restore: true })).toBe(false);
+    expect(shouldRun({ ...base, restore: false })).toBe(true);
+  });
 });
 
 describe('the sheet and the table agree (BOOK-DOC-49 §7)', () => {

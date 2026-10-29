@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 31** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 34** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -41,6 +41,8 @@
  * inferred from the rowid, so a number a reader was shown never moves under them.
  * v33 adds the frozen plan of a change (BOOK-173, `change_plans`): its `mode`/`price_usd` and the
  * verification record (BOOK-DOC-80).
+ * BOOK-209 (v34) adds `reader_places` — the reader's anchor in the book, one row per identity,
+ * so a second device resumes where the first stopped (`READER_PLACES_TABLE_SQL`).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
@@ -57,7 +59,35 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
+
+/**
+ * BOOK-209 (v34) — the reader's place: one row per identity, so a second device resumes where
+ * the first stopped. The row is an **anchor**, never a scroll offset: `chapter` plus
+ * `sentence_id` (a block id and a sentence index inside it) name the sentence, `delta_px` says
+ * how far below the reading line it sat, and `at` is the visiting device's own clock. Prose is
+ * rewritten between two visits, so a stored pixel height would point nowhere; an anchor is
+ * resolved against the text the reader is served now.
+ *
+ * `identity_id` is a **foreign key**, like every other per-identity table (`sessions`,
+ * `contributions`, `contribution_history`): `identities.id` is the table's primary key, so the
+ * reference is natural, and `ON DELETE CASCADE` means a forgotten identity leaves no trace of
+ * where its owner had been reading. `CREATE TABLE IF NOT EXISTS` makes the step that adds the
+ * table (`migrateV34.ts`) idempotent, and `SCHEMA_SQL` embeds this same constant, so a fresh
+ * install and a migrated one cannot drift.
+ *
+ * `chapter` carries the storage bound the other chapter columns carry (`BETWEEN 1 AND 67`,
+ * BOOK-155): the 42-chapter limit is the route's rule, and the column only refuses a value that
+ * could not be a chapter of this book at all.
+ */
+export const READER_PLACES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS reader_places (
+  identity_id TEXT PRIMARY KEY REFERENCES identities(id) ON DELETE CASCADE,
+  chapter     INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  sentence_id TEXT NOT NULL,
+  delta_px    REAL NOT NULL,
+  at          TEXT NOT NULL
+);`;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
@@ -301,6 +331,8 @@ CREATE TABLE contributions (                   -- projection of §6C.5, refreshe
   computed_at TEXT NOT NULL
 );
 
+${READER_PLACES_TABLE_SQL}                     -- BOOK-209: the reader's anchor, one row per identity
+
 -- ── history, provenance, impact (§6F) ───────────────────────────────────────
 -- Append-only. The triggers below refuse UPDATE/DELETE; 'history/log.ts' is the only writer.
 
@@ -423,6 +455,7 @@ export const REQUIRED_TABLES = [
   'identities',
   'sessions',
   'contributions',
+  'reader_places',
   'events',
   'reconciles',
   'front_revisions',

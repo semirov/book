@@ -22,7 +22,7 @@ describe('migration v30 — the triage ledger', () => {
   it('a fresh install carries every v30 column, in the order the step appends them', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    expect(SCHEMA_VERSION).toBe(33);
+    expect(SCHEMA_VERSION).toBe(34);
     expect(columns(db, 'comment_attempts')).toEqual([
       'id',
       'comment_id',

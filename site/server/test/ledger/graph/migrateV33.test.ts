@@ -62,9 +62,9 @@ afterEach(() => {
 });
 
 describe('migration v33 — the frozen plan on a fresh install', () => {
-  it('creates change_plans, reaches version 33, and does not duplicate main’s graph', () => {
+  it('creates change_plans, reaches version 34, and does not duplicate main’s graph', () => {
     db = openDatabase(':memory:');
-    expect(SCHEMA_VERSION).toBe(33);
+    expect(SCHEMA_VERSION).toBe(34);
     expect(migrate(db).to).toBe(SCHEMA_VERSION);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 

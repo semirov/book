@@ -140,9 +140,6 @@
 
 /* ---------- comments: the thread a filing is decided in ---------- */
 
-
-
-/* ---------- comments: the thread a filing is decided in ---------- */
 .comments {
   list-style: none;
   margin: 16px 0 0;
@@ -313,6 +310,9 @@
   line-height: 1.55;
   letter-spacing: 0;
   color: var(--ink-3);
+  /* BOOK-209 — the last page keeps a viewport of paper after it, so the book's last rows can
+     rise to the reading line; a floor, never a height, and the measured band below the book. */
+  min-height: calc(100vh + var(--offset-bottom));
 }
 .colophon .row {
   display: flex;

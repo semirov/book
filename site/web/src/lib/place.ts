@@ -8,7 +8,7 @@
  * every one of them lands the same way:
  *
  *   1. the target's **top** goes to the reading line — the sticky head's measured lower edge
- *      plus `BREATHING_PX`, the very number `scroll-margin-top` receives (`headerOffset.ts`),
+ *      plus `LANDING_PX`, the very number `scroll-margin-top` receives (`headerOffset.ts`),
  *      never a literal copied from a screenshot;
  *   2. the footer grip is a floor as well as a ceiling: a landing may not leave the target's
  *      top under the band the page fixes over the bottom edge, and the end of the book is a
@@ -47,8 +47,17 @@
 
 import type { CommentDto } from '@book/shared';
 
-import { gripHeight, offsetTopOfPage } from './headerOffset.ts';
+import { gripHeight } from './headerOffset.ts';
+import { beginLanding, followLine, isCurrent, landingLine, landingToken } from './landing.ts';
 import type { AnchorRect } from './popover.ts';
+
+/**
+ * The page has one landing at a time (owner, 2026-10-28): a click, a hash, a back/forward and a
+ * resume are all landings, and the newest one owns the page. The token lives in
+ * `lib/landing.ts` — the layer that runs the correction loop — and is exported from here
+ * because every surface of this file lands under it.
+ */
+export { beginLanding, isCurrent };
 
 /** A filing the page already holds: its own anchor is the place. */
 export type CommentPlace = CommentDto;
@@ -207,25 +216,6 @@ function blockOf(place: CommentPlace, doc: Document): HTMLElement | null {
  */
 function boxed(element: HTMLElement | null): HTMLElement | null {
   return element !== null && element.getBoundingClientRect().height > 0 ? element : null;
-}
-
-/**
- * The page has one landing at a time (owner, 2026-10-28): a click, a hash, a back/forward are
- * all landings, and the newest one owns the page. Every landing takes a token when it starts
- * and drops its remaining acts (`isCurrent`) when a newer one has started while it waited —
- * otherwise two clicks scroll twice and raise two cards.
- */
-let landingGeneration = 0;
-
-/** Take the page for a new landing: every older landing becomes stale. */
-export function beginLanding(): number {
-  landingGeneration += 1;
-  return landingGeneration;
-}
-
-/** Is this landing still the newest one? A stale landing must not scroll or open a card. */
-export function isCurrent(token: number): boolean {
-  return token === landingGeneration;
 }
 
 /**
@@ -402,17 +392,17 @@ export async function landFragment(input: LandFragmentInput): Promise<boolean> {
       : blockElementId(input.fragment.chapter, input.fragment.blockIndex);
   if (blockId === null) {
     if (chapter === null) return false;
-    landAt(chapter, win, doc);
+    landAt(chapter, win, doc, token);
     return true;
   }
   const here = boxed(doc.getElementById(blockId));
   if (here !== null) {
-    landAt(here, win, doc);
+    landAt(here, win, doc, token);
     return true;
   }
   if (chapter !== null) {
     // The chapter's mouth is where its read starts: jump there once, then wait for the paragraph.
-    landAt(chapter, win, doc);
+    landAt(chapter, win, doc, token);
     const block = await waitForBlock({
       scope: chapter,
       find: () => doc.getElementById(blockId),
@@ -422,12 +412,12 @@ export async function landFragment(input: LandFragmentInput): Promise<boolean> {
     // A newer landing owns the page now: this one must not scroll and must not claim the open.
     if (!isCurrent(token)) return false;
     if (block !== null) {
-      landAt(block, win, doc);
+      landAt(block, win, doc, token);
       return true;
     }
   }
   if (chapter === null) return false;
-  landAt(chapter, win, doc);
+  landAt(chapter, win, doc, token);
   return true;
 }
 
@@ -446,16 +436,25 @@ function escapeAttribute(value: string): string {
  * place. The jump is measured once and then performed, and the rect the card receives is the
  * one that jump lands on (`docTop - top`), so the box is placed on the paragraph's new position
  * without a second measurement or a blink.
+ *
+ * BOOK-209 — the jump alone is not enough: the chapter's prose arrives, the printing reveal
+ * types, a font lands, the head wraps, and the text moves under the line after the jump. So the
+ * landing is held by the same bounded correction loop every other landing uses (`followLine`
+ * in `lib/landing.ts`): instant jump first, residual taken back frame by frame. The loop is
+ * fire-and-forget here — the caller has its rect and its card to place — and it ends on the
+ * reader's own gesture or when a newer landing takes the page.
  */
-export function landAt(element: HTMLElement, win: Window = window, doc: Document = document): AnchorRect {
+export function landAt(element: HTMLElement, win: Window = window, doc: Document = document, token?: number): AnchorRect {
   const before = element.getBoundingClientRect();
   const docTop = before.top + win.scrollY;
+  const line = landingLine(doc);
   const top = landingScroll({
     docTop,
-    readingLine: offsetTopOfPage(doc),
+    readingLine: line,
     gripFloor: win.innerHeight - gripHeight(doc),
     maxScroll: maxScrollOf(doc, win),
   });
   win.scrollTo({ top, behavior: 'auto' });
+  void followLine(element, token ?? landingToken(), { doc, win });
   return { top: docTop - top, left: before.left, width: before.width, height: before.height };
 }

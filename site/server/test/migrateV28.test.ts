@@ -49,7 +49,7 @@ describe('migrate — BOOK-187 (v28): the book’s own state', () => {
   it('creates the four tables, their indexes and the two frame rows on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(33);
+    expect(SCHEMA_VERSION).toBe(34);
 
     for (const table of ['book_frame', 'writer_state', 'pass_transcripts', 'block_deltas']) {
       expect(columns(db, table).length, table).toBeGreaterThan(0);

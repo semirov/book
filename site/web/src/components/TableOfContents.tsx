@@ -1,6 +1,6 @@
 import { chapterLabel, type CatalogEntry, type StateSnapshot } from '@book/shared';
 
-import { scrollToChapter } from '../dom.ts';
+import { jumpToChapter } from '../lib/usePosition.ts';
 import { tocAriaLabel, tocFrames, tocParts, writtenCount, type TocEntryView } from '../lib/toc.ts';
 
 /**
@@ -88,7 +88,9 @@ function TocRow({ entry }: { entry: TocEntryView }) {
         onClick={(event) => {
           // A real target exists for every row, so the tap is ours; if the section is missing
           // (a partial render) the browser's own `#ch-N` jump is the fallback, never a dead click.
-          if (scrollToChapter(entry.n)) event.preventDefault();
+          // BOOK-209: the row leaves a history entry behind (`jumpToChapter`), so back returns
+          // the reader to the place they tapped from.
+          if (jumpToChapter(entry.n)) event.preventDefault();
         }}
       >
         <span className="toc-num">{chapterLabel(entry.n)}</span>

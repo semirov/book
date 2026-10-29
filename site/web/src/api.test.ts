@@ -12,7 +12,9 @@ import {
   getFront,
   getMyDecisions,
   getMyFilings,
+  getMyPlace,
   getMyTrace,
+  putMyPlace,
   getQueue,
   getState,
   postAuthorsHide,
@@ -294,5 +296,45 @@ describe('the revision of a refused filing (BOOK-158)', () => {
     const cooling = (await reviseComment('cmt_1', { body: 'Ещё раз.' }).catch((caught: unknown) => caught)) as ApiError;
     expect(cooling).toMatchObject({ code: 'REVISE_COOLDOWN', retryAfterMs: 300_000 });
     expect(cooling.reopenAt).toBeUndefined();
+  });
+});
+
+describe('the reader’s place (BOOK-209)', () => {
+  it('answers null for a reader who never left a place, and reads the DTO otherwise', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    await expect(getMyPlace()).resolves.toBeNull();
+
+    const place = {
+      chapter: 12,
+      sentenceId: 'ch12#aabbccdd/s140',
+      deltaPx: 12.5,
+      at: '2026-10-29T08:00:00.000Z',
+    };
+    respond(place);
+    await expect(getMyPlace()).resolves.toEqual(place);
+  });
+
+  it('puts exactly the four fields the route accepts, and no identity of any kind', async () => {
+    const spy = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', spy);
+    const place = { chapter: 3, sentenceId: 'ch03#b12/p', deltaPx: 0, at: '2026-10-29T08:00:00.000Z' };
+    await expect(putMyPlace(place)).resolves.toBeUndefined();
+
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/me/place');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual(place);
+  });
+
+  it('throws the route’s own refusal (BAD_PLACE) instead of retrying it', async () => {
+    respond({ code: 'BAD_PLACE', message: 'место в книге не сохранено' }, 400);
+    const error = (await putMyPlace({
+      chapter: 3,
+      sentenceId: 'ch03#b12/p',
+      deltaPx: 0,
+      at: '2026-10-29T08:00:00.000Z',
+    }).catch((caught: unknown) => caught)) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 400, code: 'BAD_PLACE' });
   });
 });
