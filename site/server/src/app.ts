@@ -22,6 +22,7 @@ import { isAllowedUpgradeOrigin } from './http/origin.ts';
 import { registerReadLimit } from './http/readLimit.ts';
 import { answerAssetMiss, firstNotFoundPass, servedRoot } from './http/releases.ts';
 import { registerAdminRoutes } from './http/routes/admin.ts';
+import { registerAgeRoutes } from './http/routes/age.ts';
 import { registerAnalyticsRoutes } from './http/routes/analytics.ts';
 import { registerAuthRoutes } from './http/routes/auth.ts';
 import { registerAuthorsRoutes } from './http/routes/authors.ts';
@@ -238,6 +239,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerFrontRoutes(app, deps, exportCache);
   registerExportRoutes(app, deps, exportCache);
   registerCostRoutes(app, deps);
+  // BOOK-225: the acknowledgement is written before any chapter route can ask for it.
+  registerAgeRoutes(app, deps);
   registerChapterRoutes(app, deps);
   registerStageRoutes(app, deps);
   registerChangeRoutes(app, deps);

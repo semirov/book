@@ -189,7 +189,7 @@ describe('the TOC row is a register like every other (BOOK-88, BOOK-89)', () => 
 
 describe('the markup keeps every register a .page', () => {
   it('pins each register component by name and its class string', () => {
-    expect(REGISTER_COMPONENTS).toHaveLength(13);
+    expect(REGISTER_COMPONENTS).toHaveLength(14);
     expect(markupProblems()).toEqual([]);
   });
 

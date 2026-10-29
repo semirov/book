@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { renderFb2, type Fb2Input } from '../../src/fb2/serialize.ts';
 import { reconcile } from '../../src/ingest/reconcile.ts';
-import { longProse } from '../helpers.ts';
+import { ageAckAt, longProse } from '../helpers.ts';
 import {
   COVER_SOURCE,
   DISPOSITION,
@@ -16,6 +16,10 @@ import {
   versionOf,
   type ExportHarness,
 } from './harness.ts';
+
+/** The suite pins the clock to this day; the acknowledged reader’s cookie names the same one. */
+const PINNED = new Date('2026-10-27T11:03:12Z');
+const AGE_ACK = ageAckAt(PINNED);
 
 /**
  * BOOK-138 — the download as the reader meets it: the name a browser saves, the answer's cache
@@ -45,7 +49,7 @@ afterEach(async () => {
 describe('the file a browser saves (BOOK-138)', () => {
   it('AC — names it «Бланк.fb2» for every client, in both forms, on GET and on HEAD', async () => {
     const { app } = await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE } });
-    const get = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const get = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(get.headers['content-disposition']).toBe(DISPOSITION);
     // The UTF-8 form is the name, spelled by `encodeURIComponent`, not pasted as escapes.
     expect(get.headers['content-disposition']).toContain(
@@ -53,29 +57,29 @@ describe('the file a browser saves (BOOK-138)', () => {
     );
     // The edition number is not in the name: it is in the file and on the ETag.
     expect(get.headers['content-disposition']).not.toContain(String(versionOf(get.body)));
-    const head = await app.inject({ method: 'HEAD', url: '/book.fb2' });
+    const head = await app.inject({ method: 'HEAD', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(head.headers['content-disposition']).toBe(DISPOSITION);
   });
 
   it('AC — nothing is stored: 200, HEAD and the 304 branch all answer no-store', async () => {
     const { app } = await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE } });
-    const get = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const get = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(get.headers['cache-control']).toBe('no-store');
     const notModified = await app.inject({
       method: 'GET',
       url: '/book.fb2',
-      headers: { 'if-none-match': get.headers.etag as string },
+      headers: { cookie: AGE_ACK, 'if-none-match': get.headers.etag as string },
     });
     expect(notModified.statusCode).toBe(304);
     expect(notModified.headers['cache-control']).toBe('no-store');
     // The tag survives the policy: an explicit revalidation is still truthful.
     expect(notModified.headers.etag).toBe(get.headers.etag);
-    const head = await app.inject({ method: 'HEAD', url: '/book.fb2' });
+    const head = await app.inject({ method: 'HEAD', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(head.headers['cache-control']).toBe('no-store');
     const headNotModified = await app.inject({
       method: 'HEAD',
       url: '/book.fb2',
-      headers: { 'if-none-match': head.headers.etag as string },
+      headers: { cookie: AGE_ACK, 'if-none-match': head.headers.etag as string },
     });
     expect(headNotModified.statusCode).toBe(304);
     expect(headNotModified.headers['cache-control']).toBe('no-store');
@@ -95,7 +99,7 @@ describe('the size the page prints (BOOK-138)', () => {
       now: () => clock,
     });
     const front = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const file = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const file = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
 
     expect(file.statusCode).toBe(200);
     expect(typeof front.exportBytes).toBe('number');
@@ -118,7 +122,7 @@ describe('the size the page prints (BOOK-138)', () => {
     // The page asks first: it pays the one build, and the download reuses it.
     expect((await app.inject({ method: 'GET', url: '/api/front' })).statusCode).toBe(200);
     expect(builds).toBe(1);
-    expect((await app.inject({ method: 'GET', url: '/book.fb2' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' })).statusCode).toBe(200);
     expect(builds).toBe(1);
   });
 
@@ -131,7 +135,7 @@ describe('the size the page prints (BOOK-138)', () => {
     reconcile(held.fixture.db, { bookRoot: held.fixture.root, dataDir: held.fixture.dataDir });
 
     const after = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const file = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const file = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(after.exportBytes).toBe(Number(file.headers['content-length']));
     expect(after.revision).not.toBe(before.revision);
     expect(after.exportBytes).toBeGreaterThan(before.exportBytes);
@@ -158,7 +162,7 @@ describe('the cover in the size (BOOK-133 / BOOK-138)', () => {
     });
 
     const firstFront = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const firstFile = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const firstFile = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(firstFile.statusCode).toBe(200);
     expect(firstFront.exportBytes).toBe(Number(firstFile.headers['content-length']));
     expect(builds).toBe(1);
@@ -171,7 +175,7 @@ describe('the cover in the size (BOOK-133 / BOOK-138)', () => {
     utimesSync(copy, later, later);
 
     const secondFront = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const secondFile = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const secondFile = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
 
     // The regression: keyed by the edition hash alone, the memo would answer with the previous
     // `<binary>` and the page would print the previous file's length under the new tag.
@@ -207,7 +211,7 @@ describe('the cover in the size (BOOK-133 / BOOK-138)', () => {
     expect(typeof body.revision).toBe('number');
 
     // The export itself still fails loudly — BOOK-133's rule, not softened by the shared memo.
-    const file = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const file = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(file.statusCode).toBe(503);
     expect(file.json()).toMatchObject({ code: 'COVER_MISSING' });
   });
@@ -217,7 +221,7 @@ describe('the export’s own budget (BOOK-138)', () => {
   it('AC — a reader’s second click in a row is another file, not a refusal', async () => {
     const { app } = await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE } });
     for (let click = 1; click <= 2; click += 1) {
-      const response = await app.inject({ method: 'GET', url: '/book.fb2' });
+      const response = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
       expect(response.statusCode, `click ${click}`).toBe(200);
       expect(response.body).toContain('<FictionBook');
     }
@@ -230,23 +234,23 @@ describe('the export’s own budget (BOOK-138)', () => {
     }
     // The page's own polls are refused now — and the export is not.
     expect((await app.inject({ method: 'GET', url: '/api/state' })).statusCode).toBe(429);
-    const download = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const download = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(download.statusCode).toBe(200);
     expect(download.headers['content-disposition']).toBe(DISPOSITION);
-    expect((await app.inject({ method: 'HEAD', url: '/book.fb2' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'HEAD', headers: { cookie: AGE_ACK }, url: '/book.fb2' })).statusCode).toBe(200);
   });
 
   it('AC — the export’s budget is spent by its own requests, GET and HEAD alike', async () => {
     const { app } = await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE }, env: { READ_PER_MINUTE: '1' } });
-    expect((await app.inject({ method: 'GET', url: '/book.fb2' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' })).statusCode).toBe(200);
 
-    const blocked = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const blocked = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json()).toMatchObject({ code: 'RATE_LIMITED' });
     expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
     // A query string is not a way around it, and HEAD takes a slot like GET.
     expect((await app.inject({ method: 'GET', url: '/book.fb2?download=1' })).statusCode).toBe(429);
-    expect((await app.inject({ method: 'HEAD', url: '/book.fb2' })).statusCode).toBe(429);
+    expect((await app.inject({ method: 'HEAD', headers: { cookie: AGE_ACK }, url: '/book.fb2' })).statusCode).toBe(429);
     // The read budget is untouched: a state poll still answers.
     expect((await app.inject({ method: 'GET', url: '/api/state' })).statusCode).toBe(200);
   });
@@ -258,7 +262,7 @@ describe('the empty book (BOOK-138 §5)', () => {
     const held = await boot({ now: () => clock });
     const { app } = held;
     const front = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const file = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const file = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
 
     expect(file.statusCode).toBe(200);
     expect(file.body).toContain('<book-title>Книга</book-title>');
@@ -289,7 +293,7 @@ describe('the empty book (BOOK-138 §5)', () => {
     held.fixture.write('ch08.md', longProse(['Вторая написанная глава.']));
     reconcile(held.fixture.db, { bookRoot: held.fixture.root, dataDir: held.fixture.dataDir });
     const writtenFront = (await app.inject({ method: 'GET', url: '/api/front' })).json();
-    const writtenFile = await app.inject({ method: 'GET', url: '/book.fb2' });
+    const writtenFile = await app.inject({ method: 'GET', headers: { cookie: AGE_ACK }, url: '/book.fb2' });
     expect(writtenFront.exportBytes).toBe(Number(writtenFile.headers['content-length']));
     expect(writtenFront.exportBytes).toBeGreaterThan(empty);
   });

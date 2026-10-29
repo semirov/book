@@ -23,7 +23,7 @@ import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { sha256Hex } from '../src/util/hash.ts';
-import { createFixture, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, type Fixture } from './helpers.ts';
 
 const roots: string[] = [];
 let fixture: Fixture | null = null;
@@ -71,7 +71,7 @@ describe('GET /api/chapters/:n before the book has a chapter (BOOK-187 AC3)', ()
       | undefined;
     expect(stored?.text).toBe(FRAME_FIRST_SENTENCE);
 
-    const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
 
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
@@ -106,7 +106,7 @@ describe('GET /api/chapters/:n before the book has a chapter (BOOK-187 AC3)', ()
 
   it('serves the closing frame as ch42’s one basis block', async () => {
     await bootFreshBook();
-    const body = (await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` })).json() as {
+    const body = (await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(TOTAL_CHAPTERS)}` })).json() as {
       basis: boolean;
       blocks: Array<{ text: string }>;
     };
@@ -117,7 +117,7 @@ describe('GET /api/chapters/:n before the book has a chapter (BOOK-187 AC3)', ()
   it('leaves a slot without a frame a 404 — the normal answer for an empty slot', async () => {
     await bootFreshBook();
     for (const n of [2, 21, 41]) {
-      const response = await app!.inject({ method: 'GET', url: `/api/chapters/${String(n)}` });
+      const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(n)}` });
       expect(response.statusCode, String(n)).toBe(404);
       expect(response.json()).toMatchObject({ code: 'NOT_WRITTEN' });
     }
@@ -132,7 +132,7 @@ describe('GET /api/chapters/:n before the book has a chapter (BOOK-187 AC3)', ()
       'first',
     );
 
-    const body = (await app!.inject({ method: 'GET', url: '/api/chapters/1' })).json() as {
+    const body = (await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).json() as {
       blocks: Array<{ text: string; hash: string }>;
     };
 
@@ -143,13 +143,13 @@ describe('GET /api/chapters/:n before the book has a chapter (BOOK-187 AC3)', ()
 
   it('logs no drift for a block that is the row itself, and still names the row when it is gone', async () => {
     const { lines } = await bootFreshBook();
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
+    expect((await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' })).statusCode).toBe(200);
     expect(lines.filter((line) => line.includes('FRAME_DRIFT'))).toEqual([]);
 
     // A volume whose seed never ran has no row: the slot falls back to 404, and no false drift
     // is claimed for text nobody served.
     fixture!.db.prepare('DELETE FROM book_frame WHERE chapter = 1').run();
-    const missing = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    const missing = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/1' });
     expect(missing.statusCode).toBe(404);
     expect(missing.json()).toMatchObject({ code: 'NOT_WRITTEN' });
     expect(lines.filter((line) => line.includes('FRAME_DRIFT'))).toEqual([]);

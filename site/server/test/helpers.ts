@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { frameSentenceOf, parseChapterTitle } from '@book/shared';
+import { AGE_COOKIE, ageDateOf, frameSentenceOf, parseChapterTitle } from '@book/shared';
 
 import { databaseFile, openDatabase, type Db } from '../src/db/db.ts';
 import { migrate } from '../src/db/migrate.ts';
@@ -17,6 +17,23 @@ export type Fixture = {
   write: (name: string, text: string) => void;
   close: () => void;
 };
+
+/**
+ * BOOK-225 — an acknowledged reader, as a suite that is not about the gate sees one: the cookie
+ * a browser carries after `POST /api/age`, written with today's day. A suite about prose, ETags,
+ * cache headers or the frame must not be a suite about the rating: `ageGate.test.ts` is the one
+ * that asks without it, and it never uses this constant.
+ */
+export const AGE_ACK_COOKIE = `${AGE_COOKIE}=${ageDateOf(new Date())}`;
+
+/**
+ * The same acknowledgement on a **named** day — for a suite that pins the app's clock: a cookie
+ * for today would be a day in the server's future there, which the gate reads as "not answered"
+ * (the site writes its own clock, so a later day was not written here).
+ */
+export function ageAckAt(day: Date): string {
+  return `${AGE_COOKIE}=${ageDateOf(day)}`;
+}
 
 const CHAPTER_FILE = /^ch(\d{2})\.md$/u;
 

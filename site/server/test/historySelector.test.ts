@@ -124,13 +124,17 @@ describe('the history fact has one reader in the SPA (BOOK-56)', () => {
     // and is gone with its route, so the floor is five: the cover, the chapter list, the
     // discussion, the end matter and the chronicle.
     expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(5);
-    expect(app.match(/live=\{chronicle\}/gu)).toHaveLength(1);
-    expect(app.match(/started=\{chronicle\}/gu)).toHaveLength(1);
-    // The chronicle's own fact reaches two places: the page's view switch and the surface
-    // itself. The end matter gets no `chronicle` prop — its door sat behind `live` and could
-    // never open, while the switch is reachable from a begun book.
+    // BOOK-225 — a record page is its own component now, so the chronicle's own facts are
+    // asserted where they are wired: the switch and the surface inside `RecordMode`, and the
+    // decision `App` makes out of the same `chronicle` fact.
+    const recordMode = files.find((file) => file.path === 'components/RecordMode.tsx')?.text ?? '';
+    expect(recordMode.match(/live=\{live\}/gu) ?? []).toHaveLength(2);
+    expect(recordMode).toContain('started');
+    expect(recordMode).toContain("input.view === 'chronicle' && input.chronicle");
+    expect(app).toContain('recordModeOf({ acknowledged: age.acknowledged, trail, view, chronicle })');
+    // The chronicle's own fact still reaches the page's view switch, through the opening.
     expect(app.match(/chronicle=\{chronicle\}/gu)).toHaveLength(1);
-    expect(app).toContain('history={history}');
-    expect(app).toContain("view === 'chronicle' && chronicle");
+    // The chapter list still receives the fact the page read, through the flow's own props.
+    expect(app).toContain('composer, viewer, history,');
   });
 });

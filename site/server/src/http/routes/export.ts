@@ -36,6 +36,7 @@ import { readEdition } from '../../fb2/edition.ts';
 import type { ExportCache, HeldExport } from '../../fb2/exportCache.ts';
 import { createExportCache, exportSourceOf } from '../../fb2/exportCache.ts';
 import { dateElement, exportMoment } from '../../fb2/serialize.ts';
+import { ageGateRefusal } from '../ageGate.ts';
 import type { RouteDeps } from '../deps.ts';
 
 export const FB2_PATH = '/book.fb2';
@@ -91,6 +92,11 @@ export function registerExportRoutes(
 
   // `exposeHeadRoute: false`: the generated HEAD would run the handler and build the file.
   app.get(FB2_PATH, { exposeHeadRoute: false }, async (request, reply) => {
+    // BOOK-225 — this is the whole book in one file: the same refusal as the chapter routes,
+    // and before the transaction, the ETag and the memo, so a gated client gets no bytes, no
+    // edition number and no `304` for a copy it was never given.
+    const refused = ageGateRefusal(request, reply, deps.now);
+    if (refused !== null) return refused;
     const answer = deps.db.transaction((): Answer => {
       // One snapshot: the number and the paragraphs below name the same state.
       const edition = readEdition(deps.db, deps.imprint.author);
@@ -124,6 +130,10 @@ export function registerExportRoutes(
   });
 
   app.head(FB2_PATH, async (request, reply) => {
+    // BOOK-225 — a HEAD names the file a GET would send, so it is gated like the file itself:
+    // no tag, no edition number and no build for a client that has not answered.
+    const refused = ageGateRefusal(request, reply, deps.now);
+    if (refused !== null) return refused;
     // Two indexed reads, one `stat` and no build: a HEAD names the file a GET would send, and
     // claims no export moment of its own (no bytes were built). It revalidates like the GET,
     // because the ETag names the edition and the cover: a reader that holds it is told so

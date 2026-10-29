@@ -51,6 +51,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { chromiumBinary, Cdp, killTree, launchChromium, portIsFree, spawnLogged, waitForUrl } from './lib/cdp.mjs';
 import { buildSite, PROD_DB, prepareTemp, replayPass, SITE, storedStages, WORKTREE } from './lib/passBook.mjs';
 import { compareLines, graphemes, measure, measureDoorEffect, spanOf, waitForState } from './lib/passProbe.mjs';
+import { AGE_COOKIE, ageDateOf } from '../shared/src/age.ts';
 
 // 8091 is the deployed site on this host and 9333 a browser a person may have open: stay clear.
 const PORT = 8092;
@@ -155,7 +156,11 @@ async function openPage(cdp, run) {
 
 /** The run's facts before the page opens: block, edit, span, and the surviving locator. */
 async function prepareRun(run) {
-  const chapter = await (await fetch(`${API}/api/chapters/${run.chapter}`)).json();
+  // BOOK-225 — one acknowledged reader: the prose route refuses anyone without the rating's
+  // answer, and this run reads the text the page would read. The cookie's name and day come
+  // from the shared module, like every other reader of it.
+  const age = { headers: { cookie: `${AGE_COOKIE}=${ageDateOf(new Date())}` } };
+  const chapter = await (await fetch(`${API}/api/chapters/${run.chapter}`, age)).json();
   const block = chapter.blocks[run.blockIndex];
   if (block === undefined) fail(`chapter ${run.chapter} has no block ${run.blockIndex}`);
   if (!block.text.includes(run.phrase)) fail(`block ${block.id} does not hold the phrase`);

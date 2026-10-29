@@ -12,7 +12,7 @@ import { appendEvent } from '../src/history/log.ts';
 import type { IntegrityReport } from '../src/integrity/service.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { AGE_ACK_COOKIE, createFixture, longProse, type Fixture } from './helpers.ts';
 
 /**
  * BOOK-155 — the book is `TOTAL_CHAPTERS` (42) long, and the range is enforced at every
@@ -139,11 +139,11 @@ describe('the book’s range at the route boundary (BOOK-155)', () => {
     seedChapter65(target);
 
     // The route refuses it as no chapter at all — not as a slot that is merely unwritten.
-    const served = await app!.inject({ method: 'GET', url: '/api/chapters/65' });
+    const served = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/api/chapters/65' });
     expect(served.statusCode).toBe(400);
     // The finale is inside the book, and since BOOK-187 it carries the frozen frame before it has
     // a chapter: the row `book_frame` holds is the text a reader is given.
-    const finale = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
+    const finale = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
     expect(finale.statusCode).toBe(200);
     expect(finale.json()).toMatchObject({ n: TOTAL_CHAPTERS, basis: true, rev: 0 });
 
@@ -166,14 +166,14 @@ describe('the book’s range at the route boundary (BOOK-155)', () => {
 
   it('answers 400 for the first number past the finale, and the finale is a chapter', async () => {
     await boot();
-    const past = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS + 1)}` });
+    const past = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(TOTAL_CHAPTERS + 1)}` });
     expect(past.statusCode).toBe(400);
     // In range and unwritten, a slot with no frame is 404 `NOT_WRITTEN`, never a 400; the finale
     // is the frame, so it answers 200 (BOOK-187 AC3).
-    const before = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS - 1)}` });
+    const before = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(TOTAL_CHAPTERS - 1)}` });
     expect(before.statusCode).toBe(404);
     expect(before.json()).toMatchObject({ code: 'NOT_WRITTEN' });
-    const last = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
+    const last = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
     expect(last.statusCode).toBe(200);
     expect(last.json()).toMatchObject({ n: TOTAL_CHAPTERS, basis: true });
   });

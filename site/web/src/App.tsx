@@ -21,21 +21,22 @@ import { getChapters, getFront, getState } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
+import { AgeGate } from './components/AgeGate.tsx';
 import { CapacityPlate } from './components/CapacityPlate.tsx';
-import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
-import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
+import type { BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
 import { FootJumps } from './components/FootJumps.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
+import { RecordMode, recordModeOf } from './components/RecordMode.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
-import { TrailView } from './components/TrailView.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
 import { applyRevisingMark } from './lib/revisingMark.ts';
+import { useAgeGate } from './lib/useAgeGate.ts';
 import { useStages } from './lib/useStages.ts';
 import {
   bookFromHello,
@@ -97,6 +98,11 @@ export function App() {
   const [view, setView] = useState<BookView>('book');
   const [historyTick, setHistoryTick] = useState(0);
   /**
+   * BOOK-225 — the reader's answer, read from the device before the first request: `null` means
+   * the gate stands in place of the chapters and nothing below it is mounted.
+   */
+  const age = useAgeGate();
+  /**
    * BOOK-128 comment #3815 — the phrase's facts are the paragraph's own margin item now, so the
    * page hands the whole mode down to the article instead of drawing a floating box at its root.
    */
@@ -127,7 +133,7 @@ export function App() {
    * The one door to a change: it lands on the change's sentence and opens the record there with
    * the `правка` section expanded. A change never gets a surface of its own again.
    */
-  const changeDoor = useChangeDoor({ ready: data !== null && view === 'book', loadChapter });
+  const changeDoor = useChangeDoor({ ready: data !== null && view === 'book' && age.acknowledged, loadChapter });
   const openChange = useCallback(
     (changeId: string) => {
       setView('book');
@@ -166,7 +172,10 @@ export function App() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
-  useDeepLink(data !== null);
+  // BOOK-225 — the deep link lands only once the chapters exist: a `#ch-12` on a gated page has
+  // nowhere to land, and `useDeepLink` remembers what it acted on, so acting too early would
+  // consume the link and never re-land it after the answer.
+  useDeepLink(data !== null && age.acknowledged);
   const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
     setData((current) => (current === null ? current : withAuthorsCount(current, count)));
   }, []);
@@ -406,42 +415,26 @@ export function App() {
         {changeDoor.failed}
       </p>
     );
-  if (trail) {
+  // BOOK-225 — both record modes are prose doors (`/api/history/chapters/:n` refuses a gated
+  // reader), so a gated page is the book page and nothing else: `recordModeOf` says so once.
+  const recordMode = recordModeOf({ acknowledged: age.acknowledged, trail, view, chronicle });
+  if (recordMode !== null) {
     return (
-      <>
-        <TrailView
-          state={state} ribbon={ribbon} catalog={catalog}
-          markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-          live={history} stages={stages} socket={connection} reading={reading} viewer={viewer}
-          imprint={front.imprint} donateUrl={front.donateUrl ?? null}
-          exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
-        />
-        <ConsentBanner />
-        <CapacityPlate active={connection === 'capacity'} />
-        {doorLine}
-      </>
+      <RecordMode
+        mode={recordMode} view={view} onViewChange={setView} state={state} ribbon={ribbon}
+        catalog={catalog} markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
+        live={history} stages={stages} reading={reading} viewer={viewer} front={front}
+        historyTick={historyTick} doorLine={doorLine} plate={connection === 'capacity'}
+        loadChapter={loadChapter}
+      />
     );
   }
 
-  if (view === 'chronicle' && chronicle) {
-    return (
-      <>
-        <ViewSwitch view={view} onChange={setView} live={chronicle} />
-        <ConsentBanner />
-        <Chronicle
-          catalog={catalog}
-          frontRev={front.rev}
-          tick={historyTick}
-          onOpenChange={openChange}
-          started={chronicle}
-          live={history}
-          onLoadChapter={loadChapter}
-        />
-        <CapacityPlate active={connection === 'capacity'} />
-        {doorLine}
-      </>
-    );
-  }
+  /** BOOK-225 — the chapter flow's props in one place, so the gate can stand in its slot. */
+  const chapterFlow = {
+    catalog, revisions, revising, markers, fresh, stages, chapterFeed, changes,
+    nowMs, onRead: loadChapter, onPosted, sentence, composer, viewer, history,
+  };
 
   return (
     <>
@@ -459,39 +452,29 @@ export function App() {
         stages={stages}
         socket={connection}
         reading={reading}
+        gated={!age.acknowledged}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
-      <ChapterList
-        catalog={catalog}
-        revisions={revisions}
-        revising={revising}
-        markers={markers}
-        fresh={fresh}
-        stages={stages}
-        chapterFeed={chapterFeed}
-        changes={changes}
-        nowMs={nowMs}
-        onRead={loadChapter}
-        onPosted={onPosted}
-        sentence={sentence}
-        composer={composer}
-        viewer={viewer}
-        history={history}
-      />
-      {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
-      <EndMatter
-        imprint={front.imprint}
-        lastRevisionAt={state.activity.lastFileChangeAt}
-        live={history}
-        exportBytes={front.exportBytes ?? null}
-      />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} failed={commentsFailed} onLoadChapter={loadChapter} />
-      <Colophon state={state} imprint={front.imprint} viewer={viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
-      {doorLine}
-      <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
-      <FootJumps live={history} plate={connection === 'capacity'} />
-      <CapacityPlate active={connection === 'capacity'} />
+      {/* BOOK-225 — the gate stands where the chapters would; gated, nothing that leads into
+          prose or the book's counts is mounted either. */}
+      {age.acknowledged ? <ChapterList {...chapterFlow} /> : <AgeGate title={front.title} onAccept={age.accept} />}
+      {age.acknowledged ? (
+        <>
+          {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
+          <EndMatter imprint={front.imprint} lastRevisionAt={state.activity.lastFileChangeAt} live={history} exportBytes={front.exportBytes ?? null} />
+          <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} failed={commentsFailed} onLoadChapter={loadChapter} />
+        </>
+      ) : null}
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} gated={!age.acknowledged} />
+      {age.acknowledged ? (
+        <>
+          {doorLine}
+          <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
+          <FootJumps live={history} plate={connection === 'capacity'} />
+          <CapacityPlate active={connection === 'capacity'} />
+        </>
+      ) : null}
     </>
   );
 }

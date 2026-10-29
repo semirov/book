@@ -63,7 +63,7 @@ export const PROSE = [
 /** The registers: every class the markup co-classes with `.page` (BOOK-88 §2). */
 export const REGISTERS = [
   'page', 'top-in', 'titul', 'annotation', 'how-made', 'views', 'toc', 'ch', 'talks',
-  'authors', 'colophon', 'legal', 'consent', 'chronicle', 'ribbon', 'noscript',
+  'authors', 'colophon', 'legal', 'consent', 'chronicle', 'ribbon', 'noscript', 'gate',
 ] as const;
 
 /** The boxes that are exactly the text column: `.page`, and the head's second row, which is a

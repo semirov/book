@@ -114,6 +114,21 @@ export function getChapters(): Promise<CatalogEntry[]> {
   return readJson<CatalogEntry[]>('/api/chapters');
 }
 
+/**
+ * BOOK-225 — the reader answered the rating's one question. The server writes the cookie and
+ * answers the day it wrote; the page keeps that day in its own state and mounts the chapter
+ * flow. A refusal throws like every other refusal: the gate then stays and claims nothing.
+ */
+export async function postAge(): Promise<{ acknowledgedAt: string }> {
+  const response = await requestJson('/api/age', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as { acknowledgedAt: string };
+}
+
 /** The live title, page 2, the TOC and the imprint in one call (§9). */
 export function getFront(): Promise<FrontDto> {
   return readJson<FrontDto>('/api/front');

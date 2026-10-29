@@ -14,7 +14,7 @@ import { esc, exportMoment, renderFb2, type Fb2Input } from '../../src/fb2/seria
 import { reconcile } from '../../src/ingest/reconcile.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
 import { boundaryLabel } from '../../../web/src/lib/changeStatus.ts';
-import { createFixture, longProse, type Fixture } from '../helpers.ts';
+import { AGE_ACK_COOKIE, ageAckAt, createFixture, longProse, type Fixture } from '../helpers.ts';
 
 /**
  * BOOK-60 / BOOK-DOC-41 — the file itself: schema order, the annotation, every section, total
@@ -115,7 +115,7 @@ describe('the FB2 file (BOOK-60)', () => {
       'ch07.md': CHAPTER_SEVEN,
       'ch42.md': FRAME_LAST_SENTENCE,
     });
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
 
     const doc = parseXml(response.body);
@@ -183,7 +183,7 @@ describe('the FB2 file (BOOK-60)', () => {
 
   it('AC5 — escaping is total and the file is only the manuscript: `<b>&]]>` survives, and no web copy, seam numeral or history line appears', async () => {
     await boot({ 'ch08.md': longProse([NASTY], 'Глава с разметкой') });
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
 
     // The document still parses, and the characters arrive as text — not as elements.
@@ -223,7 +223,7 @@ describe('the FB2 file (BOOK-60)', () => {
 
   it('AC6 — an empty book exports a readable description and every section titled and empty', async () => {
     await boot();
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
 
     const doc = parseXml(response.body);
@@ -279,7 +279,7 @@ describe('the cover inside the file (BOOK-133)', () => {
 
   it('cover — `coverpage` sits in `title-info` and references `#cover.png`, the id that exists exactly once', async () => {
     await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
 
     const doc = parseXml(response.body);
@@ -301,7 +301,7 @@ describe('the cover inside the file (BOOK-133)', () => {
 
   it('cover — the single `<binary>` is the last element of the document and decodes to the exact source bytes (length + sha256)', async () => {
     await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     const doc = parseXml(response.body);
     const root = doc.documentElement;
     expect(root.children[root.children.length - 1]!.nodeName).toBe('binary');
@@ -333,7 +333,7 @@ describe('the cover inside the file (BOOK-133)', () => {
 
   it('the produced file is the book plus the cover — its size is ≥ 1.4 MB', async () => {
     await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
-    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const response = await app!.inject({ method: 'GET', headers: { cookie: AGE_ACK_COOKIE }, url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
     const size = Buffer.byteLength(response.body);
     expect(size).toBeGreaterThanOrEqual(1.4 * 1024 * 1024);
@@ -342,8 +342,10 @@ describe('the cover inside the file (BOOK-133)', () => {
   it('two exports of one edition build identical bytes', async () => {
     const clock = new Date('2026-10-27T11:03:12Z');
     await boot({ '00-front.md': FRONT, 'ch07.md': CHAPTER_SEVEN }, () => clock);
-    const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
-    const second = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    // The clock is pinned two days back, so the acknowledged reader is of that day too.
+    const ack = { cookie: ageAckAt(clock) };
+    const first = await app!.inject({ method: 'GET', headers: ack, url: '/book.fb2' });
+    const second = await app!.inject({ method: 'GET', headers: ack, url: '/book.fb2' });
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
     expect(Buffer.compare(Buffer.from(first.body), Buffer.from(second.body))).toBe(0);
