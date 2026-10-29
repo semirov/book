@@ -261,7 +261,7 @@ describe('the door into the carets', () => {
     expect(nav().getAttribute('data-pass')).toBe('record');
     expect(nav().getAttribute('data-watch')).toBe('on');
     const record = passItem() as HTMLAnchorElement;
-    expect(record.getAttribute('href')).toBe('#проход-chg_7');
+    expect(record.getAttribute('href')).toBe('?change=chg_7');
 
     // … and it is still the way back, not a second door (#156 M2).
     await act(async () => {

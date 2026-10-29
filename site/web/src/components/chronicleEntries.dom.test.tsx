@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import {
-  PASS_RECORD_PREFIX,
   type CatalogEntry,
   type HistoryRecordDto,
   type HistoryTimelineDto,
@@ -42,7 +41,7 @@ const ENTRIES: HistoryRecordDto[] = [
     outcome: null,
     reason: null,
     changeId: null,
-    recordHref: `#${PASS_RECORD_PREFIX}4-stp_bare`,
+    recordHref: '#ch-4',
     span: { before: 'было так', after: 'стало иначе' },
   },
   {
@@ -60,7 +59,7 @@ const ENTRIES: HistoryRecordDto[] = [
     outcome: 'applied',
     reason: null,
     changeId: 'chg_m',
-    recordHref: `#${PASS_RECORD_PREFIX}chg_m`,
+    recordHref: '?change=chg_m',
     span: null,
   },
   {
@@ -78,7 +77,7 @@ const ENTRIES: HistoryRecordDto[] = [
     outcome: 'dropped',
     reason: 'текст успел измениться',
     changeId: 'chg_9',
-    recordHref: `#правка-chg_9`,
+    recordHref: `?change=chg_9`,
     span: null,
   },
 ];
@@ -173,20 +172,20 @@ describe('one row per change to the book, whoever caused it', () => {
     expect(rows[2]?.querySelector('.chr-state')?.textContent).toBe('не внесено');
   });
 
-  it('gives each row the id the door uses: #правка- for a reader, #проход- for a pass', async () => {
+  it('gives each row the address the door uses: ?change= for a change, the chapter for a bare pass', async () => {
     const container = await mount(page(ENTRIES));
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li.chr-row .chr-change')];
 
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      `#${PASS_RECORD_PREFIX}4-stp_bare`,
-      `#${PASS_RECORD_PREFIX}chg_m`,
-      `#правка-chg_9`,
+      '#ch-4',
+      '?change=chg_m',
+      `?change=chg_9`,
     ]);
     // The bare pass's door carries its chapter, because the pass id alone cannot be found; the
     // pass with a change row is keyed by that change — exactly the id the entry carries, so row
     // and record cannot name one entry two ways.
-    expect(links[0]?.getAttribute('href')).toBe(`#${PASS_RECORD_PREFIX}${ENTRIES[0]!.chapter}-stp_bare`);
-    expect(links[1]?.getAttribute('href')).toBe(`#${PASS_RECORD_PREFIX}${ENTRIES[1]!.changeId}`);
+    expect(links[0]?.getAttribute('href')).toBe('#ch-4');
+    expect(links[1]?.getAttribute('href')).toBe('?change=chg_m');
     expect(ENTRIES[2]!.id).toBe(ENTRIES[2]!.changeId);
   });
 

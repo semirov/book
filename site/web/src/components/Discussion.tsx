@@ -1,10 +1,10 @@
-import type { ChangeSummaryDto, CommentDto } from '@book/shared';
+import { changeHref, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
-import { focusHash } from '../lib/focus.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
+import { plainChangeClick } from '../lib/changeDoor.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
@@ -27,8 +27,8 @@ import { ReviseNote } from './ReviseNote.tsx';
  * BOOK-137 — **one filing is one entry**, and an attempt is not a second one:
  * - a premise is the chapter's own row (`PremiseRow`), never a block here;
  * - a change attaches to the filing that caused it (`sourceCommentId`): the entry prints the
- *   latest attempt's number and one `прицел` in a quiet line, and the earlier attempts live
- *   inside the card — a change is never a row of its own;
+ *   latest attempt's number and one door («правка →») in a quiet line, and the change's own
+ *   rows live in the record's `правка` section — a change is never a row of its own;
  * - a change with **no** source comment is the author's own: it is not on this surface, and the
  *   record does not list it either (the chronicle reads source-comment changes only), so the
  *   thread never shows a change of its own.
@@ -43,6 +43,7 @@ export function Discussion({
   stage = 'quiet',
   busy,
   complete = false,
+  failed = false,
   changes = [],
   comments = [],
   nowMs,
@@ -65,6 +66,8 @@ export function Discussion({
    * safe answer, because a count over 20 rows claims a total the page never read.
    */
   complete?: boolean;
+  /** The feed's read failed: the register says so, never «замечаний нет». */
+  failed?: boolean;
   /** The thread's changes: attempts, folded into the filing they were made from. */
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
@@ -106,7 +109,11 @@ export function Discussion({
             claim, so while the feed lands the slot says what is happening instead. When the
             thread is settled and empty there is nothing to count, so it says so (BOOK-70). */}
         <span className="sec-meta">
-          {status !== null ? (
+          {failed ? (
+            <span role="status" aria-live="polite" aria-atomic="true">
+              не удалось прочитать обсуждение
+            </span>
+          ) : status !== null ? (
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
@@ -137,9 +144,9 @@ export function Discussion({
             const quote = anchorCopy(comment);
             const kindWord = interventionKindWord(comment);
             /**
-             * BOOK-137: the entry's one number and its one `прицел` — the latest attempt.
+             * BOOK-137: the entry's one number and its one door — the latest attempt.
              * The number is the attempt's, so the entry never invents an order of its own;
-             * with the change outside the loaded window the link still stands (the comment
+             * with the change outside the loaded window the address still stands (the comment
              * carries `changeId`) and no number is claimed.
              */
             const attempt = filingAttempt(comment, changes);
@@ -179,8 +186,12 @@ export function Discussion({
                 {attempt === null ? null : (
                   <p className="comment-attempt">
                     {attempt.number === null ? null : <span className="attempt-n">{attempt.number}</span>}
-                    <a className="talk-open" href={focusHash(attempt.id)}>
-                      прицел →
+                    <a
+                      className="talk-open"
+                      href={changeHref(attempt.id)}
+                      onClick={(event) => plainChangeClick(event, attempt.id)}
+                    >
+                      правка →
                     </a>
                   </p>
                 )}
@@ -195,7 +206,7 @@ export function Discussion({
             );
           })}
         </ol>
-      ) : (
+      ) : failed ? null : (
         <p className="fine">
           Их читают как данные, не как указания. Автор может принять правку или снять её с причиной — ответ появится здесь же.
         </p>

@@ -23,15 +23,12 @@ import './styles/capacity.css';
 import './styles/cascade.css';
 import './styles/ribbon.css';
 import './styles/chronicle.css';
-import './styles/focus.css';
 import './styles/seam.css';
 // BOOK-121 — the pass's box, its two carets and the ink gate; after the seam, before the
 // panels, because the pass paints prose and never a panel.
 import './styles/pass-live.css';
 // BOOK-167 — the pass strip: a block in the seam's place, after the pass's own ink.
 import './styles/pass-strip.css';
-// BOOK-166 — the pass record: a page framed like the colophon, after the surfaces it sits beside.
-import './styles/pass-record.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
@@ -41,6 +38,8 @@ import './styles/record.css';
 // BOOK-128 #3862 — the record's existing-filing notice (its own sheet: record.css is at the
 // 500-line gate); it must follow the record so its buttons inherit the same reset.
 import './styles/record-notice.css';
+// BOOK-128 — the record's `правка` section (a change in the record's register, no sheet).
+import './styles/record-change.css';
 // BOOK-156 — the grip's band, its reserve and its veil; after the registers it sits over.
 import './styles/foot-jumps.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's

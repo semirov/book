@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { decisionLine } from '../lib/ownDecisions.ts';
 import { DispositionLines } from './DispositionLines.tsx';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
 
 /**
  * BOOK-174 — the report is a record, not a toast.
@@ -46,7 +46,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 }
 
 function render(row: CommentDto): string {
-  return renderToStaticMarkup(<FilingPanel comment={row} anchor={null} onClose={() => undefined} />);
+  return renderToStaticMarkup(<FilingCard comment={row} onClose={() => undefined} />);
 }
 
 describe('the filing card prints the reading (BOOK-174)', () => {

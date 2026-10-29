@@ -11,16 +11,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Authors } from './Authors.tsx';
-import { ChangeCard } from './ChangeCard.tsx';
+import { ChangeSection } from './ChangeSection.tsx';
 import { Chronicle } from './Chronicle.tsx';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
 import { MarginNote } from './MarginNote.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProvenanceBlock } from './ProvenanceBlock.tsx';
 import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { MIDDOT } from '../lib/format.ts';
-import { RevisionObject } from './RevisionObject.tsx';
 import type { WordFacts } from '../lib/provenance.ts';
 
 /**
@@ -158,7 +157,7 @@ const RECORD: HistoryRecordDto = {
   outcome: 'applied',
   reason: null,
   changeId: 'chg_1',
-  recordHref: '#правка-chg_1',
+  recordHref: '?change=chg_1',
   span: null,
 };
 
@@ -201,14 +200,13 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expect(html).toContain('own-trace ym-disable-clickmap');
   });
 
-  it('masks the change card: the intent and the reader it came from', () => {
-    const html = renderToStaticMarkup(<ChangeCard change={CHANGE} onClose={() => undefined} />);
-    expectMasked(html, SENTINEL.intent, '.change-card');
-    expectMasked(html, `из замечания ${SENTINEL.name}`, '.change-card');
+  it('masks the record’s change section: the filing’s quote and the author’s words', () => {
+    const html = renderToStaticMarkup(<ChangeSection change={CHANGE} before={SENTINEL.quote} after={null} />);
+    expectMasked(html, SENTINEL.quote, '.rec-change');
   });
 
   it('masks the filing panel: the author, the quote and the body', () => {
-    const html = renderToStaticMarkup(<FilingPanel comment={COMMENT} anchor={null} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(<FilingCard comment={COMMENT} onClose={() => undefined} />);
     expectMasked(html, SENTINEL.name, '.filing-panel');
     expectMasked(html, SENTINEL.quote, '.filing-panel');
     expectMasked(html, SENTINEL.body, '.filing-panel');
@@ -218,15 +216,6 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     const html = renderToStaticMarkup(<MarginNote comment={COMMENT} onOpen={() => undefined} />);
     expectMasked(html, SENTINEL.name, '.margin-note');
     expectMasked(html, SENTINEL.quote, '.margin-note');
-  });
-
-  it('masks the revision object: the name, the quote and the body', () => {
-    const html = renderToStaticMarkup(
-      <RevisionObject comment={COMMENT} text={SENTINEL.quote} onClose={() => undefined} />,
-    );
-    expectMasked(html, SENTINEL.name, '.revision');
-    expectMasked(html, SENTINEL.quote, '.revision');
-    expectMasked(html, SENTINEL.body, '.revision');
   });
 
   it('masks the word’s margin block, whose hand may be a reader’s name', () => {
@@ -248,7 +237,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expect(row).not.toContain(SENTINEL.name);
     // BOOK-DOC-50 dates the label, so the accessible name opens with the record's own moment.
     expect(row).toContain(
-      `aria-label="25.10.2026${MIDDOT}15:05, глава 8, правка читателя — открыть прицел правки"`,
+      `aria-label="25.10.2026${MIDDOT}15:05, глава 8, правка читателя — открыть правку"`,
     );
   });
 
@@ -286,7 +275,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
 
   it('keeps the mask on the container, not on the text of a single field', () => {
     // A mask on an inner <span> would leave the container's own text (the quote around it) open.
-    const html = renderToStaticMarkup(<FilingPanel comment={COMMENT} anchor={null} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(<FilingCard comment={COMMENT} onClose={() => undefined} />);
     const node = holder(html, SENTINEL.body);
     expect(node.className).not.toContain('ym-hide-content');
     expect(node.parentElement?.className).toContain('ym-hide-content');

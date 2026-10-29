@@ -230,11 +230,11 @@ describe('the third item’s three states', () => {
     expect(passStateOf(facts({ revising: true, change: CHANGE }))).toBe('live');
   });
 
-  it('is a record when nothing runs and a change is behind: #проход-<id> and its day', () => {
+  it('is a record when nothing runs and a change is behind: ?change=<id> and its day', () => {
     const door = passDoor(facts({ change: CHANGE }));
     expect(door.state).toBe('record');
-    // The door opens the pass's own page, never the change card (owner, 2026-10-28).
-    expect(door.href).toBe('#проход-chg_7');
+    // The door opens the record's `правка` section, never a pass page (owner, 2026-10-28).
+    expect(door.href).toBe('?change=chg_7');
     // The day, not a bare time: `писалась · 25.10`.
     expect(door.meta).toBe('писалась · 25.10');
     expect(door.meta).toBe(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);

@@ -7,9 +7,8 @@ import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { emptyDraft } from '../lib/draft.ts';
 import { RIGHTS_ASSIGNMENT, SUBMIT_LINE } from '../lib/terms.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
-import { ChangeCard } from './ChangeCard.tsx';
+import { ChangeSection } from './ChangeSection.tsx';
 import { Chronicle } from './Chronicle.tsx';
-import { FocusView } from './FocusView.tsx';
 import { InterventionForm } from './InterventionForm.tsx';
 import { LegalPage } from './LegalPage.tsx';
 import { RecordRow } from './RecordRow.tsx';
@@ -180,22 +179,19 @@ const record: HistoryRecordDto = {
   outcome: 'adapted',
   reason: null,
   changeId: 'chg_1',
-  recordHref: '#правка-chg_1',
+  recordHref: '?change=chg_1',
   span: null,
 };
 
 function surfaces(): string {
   return [
-    renderToStaticMarkup(<ChangeCard change={change} onClose={() => undefined} onOpenChapter={() => undefined} />),
+    renderToStaticMarkup(<ChangeSection change={change} before={null} after={null} />),
     renderToStaticMarkup(
       <CascadeRibbon
         ribbon={ribbon}
         markers={[{ key: 'chg_1:9', boundary: 9, reason: 'budget', note: 'ключ теперь у другого', changeId: 'chg_1' }]}
         onOpenChange={() => undefined}
       live />,
-    ),
-    renderToStaticMarkup(
-      <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} live />,
     ),
     renderToStaticMarkup(<RecordRow record={record} />),
     renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} started live />),
@@ -254,12 +250,9 @@ describe('the reader-facing copy guard', () => {
     for (const word of BANNED) expect(markup).not.toContain(word);
   });
 
-  it('renders the modes as paperwork, never as a repair', () => {
-    const markup = surfaces();
-    expect(markup).toContain('причина установлена · поправка: пункт изложен в новой редакции');
-    expect(markup).toContain('расхождение зафиксировано');
-    expect(markup).toContain('стык пересматривается');
-  });
+  // The paperwork vocabulary (`причина установлена`, `расхождение зафиксировано`) has no
+  // reader surface of its own any more: the change card is gone, and `lib/deed.test.ts` owns
+  // those words. What this file still guards is that no surface above says a banned word.
 
   it('never brings back the old licence promise where the terms are printed (BOOK-58)', () => {
     const markup = `${surfaces()}\n${termsSurfaces()}`.toLowerCase();

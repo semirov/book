@@ -2,16 +2,15 @@
 import type { CommentDto } from '@book/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { currentRecord, openRecord, resetRecordMemory } from './record.ts';
 import { currentFiling, hideFiling, showFiling } from './useFiling.ts';
-import { currentRevision, hideRevision, showRevision } from './useRevision.ts';
 
 /**
- * BOOK-111 (owner, 2026-10-27) — the page's one panel slot.
+ * The **one card** and the record are different places now.
  *
- * A filing card and a word's provenance panel are the same slot: showing one replaces the
- * other, never stacks it. The store carries the surface that opened it (`owner`), so only
- * that surface draws the panel, and closing is idempotent. The second slot — the revision
- * object — is closed by these stores too, in both directions, never by a call site.
+ * The card is the named exception (a premise, a filing with no sentence); the record is every
+ * sentence's surface. Showing the card must **not** close the record (the BOOK-128 coupling is
+ * gone), while opening a record still takes the card's slot — one reading surface at a time.
  */
 
 function comment(id: string): CommentDto {
@@ -37,54 +36,59 @@ function comment(id: string): CommentDto {
   };
 }
 
-const rect = { width: 1, height: 1, top: 0, left: 0, right: 1, bottom: 1, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
-
 afterEach(() => {
   hideFiling();
-  hideRevision();
+  resetRecordMemory();
   vi.restoreAllMocks();
 });
 
-describe('the page’s one filing panel', () => {
-  it('shows one panel at a time: the second replaces the first', () => {
+describe('the one card left on the page', () => {
+  it('shows one card at a time: the second replaces the first', () => {
     expect(currentFiling()).toBeNull();
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_a'), origin: null, rect, fromSeam: false });
-    expect(currentFiling()?.comment?.id).toBe('cmt_a');
+    showFiling({ owner: 'ch08#aa11bb22', comment: comment('cmt_a'), origin: null });
+    expect(currentFiling()?.comment.id).toBe('cmt_a');
     expect(currentFiling()?.owner).toBe('ch08#aa11bb22');
 
-    showFiling({
-      kind: 'provenance', owner: 'ch08#cc33dd44', comment: null, origin: null, rect, word: 'слово', fromSeam: false,
-    });
-    expect(currentFiling()?.kind).toBe('provenance');
-    expect(currentFiling()?.word).toBe('слово');
-    expect(currentFiling()?.comment).toBeNull();
+    showFiling({ owner: 'ch08#cc33dd44', comment: comment('cmt_b'), origin: null });
+    expect(currentFiling()?.comment.id).toBe('cmt_b');
+    expect(currentFiling()?.owner).toBe('ch08#cc33dd44');
   });
 
   it('hides to an empty page, and hiding twice is not an error', () => {
-    showFiling({ kind: 'filing', owner: 'one', comment: comment('cmt_b'), origin: null, rect, fromSeam: false });
+    showFiling({ owner: 'one', comment: comment('cmt_b'), origin: null });
     hideFiling();
     expect(currentFiling()).toBeNull();
     hideFiling();
     expect(currentFiling()).toBeNull();
   });
 
-  it('a card opens over no record: showing a filing hides the open revision object', () => {
-    showRevision({ comment: comment('cmt_r1'), origin: null });
-    expect(currentRevision()).not.toBeNull();
-
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect, fromSeam: false });
-
-    expect(currentRevision()).toBeNull();
-    expect(currentFiling()?.comment?.id).toBe('cmt_f');
+  it('does not close the record (one register, two different places)', () => {
+    openRecord({
+      chapter: 8,
+      blockId: 'ch08#aa11bb22',
+      start: 0,
+      end: 22,
+      anchor: null,
+      origin: null,
+      filing: comment('cmt_record'),
+    });
+    showFiling({ owner: 'chapter-8', comment: comment('cmt_premise'), origin: null });
+    expect(currentRecord()?.filing?.id).toBe('cmt_record');
+    expect(currentFiling()?.comment.id).toBe('cmt_premise');
   });
 
-  it('a record opens over no card: showing a revision hides the open filing', () => {
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect, fromSeam: false });
-    expect(currentFiling()).not.toBeNull();
-
-    showRevision({ comment: comment('cmt_r2'), origin: null });
-
+  it('a record takes the card’s slot: opening one closes the card, never the other way', () => {
+    showFiling({ owner: 'chapter-8', comment: comment('cmt_premise'), origin: null });
+    openRecord({
+      chapter: 8,
+      blockId: 'ch08#aa11bb22',
+      start: 0,
+      end: 22,
+      anchor: null,
+      origin: null,
+      filing: comment('cmt_record'),
+    });
     expect(currentFiling()).toBeNull();
-    expect(currentRevision()?.comment.id).toBe('cmt_r2');
+    expect(currentRecord()?.filing?.id).toBe('cmt_record');
   });
 });

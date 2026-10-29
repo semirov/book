@@ -17,7 +17,7 @@ import { Discussion } from './Discussion.tsx';
  * in `ОБСУЖДЕНИЕ` and as the chapter's own premise row — the same words, two numbers, two
  * states, and «в очереди пусто» printed above an entry that looked queued. The owner's phone
  * shows the pair; this file pins the single entry and counts it three ways: by
- * `data-comment-id`, by the attempt's number and by the `прицел` link.
+ * `data-comment-id`, by the attempt's number and by the `правка →` link.
  *
  * The chapter is **written** in the fixture: the premise entered the first edition, which is
  * exactly the case where the old page lost the row and kept the duplicate block.
@@ -155,7 +155,7 @@ function count(text: string, needle: string): number {
 }
 
 describe('one filing, one entry (BOOK-137)', () => {
-  it('renders a written chapter’s premise once: one id, one number, one state word, one прицел', async () => {
+  it('renders a written chapter’s premise once: one id, one number, one state word, one change door', async () => {
     await mount([PREMISE], [ATTEMPT]);
     const text = container.textContent ?? '';
 
@@ -168,8 +168,8 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(count(text, 'внесено')).toBe(1);
     expect(container.querySelector('.premise-label')?.textContent).toBe('внесено');
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
-    expect(count(text, 'прицел')).toBe(1);
-    expect(container.querySelector('.premise-open')?.getAttribute('href')).toBe('#правка-chg_premise');
+    expect(count(text, 'правка →')).toBe(1);
+    expect(container.querySelector('.premise-open')?.getAttribute('href')).toBe('?change=chg_premise');
     // The link is a sibling of the row's button, never inside it: one tap, one act.
     expect(container.querySelector('.premise-row .premise-open')).toBeNull();
 
@@ -196,7 +196,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     // The number belongs to the premise's attempt and appears once on the page.
     expect(count(text, '001')).toBe(1);
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
-    expect(count(text, 'прицел')).toBe(1);
+    expect(count(text, 'правка →')).toBe(1);
     // The line counts the writer's lane (one change the writer holds), never the rows.
     expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди 1 правка');
   });
@@ -261,7 +261,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     const meta = container.querySelector('#ch-40 .premise-meta');
     expect(meta?.querySelector('.premise-attempt')?.textContent).toBe('002');
     expect(meta?.querySelectorAll('.premise-open')).toHaveLength(1);
-    expect(meta?.querySelector('.premise-open')?.getAttribute('href')).toBe('#правка-chg_2');
+    expect(meta?.querySelector('.premise-open')?.getAttribute('href')).toBe('?change=chg_2');
 
     await act(async () => row?.click());
     const panel = container.querySelector<HTMLElement>('.filing-panel');
@@ -276,7 +276,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(earlier[0]?.textContent).toContain('основа сдвинулась');
     expect(panel?.querySelectorAll('a')).toHaveLength(0);
     expect(panel?.textContent ?? '').not.toContain('002');
-    expect(panel?.textContent ?? '').not.toContain('прицел');
+    expect(panel?.textContent ?? '').not.toContain('правка →');
   });
 
   it('prints the failed attempt’s sentence under the row and in the card (BOOK-136)', async () => {

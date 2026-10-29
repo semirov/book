@@ -2,7 +2,6 @@ import type {
   AuthorsCountDto,
   AuthorsDto,
   BookAtDto,
-  BookCostDto,
   CatalogEntry,
   ChangeDto,
   ChangeSummaryDto,
@@ -117,11 +116,6 @@ export function getChapters(): Promise<CatalogEntry[]> {
 /** The live title, page 2, the TOC and the imprint in one call (§9). */
 export function getFront(): Promise<FrontDto> {
   return readJson<FrontDto>('/api/front');
-}
-
-/** The book's outlay so far (BOOK-114): one whole-book aggregate, memoised by book state. */
-export function getCost(): Promise<BookCostDto> {
-  return readJson<BookCostDto>('/api/cost');
 }
 
 /** `GET /api/queue` — the head of the lane, its depth and its shape (§9). */

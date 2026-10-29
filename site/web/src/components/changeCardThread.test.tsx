@@ -34,7 +34,7 @@ describe('the thread’s two-line status', () => {
     cascade: { id: 'csc_1', status: 'closed', outcome: 'consistent' },
   };
 
-  it('folds the change into its filing: one entry, one number, one прицел (BOOK-137)', () => {
+  it('folds the change into its filing: one entry, one number, one change door (BOOK-137)', () => {
     const comment: CommentDto = {
       attempt: null,
       id: 'cmt_1',
@@ -59,16 +59,16 @@ describe('the thread’s two-line status', () => {
     // The state line is the filing's (BOOK-136), and the attempt is one quiet line under it.
     expect(html).toContain('внесено');
     expect(html).toContain('<span class="attempt-n">014</span>');
-    expect(html).toContain('href="#правка-chg_1"');
-    expect(html).toContain('прицел →');
+    expect(html).toContain('href="?change=chg_1"');
+    expect(html).toContain('правка →');
     // One entry: the change is never a row of its own beside the filing it came from.
     expect(html.match(/data-comment-id="cmt_1"/gu) ?? []).toHaveLength(1);
-    expect(html.match(/прицел/gu) ?? []).toHaveLength(1);
+    expect(html.match(/правка →/gu) ?? []).toHaveLength(1);
     expect(html).not.toContain('data-change="chg_1"');
     expect(html).not.toContain('class="talks-list"');
   });
 
-  it('links a comment with a change straight into the прицел', () => {
+  it('links a comment with a change straight into the record’s правка section', () => {
     const comment: CommentDto = {
       attempt: null,
       id: 'cmt_1',
@@ -90,8 +90,8 @@ describe('the thread’s two-line status', () => {
       refusal: null,
     };
     const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} live />);
-    expect(html).toContain('href="#правка-chg_1"');
-    expect(html).toContain('прицел →');
+    expect(html).toContain('href="?change=chg_1"');
+    expect(html).toContain('правка →');
   });
 
   it('keeps the empty thread quiet', () => {

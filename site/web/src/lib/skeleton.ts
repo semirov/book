@@ -12,16 +12,15 @@ import type { PendingStage } from './pending.ts';
  * the spec's; the chapter's line box and paragraph gap are in `styles/skeleton.css`, because
  * they follow the prose size with no media query.
  */
-export type SkeletonVariant = 'chapter' | 'register' | 'chronicle' | 'authors' | 'chain' | 'sheet';
+export type SkeletonVariant = 'chapter' | 'register' | 'chronicle' | 'authors' | 'chain';
 
-/** Lines per paragraph (chapter, sheet) or rows per list (the rest). */
+/** Lines per paragraph (the chapter) or rows per list (the rest). */
 export const SKELETON_LINES: Readonly<Record<SkeletonVariant, readonly number[]>> = {
   chapter: [3, 3, 2],
   register: [3],
   chronicle: [3],
   authors: [3],
   chain: [3],
-  sheet: [2, 2],
 };
 
 /**
@@ -39,13 +38,12 @@ export const CHAPTER_WIDTHS: readonly number[] = [94, 88, 62, 97, 91, 55, 90, 68
  * `estimateChapterHeight` box (the placeholder adds 0), and fb2 does not exist in code yet.
  */
 export const SKELETON_MIN_HEIGHT_PX: Readonly<
-  Record<'register' | 'chronicle' | 'authors' | 'chain' | 'sheet', number>
+  Record<'register' | 'chronicle' | 'authors' | 'chain', number>
 > = {
   register: 236,
   chronicle: 150,
   authors: 132,
   chain: 220,
-  sheet: 176,
 };
 
 /**
@@ -60,7 +58,7 @@ export const SKELETON_MIN_HEIGHT_PX: Readonly<
 export const CHAPTER_BOX_PX = 279;
 
 /** A surface that can be waiting; `boot` and `chapter` carry their own frame. */
-export type SkeletonSurface = 'boot' | 'chapter' | 'register' | 'chronicle' | 'authors' | 'chain' | 'sheet';
+export type SkeletonSurface = 'boot' | 'chapter' | 'register' | 'chronicle' | 'authors' | 'chain';
 
 /** §6, the label register: the surface's verb, no percentage, no «осталось». */
 const LOADING: Readonly<Record<Exclude<SkeletonSurface, 'chapter'>, string>> = {
@@ -69,7 +67,6 @@ const LOADING: Readonly<Record<Exclude<SkeletonSurface, 'chapter'>, string>> = {
   chronicle: 'записи читаются',
   authors: 'доли считаются',
   chain: 'цепочка читается…',
-  sheet: 'правка читается',
 };
 
 /** §6 — one sentence at 2 000 ms: the wait is longer than usual, the thing lands here. */
@@ -80,7 +77,6 @@ const SLOW: Readonly<Record<SkeletonSurface, string>> = {
   chronicle: 'записи идут дольше обычного · хроника появится здесь же',
   authors: 'доли считаются дольше обычного · цифры появятся здесь же',
   chain: 'цепочка идёт дольше обычного · история появится здесь же',
-  sheet: 'правка идёт дольше обычного · лист заполнится здесь же',
 };
 
 /**

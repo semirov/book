@@ -9,7 +9,6 @@ import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { closeRecord, resetRecordMemory } from '../lib/record.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
-import { hideRevision } from '../lib/useRevision.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { tapAt } from './tap.fixture.ts';
 
@@ -104,7 +103,6 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     hideFiling();
-    hideRevision();
     closeSeam();
     closeRecord();
   });

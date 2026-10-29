@@ -8,7 +8,9 @@ import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { wordFacts } from '../lib/provenance.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
+import { closeRecord, resetRecordMemory } from '../lib/record.ts';
 import { hideFiling } from '../lib/useFiling.ts';
+import { hideWord } from '../lib/useWord.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { mediaBlocks, rules } from './cssRules.ts';
 import { PROV_BLOCK_CLASS, ProvenanceBlock } from './ProvenanceBlock.tsx';
@@ -16,16 +18,9 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
  * BOOK-128 comment #3815 — «откуда это слово» is **reader**: three facts and one sentence
- * beside the strip that opened them, never a floating panel.
- *
- * What is proven here: one case per hand the book can print (the words are
- * `lib/provenance.test.ts`); a filing on the word is a real `<a>` that opens the site's one
- * card; the block never scrolls, prints no id, uppercases no word and carries no shadow or
- * close; in flow it grows under the row and a close returns the strip and the focus.
- *
- * jsdom has no layout: the geometry claims are read off the stylesheets (a rule, not a pixel)
- * and the state claims off the DOM. Where a number is claimed (44 px, the 40 px tie, the
- * `--note-fit` width) the assertion names the declaration that makes it true.
+ * beside the strip that opened them, never a floating panel. A filing on the word opens the
+ * record at that sentence; the block never scrolls, prints no id, uppercases no word and
+ * carries no shadow or close. Geometry claims read the stylesheet; state claims read the DOM.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -82,6 +77,9 @@ let container: HTMLDivElement;
 
 beforeEach(() => {
   resetParagraphChainCache();
+  resetRecordMemory();
+  hideFiling();
+  hideWord();
   vi.stubGlobal('IntersectionObserver', class {
     observe(): void {}
     unobserve(): void {}
@@ -94,6 +92,8 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     hideFiling();
+    hideWord();
+    closeRecord();
     closeSeam();
   });
   if (root !== null) await act(async () => root?.unmount());
@@ -339,7 +339,7 @@ describe('the strip’s body: one row, then the facts under it', () => {
     expect(document.querySelector('.seam')).toBeNull();
   });
 
-  it('a filing standing on the word opens the site’s one card from line three', async () => {
+  it('a filing standing on the word opens the record at that sentence', async () => {
     // A 404 is an answer: the word is the pass's, and the filing is still the record line 3 prints.
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
     await mountStrip([comment()]);
@@ -357,15 +357,13 @@ describe('the strip’s body: one row, then the facts under it', () => {
       for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
     });
 
-    const card = document.querySelector<HTMLElement>('.filing-panel');
-    expect(card, 'the card is the page’s one floating frame').not.toBeNull();
-    expect(card?.textContent).toContain('в комнате должен быть свет, но не от лампы');
-    expect(card?.textContent).toContain('ждёт');
-    // The strip under it is not a second surface: it collapses to its one line and its ✕ goes
-    // with the rows, so one close stands on the page.
-    expect(strip().getAttribute('data-state')).toBe('card');
-    expect(document.querySelectorAll('.seam-close, .filing-close')).toHaveLength(1);
-    expect(document.querySelector('.filing-close')).not.toBeNull();
+    const record = document.querySelector<HTMLElement>('.rec');
+    expect(record, 'the record is the sentence’s only surface').not.toBeNull();
+    expect(record?.getAttribute('data-body')).toBe('filing');
+    expect(record?.textContent).toContain('в комнате должен быть свет, но не от лампы');
+    // No card and no second close: the strip goes with the record it opened.
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expect(document.querySelectorAll('.rec-close')).toHaveLength(1);
   });
 
   it('asks nothing with history off — there is no door to an empty room', async () => {

@@ -247,7 +247,7 @@ describe('a typing stage paints its block and opens the strip', () => {
     expect(view.querySelectorAll('.caret-write')).toHaveLength(1);
   });
 
-  it('opens the strip on the live block, right after the paragraph, reading «печатается»', async () => {
+  it('opens the strip on the live block, right after the paragraph, with its one sentence', async () => {
     const view = await draw({ stages: LEAD });
     expect(view.querySelector('.pass-strip')).toBeNull();
     await act(async () => {
@@ -259,8 +259,7 @@ describe('a typing stage paints its block and opens the strip', () => {
     const pass = view.querySelector('[data-block-id="ch01#bbbb2222"]');
     expect(pass?.nextElementSibling).toBe(strip);
     expect(strip?.closest('p')).toBeNull();
-    expect(strip?.querySelector('[data-row="landed"]')?.textContent).toContain('печатается');
-    expect(strip?.textContent).toContain('книга пишется');
+    expect(strip?.querySelector('.pass-strip-heading')?.textContent).toBe('глава 1 писалась');
     // The nav's anchor still names the block the door opened.
     expect(view.querySelector('#pass')?.getAttribute('data-pass-block')).toBe('ch01#bbbb2222');
   });
@@ -381,7 +380,7 @@ describe('a pass with no revising payload', () => {
       expect(currentPassStrip()).toEqual({ chapter: 1, blockId: 'ch01#bbbb2222' });
       await flush();
       expect(view.querySelector('.pass-strip')).not.toBeNull();
-      expect(view.querySelector('.pass-strip')?.textContent).toContain('печатается');
+      expect(view.querySelector('.pass-strip')?.textContent).toBe('глава 1 писалась✕');
 
       await act(async () => {
         vi.advanceTimersByTime(400);

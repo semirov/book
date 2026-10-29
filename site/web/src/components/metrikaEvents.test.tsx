@@ -31,7 +31,7 @@ vi.mock('../api.ts', async (importOriginal) => {
 
 import { ApiError, postAnchoredComment } from '../api.ts';
 import { track, trackOnce } from '../lib/analytics.ts';
-import { ChangeCard } from './ChangeCard.tsx';
+import { ChangeSection } from './ChangeSection.tsx';
 import { LegalPage } from './LegalPage.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { Seam } from './Seam.tsx';
@@ -180,11 +180,11 @@ describe('the cover and the records', () => {
   });
 
   it('fires record_open once per change, not once per render', async () => {
-    await render(<ChangeCard change={CHANGE} onClose={() => undefined} />);
+    await render(<ChangeSection change={CHANGE} before={null} after={null} />);
     expect(lastCall('record_open')).toEqual(['record_open', {}]);
-    await render(<ChangeCard change={CHANGE} onClose={() => undefined} />);
+    await render(<ChangeSection change={CHANGE} before={null} after={null} />);
     expect(vi.mocked(track).mock.calls.filter(([name]) => name === 'record_open')).toHaveLength(1);
-    await render(<ChangeCard change={{ ...CHANGE, id: 'chg_2', seq: 15 }} onClose={() => undefined} />);
+    await render(<ChangeSection change={{ ...CHANGE, id: 'chg_2', seq: 15 }} before={null} after={null} />);
     expect(vi.mocked(track).mock.calls.filter(([name]) => name === 'record_open')).toHaveLength(2);
   });
 

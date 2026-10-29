@@ -60,12 +60,16 @@ describe('the reader’s fields are never recorded', () => {
       ['components/Authors.tsx', 'className="page authors ym-hide-content"'],
       ['components/Authors.tsx', 'className="authors-row ym-disable-clickmap"'],
       ['components/OwnTrace.tsx', 'className="own-trace ym-disable-clickmap"'],
-      ['components/ChangeCard.tsx', 'className="change-card ym-hide-content"'],
-      ['components/FilingPanel.tsx', 'filing-panel ym-hide-content'],
-      // BOOK-90: the margin note and the revision object render a reader's name and words.
+      // The one card a filing with no sentence keeps, and the record that holds the rest.
+      ['components/FilingCard.tsx', 'filing-panel ym-hide-content'],
+      ['components/Record.tsx', 'className="rec ym-hide-content"'],
+      ['components/RecordParts.tsx', 'className="rec-filing ym-hide-content"'],
+      // The change's sentences and its reader's words, in the record and on the chapter row.
+      ['components/ChangeSection.tsx', 'className="rec-change ym-hide-content"'],
+      ['components/ChapterChange.tsx', 'className="rec-chapter-change ym-hide-content"'],
+      // BOOK-90: the margin note renders a reader's name and words.
       ['components/MarginNote.tsx', 'className="margin-note ym-hide-content"'],
       ['components/PhoneStrip.tsx', 'className="phone-strip ym-hide-content"'],
-      ['components/RevisionObject.tsx', 'className="revision ym-hide-content"'],
       // BOOK-128 comment #3815: the word's record and the phrase's facts are marginalia now,
       // and both still carry the mask (the word's hand may be a reader's name).
       ['components/ProvenanceBlock.tsx', 'prov-block ym-hide-content'],
@@ -74,7 +78,6 @@ describe('the reader’s fields are never recorded', () => {
       ['components/RecordRow.tsx', 'className="chr-row ym-hide-content"'],
       ['components/SentenceBlock.tsx', 'sentence-block ym-hide-content'],
       ['components/PremiseRow.tsx', 'className="premise ym-hide-content"'],
-      ['components/FocusView.tsx', 'className="focus-note ym-hide-content"'],
     ];
     for (const [file, marker] of expectations) expect(read(file), file).toContain(marker);
   });

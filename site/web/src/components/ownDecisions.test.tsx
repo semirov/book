@@ -40,8 +40,8 @@ describe('«ваши правки» in the end matter (BOOK-13)', () => {
     expect(html).toContain('правка внесена · главы 7–9 · волна 2 · решением · изменилось 12 абзацев · ваша доля 0,4 %');
     expect(html).toContain('«внести документ о регистрации сенсора»');
     expect(html).toContain('глава 8');
-    expect(html).toContain('прицел');
-    expect(html).toContain('#правка-chg_A');
+    expect(html).toContain('правка →');
+    expect(html).toContain('?change=chg_A');
   });
 
   it('renders a refusal as its reason, with no wave, paragraph or share claim', () => {
@@ -71,7 +71,7 @@ describe('«ваши правки» in the end matter (BOOK-13)', () => {
     expect(html).not.toContain('волн');
     expect(html).not.toContain('изменилось');
     expect(html).not.toContain('ваша доля');
-    expect(html).not.toContain('прицел');
+    expect(html).not.toContain('правка →');
   });
 
   it('says nothing at all for a reader with no interventions', () => {

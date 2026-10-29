@@ -37,7 +37,6 @@ const COPY_MODULES = [
   'web/src/lib/marginalia.ts',
   'web/src/lib/cascade.ts',
   'web/src/lib/deed.ts',
-  'web/src/lib/focus.ts',
   'web/src/lib/history.ts',
   'web/src/lib/format.ts',
   // BOOK-75: the full hall's plate and its state line.
