@@ -15,7 +15,9 @@
  *
  *   1. **Locks first.** A rights refusal, the law (`guard === 'legal'` / `illegal-content`), a
  *      basis-only chapter (the frame is the whole text) or a decision that names the finale:
- *      `inadmissible` under that lock. These are the only refusals that exist.
+ *      `inadmissible` under that lock. These are the only refusals that exist. The harm lock
+ *      names **which** of its four cases spoke (owner's ruling, 2026-10-29: a story about harm
+ *      passes, a recipe, a real person, a child and the law do not).
  *   2. **The ladder over the proposal.** `as_said` holds when the filing carries one live
  *      sentence (ADR-044) and changes no repeated literal without a carrier. `through_paper`
  *      needs a carrier from the closed six, ≥5 words of the reader's own wording kept verbatim
@@ -41,7 +43,10 @@ import {
   type CarrierKind,
   type Disposition,
   type DispositionLock,
+  type HarmCase,
 } from '@book/shared';
+
+import { harmCaseOfFacts, harmCaseOfRule } from '../rights/rules.ts';
 
 export type DispositionProposal = {
   /** Absent means `as_said`: the gates already passed, so the words are taken as said. */
@@ -78,6 +83,11 @@ export type DispositionCaps = {
 export type DispositionDecision = {
   disposition: Disposition;
   lock: DispositionLock | null;
+  /**
+   * Which of the harm lock's four cases spoke (owner's ruling, 2026-10-29). Derived from the
+   * stored facts — never proposed — and null for every other lock.
+   */
+  harmCase: HarmCase | null;
   carrierKind: CarrierKind | null;
   /** The one line the reader reads: the reading, or the lock's own sentence. */
   reason: string;
@@ -103,6 +113,8 @@ export type ChooseDispositionInput = {
   body: string;
   proposedText: string | null;
   rightsVerdict: string | null;
+  /** Gate B's rule id (`STOP-…`, `RIGHTS-…`): which law category the refusal named, if any. */
+  rightsRule?: string | null;
   guard: string | null;
   flags: readonly string[];
   proposal: DispositionProposal;
@@ -135,14 +147,28 @@ function filled(value: string | null | undefined): boolean {
 
 /** The lock that applies to this filing, if any. A lock overrides every proposal. */
 export function lockOf(
-  input: Pick<ChooseDispositionInput, 'rightsVerdict' | 'guard' | 'flags' | 'chapterIsBasis' | 'proposal'>,
+  input: Pick<ChooseDispositionInput, 'rightsVerdict' | 'rightsRule' | 'guard' | 'flags' | 'chapterIsBasis' | 'proposal'>,
 ): DispositionLock | null {
-  if (input.rightsVerdict === 'REFUSED') return 'rights';
+  // A rights refusal the law's own category made is the harm lock's — case 2, 3 or 4 — and only
+  // a provenance refusal (a quote, a paraphrase) is «это не ваш текст».
+  if (input.rightsVerdict === 'REFUSED') {
+    return harmCaseOfRule(input.rightsRule ?? null) === null ? 'rights' : 'harm';
+  }
   if (input.guard === 'legal' || input.flags.includes('illegal-content')) return 'harm';
   if (input.chapterIsBasis) return 'frame';
   // The one lock a decision may name: nothing else has a way to reach it.
   if (input.proposal.lock === 'finale') return 'finale';
   return null;
+}
+
+/**
+ * Which of the harm lock's four cases applies. The refusal's own rule is the most specific fact
+ * (Gate B named the category), the stored flags are next (the scan and Gate A both leave one),
+ * and a `harm` lock with neither is the law's own category — the one claim such a row always
+ * made. Never null when the lock spoke, so the reader's sentence always names a case.
+ */
+export function harmCaseOf(input: Pick<ChooseDispositionInput, 'rightsRule' | 'flags'>): HarmCase {
+  return harmCaseOfFacts({ rule: input.rightsRule ?? null, flags: input.flags });
 }
 
 /**
@@ -244,6 +270,7 @@ function landed(input: ChooseDispositionInput, landing: Landing, asSaidHeld: boo
   return {
     disposition: landing.disposition,
     lock: null,
+    harmCase: null,
     carrierKind: landing.carrierKind,
     reason: outcomeLine({ kind: 'reading', reading: landing.disposition, carrierKind: landing.carrierKind }),
     quoteKept: landing.quoteKept,
@@ -259,12 +286,16 @@ function landed(input: ChooseDispositionInput, landing: Landing, asSaidHeld: boo
 }
 
 /** The four locks' one answer. Nothing landed, so no carrier and no anchor is carried. */
-export function lockDecision(lock: DispositionLock): DispositionDecision {
+export function lockDecision(lock: DispositionLock, harmCase: HarmCase | null = null): DispositionDecision {
+  // A `harm` lock always names a case: a row without one is the law's own category, never an
+  // invented case, and the sentence it prints is that case's.
+  const spoke = lock === 'harm' ? (harmCase ?? 'unpublishable') : null;
   return {
     disposition: 'inadmissible',
     lock,
+    harmCase: spoke,
     carrierKind: null,
-    reason: outcomeLine({ kind: 'lock', lock }),
+    reason: outcomeLine({ kind: 'lock', lock, harmCase: spoke }),
     quoteKept: null,
     sentenceId: null,
     blockIndex: null,
@@ -312,7 +343,9 @@ export function parseDispositionProposal(raw: unknown): DispositionProposal | nu
  */
 export function chooseDisposition(input: ChooseDispositionInput): DispositionDecision {
   const lock = lockOf(input);
-  if (lock !== null) return lockDecision(lock);
+  if (lock !== null) {
+    return lock === 'harm' ? lockDecision('harm', harmCaseOf(input)) : lockDecision(lock);
+  }
 
   const wording = filingWording(input);
   const asSaid = asSaidHolds(input, wording);

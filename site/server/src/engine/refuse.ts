@@ -17,8 +17,8 @@
  *      reader who filed hears «не принято» in words, not a code.
  *
  * Who calls it: the writer's own stop (`service.escalate`), the reaper's wall, the gate window
- * and the lost session, and the queue's own deadline and money stop. A cascade stop reaches the
- * same sink through `closeCascade`.
+ * and the lost session, the queue's six counted claims (`queue.ts`) and the money stop. A
+ * cascade stop reaches the same sink through `closeCascade`.
  */
 
 import {
@@ -42,19 +42,20 @@ import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
 // A refusal is a sentence the reader may print: no code, no constant, no config name. The
 // numbers come from the config (a minute count an operator can read), the rest is words.
 
-/** The queue's own deadline: a filing that never reached a pass is not kept forever. */
-export function queueDeadlineReason(hours: number): string {
-  return `не дошло до прохода за ${String(hours)} ч — заявка отклонена`;
-}
-
 /** The step wall (BOOK-34): the pass outlived its window, so its text does not stand. */
 export function stepWallReason(minutes: number): string {
   return `шаг не закрылся за отведённое время (${String(minutes)} мин) — текст возвращён к прежней редакции, заявка отклонена`;
 }
 
-/** The gate window: the reading gate never answered. */
-export function gateWindowReason(minutes: number): string {
-  return `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции, заявка отклонена`;
+/**
+ * The gate window: the reading gate never answered. `published` is whether the step's text was
+ * ever served: since BOOK-222 a pass's text is a candidate until the close, so there is nothing to
+ * put back — and the sentence must not claim a restore that never happened.
+ */
+export function gateWindowReason(minutes: number, published = true): string {
+  return published
+    ? `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции, заявка отклонена`
+    : `проверка не ответила за ${String(minutes)} мин — правка не принята, текст не опубликован`;
 }
 
 /** The session that did not come back to its step, three attempts in a row. */
@@ -178,9 +179,9 @@ export function refuseChange(deps: EngineDeps, input: RefuseInput): RefusalResul
 }
 
 /**
- * A change that never reached a pass: the queue's deadline and the book's money stop. There is
- * no step and no text — the refusal is the filing's own row, its one sentence and the same
- * `change_events('decided')` the site's bridge reads.
+ * A change that never reached a pass: the queue's six counted claims and the book's money stop.
+ * There is no step and no text — the refusal is the filing's own row, its one sentence and the
+ * same `change_events('decided')` the site's bridge reads.
  */
 function refuseQueued(
   deps: EngineDeps,

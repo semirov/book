@@ -25,17 +25,18 @@ import { loadPipeline, type Pipeline } from './pipeline.ts';
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * The named deadlines of the writing process, in one table (owner's invariant, 2026-10-29: every
- * state between «подан» and one of the two answers is transient **with a deadline**, and when it
- * passes a deterministic fallback fires — no model, no operator). The engine's own are the schema
- * fields below; the writer's call caps are **stated, not changed** (`writer/**`).
- *   · triage: call 120 s × 3, backoff 60 s → 5 min → 20 min, total 30 min, claim 900 s;
- *   · queue: 6 h (`QUEUE_DEADLINE_MS`) — the tick refuses what never reached a pass;
+ * The named caps of the writing process, in one table (owner's correction, 2026-10-29: «нет,
+ * сроков не надо — только конечное количество попыток»). A state between «подан» and one of the
+ * two answers is bounded by an **attempt count**; a clock may pace a retry or guard a call in
+ * flight, and never decides a state. The engine's own are the schema fields below; the writer's
+ * call caps are **stated, not changed** (`writer/**`).
+ *   · triage: 6 attempts — 5 model calls, the 6th the coded floor rung; backoff 60 s → 5 min →
+ *     20 min → 40 min between calls, claim lease 900 s (a liveness guard, not a decision);
+ *   · queue: 6 claim attempts (`QUEUE_MAX_ATTEMPTS`, `shared/src/change.ts`) with no step;
  *   · draft call 420 s × 2 (`writer/**`); landing 60 s × 2 (`WRITER_ENGINE_TIMEOUT_MS`);
  *   · gate window 20 min (`GATE_TTL_MS`); step wall 45 min (`STEP_WALL_MS`);
  *   · lease 120 s (`LEASE_TTL_MS`), engine-beaten; lane 90 s (`LANE_TTL_MS`).
  */
-export const QUEUE_DEADLINE_MS = 6 * 60 * 60 * 1000;
 
 const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),
@@ -198,11 +199,6 @@ const schema = z.object({
   stepWallMs: z.coerce.number().int().min(1).default(13_500_000),
   /** §10.8: a desperate attempt is a dispatch, not work — 180 s, never the step's wall. */
   desperateDeadlineMs: z.coerce.number().int().min(1).default(180_000),
-  /** The queue's own deadline (owner's invariant): a filing that never reached a pass is refused
-   *  by the engine's tick. Six hours decide it inside one owner's day; the money caps — the only
-   *  bound that can hold a whole queue — reset at 00:00 UTC, so a pause lasts at most one
-   *  deadline, and a stopped book does not wait even that (`reap.ts`). */
-  queueDeadlineMs: z.coerce.number().int().min(1).default(QUEUE_DEADLINE_MS),
   /** A lane whose holder stopped beating is reclaimed after this long (§6A.3). */
   laneTtlMs: z.coerce.number().int().min(1).default(90_000),
   reaperMs: z.coerce.number().int().min(100).default(15_000),
@@ -378,7 +374,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     leaseTtlMs: env.LEASE_TTL_MS,
     stepWallMs: env.STEP_WALL_MS,
     desperateDeadlineMs: env.DESPERATE_DEADLINE_MS,
-    queueDeadlineMs: env.QUEUE_DEADLINE_MS,
     laneTtlMs: env.LANE_TTL_MS,
     reaperMs: env.ENGINE_REAPER_MS,
     maxConcurrentSteps: env.ENGINE_MAX_CONCURRENT_STEPS,

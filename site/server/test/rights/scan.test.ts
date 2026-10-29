@@ -35,7 +35,9 @@ const SITE_ROOT = new URL('../../../', import.meta.url).pathname;
 describe('Gate B — the stop list refuses, and says which entry', () => {
   it('matches a closed-table category and keeps the reason in the operator detail', () => {
     const scan = scanRights({ body: 'Он призывает к насилию над соседями и пишет об этом в акте.' });
-    expect(scan).toMatchObject({ verdict: 'refused', rule: 'RIGHTS-STOP' });
+    // The entry's own id is the rule (owner's ruling, 2026-10-29): the harm lock derives its case
+    // from it, and a recipe, a child and an accusation must not all read as one generic id.
+    expect(scan).toMatchObject({ verdict: 'refused', rule: 'STOP-EXTREMISM' });
     // The detail is operator-only: the reader is owed the fixed sentence, not the table.
     const detail = scan.verdict === 'refused' ? scan.detail : '';
     expect(detail).toContain('STOP-EXTREMISM');
@@ -69,9 +71,10 @@ describe('Gate B — the stop list refuses, and says which entry', () => {
     expect(scanRights({ body: 'В акте сказано, что оружие хранится в опечатанном сейфе.' })).toEqual({
       verdict: 'clear',
     });
+    // The entry's own id is the rule, so the harm lock can say case 1 rather than «вне закона».
     expect(scanRights({ body: 'Он записал рецепт: метамфетамин и пропорции.' })).toMatchObject({
       verdict: 'refused',
-      rule: 'RIGHTS-STOP',
+      rule: 'STOP-DRUGS',
     });
   });
 });

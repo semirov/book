@@ -22,6 +22,7 @@ import { closeChange, stopChange } from './changeClose.ts';
 import { changeForStep } from './helpers.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { stepProvenance } from './model.ts';
+import { publishCandidate } from './landing.ts';
 import { settleDraftPremise } from './premise.ts';
 import { pricePlanAfterPass } from '../ledger/graph/plan.ts';
 import { closeVerification } from '../ledger/graph/verification.ts';
@@ -59,7 +60,14 @@ function cascadeDepth(cascadeId: string, origin: number, steps: store.StepRow[])
 function cancelOpenSteps(deps: EngineDeps, cascadeId: string, now: number): void {
   for (const step of store.listCascadeSteps(deps.db, cascadeId)) {
     if (step.outcome !== null) continue;
-    store.updateStep(deps.db, step.step_id, { outcome: 'interrupted', closed_at: toIso(now), note: 'cascade closed' });
+    store.updateStep(deps.db, step.step_id, {
+      outcome: 'interrupted',
+      closed_at: toIso(now),
+      note: 'cascade closed',
+      // BOOK-222: an interrupted step publishes nothing it held — the candidate dies with it.
+      candidate_text: null,
+      candidate_sha: null,
+    });
     const lease = store.liveLeaseForStep(deps.db, step.step_id);
     if (lease) releaseLease(deps.db, lease.id, 'escalated', now);
     appendEvent(
@@ -251,6 +259,11 @@ export function closeStep(
   const ms = Math.max(0, now - Date.parse(step.at));
 
   const close = db.transaction((): CloseStepResult => {
+    // BOOK-222: the candidate becomes the chapter here — the one publication, in this transaction,
+    // so a close that cannot be made leaves nothing served. A refusal publishes nothing: its text
+    // is dropped with the step (`restorePrePass` puts back only text that was served).
+    if (input.outcome !== 'escalated') publishCandidate(deps, step, now);
+    const published = store.getStep(db, step.step_id) ?? step;
     store.updateStep(db, step.step_id, {
       outcome: input.outcome,
       seams_out: JSON.stringify(input.seamsOut),
@@ -263,6 +276,11 @@ export function closeStep(
       ms,
       lease_id: lease?.id ?? step.lease_id,
       session: lease?.session ?? step.session,
+      // BOOK-222: a close that did not publish the candidate drops it. `done` clears it before it
+      // calls this (the publication happened); every other close — a refusal, a wall, a session
+      // that never came back — serves nothing, and the reader keeps the text he already has.
+      candidate_text: null,
+      candidate_sha: null,
     });
     if (input.expiredLeaseId) {
       releaseForExpiredClose(db, live, input.expiredLeaseId, now);
@@ -313,10 +331,10 @@ export function closeStep(
     // closes by restore (`escalated`) says nothing about a landing; a draft (no change on its
     // lease) and a step with no change at all notify nobody, and a cascade step for a neighbour's
     // chapter is filtered by `recipientOf` — the reader asked about theirs.
-    if (input.outcome !== 'escalated' && step.chapter !== null && step.landed_at !== null) {
-      const landedChange = changeForStep(db, step);
+    if (input.outcome !== 'escalated' && published.chapter !== null && published.landed_at !== null) {
+      const landedChange = changeForStep(db, published);
       if (landedChange !== undefined) {
-        sendPassEvent(db, { kind: 'landed', chapter: step.chapter, changeId: landedChange.id }, now);
+        sendPassEvent(db, { kind: 'landed', chapter: published.chapter, changeId: landedChange.id }, now);
       }
     }
 

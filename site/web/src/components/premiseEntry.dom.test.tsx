@@ -326,7 +326,10 @@ describe('one filing, one entry (BOOK-137)', () => {
 
     const text = container.textContent ?? '';
     // One state word, one human sentence — and the engine's own code never on the page.
-    expect(count(text, 'ждёт')).toBe(1);
+    // BOOK-219: an attempt that came back empty no longer adds a promise of a wait, so the one
+    // line under «принято» is the attempt's own and nothing else.
+    expect(count(text, 'ждёт')).toBe(0);
+    expect(count(text, STATE_WORDS.accepted)).toBe(1);
     expect(count(text, FAILED_ATTEMPT_LINE)).toBe(1);
     expect(container.querySelector('#ch-40 .premise-note')?.textContent).toBe(FAILED_ATTEMPT_LINE);
     expect(container.querySelector('.premise-row .premise-note')).toBeNull();

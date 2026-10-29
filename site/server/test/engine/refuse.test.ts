@@ -12,7 +12,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { WriterAssignment } from '@book/shared';
+import { QUEUE_MAX_ATTEMPTS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { filingStatus } from '../../src/comments/filingState.ts';
@@ -21,8 +21,6 @@ import * as store from '../../src/engine/store.ts';
 import type { EngineError } from '../../src/engine/types.ts';
 import { toIso } from '../../src/util/time.ts';
 import { chapterText, createEngineFixture, type Fixture } from './helpers.ts';
-
-const QUEUE_HOURS = 6;
 
 function refusalOf(run: () => unknown): EngineError | null {
   try {
@@ -207,59 +205,91 @@ describe('a refusal that cannot publish its way back', () => {
   });
 });
 
-describe('the queue is finite (QUEUE_DEADLINE_MS)', () => {
-  it('refuses a pending change older than the deadline in one tick, and never hands it out', () => {
+describe('the queue is finite by attempts, not by hours (owner, 2026-10-29)', () => {
+  /**
+   * Hold the lane with a change that is really processing: a `pending` change behind it cannot
+   * start, and every poll is one counted claim that produced no step.
+   */
+  function blockedBy(fixture: Fixture): void {
+    const first = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'среда вместо четверга' });
+    expect(fixture.engine.next({ for: 'fwd', session: 'writer-hold' })).not.toBeNull();
+    expect(changeOf(fixture, first.id)?.status).toBe('processing');
+  }
+
+  function poll(fixture: Fixture, session: string): void {
+    expect(fixture.engine.next({ for: 'fwd', session })).toBeNull();
+  }
+
+  it('drops a change after six claims that produced no step, and the filing with it', () => {
     const fixture = chapterOne();
     try {
-      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'среда вместо четверга' });
-      fixture.clock.advance(QUEUE_HOURS * 3_600_000 + 1_000);
+      blockedBy(fixture);
+      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'четверг вместо среды' });
 
-      const report = fixture.engine.reap();
-      expect(report.refused).toEqual([change.id]);
+      for (let claim = 1; claim < QUEUE_MAX_ATTEMPTS; claim += 1) {
+        poll(fixture, `writer-${String(claim)}`);
+        expect(changeOf(fixture, change.id)).toMatchObject({ status: 'pending', attempts: claim });
+      }
+      // Still pending below the bound: five counted claims are five attempts, not a verdict.
+      expect(decisionEvents(fixture, change.id)).toHaveLength(0);
+
+      poll(fixture, 'writer-last');
       const row = changeOf(fixture, change.id);
-      expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });
-      expect(row?.reason).toBe('не дошло до прохода за 6 ч — заявка отклонена');
+      expect(row).toMatchObject({ status: 'void', outcome: 'dropped', attempts: QUEUE_MAX_ATTEMPTS });
+      expect(row?.reason).toBe('заявка не дошла до главы за 6 попыток');
       expect(filingStateOf(fixture, change.id)).toBe('rejected');
+      // One decision frame for the reader, and one only.
       expect(decisionEvents(fixture, change.id)).toHaveLength(1);
 
-      // The tick is the enforcer: the next poll hands nothing out and creates no step.
-      expect(fixture.engine.next({ for: 'filing', session: 'writer-1' })).toBeNull();
-      expect(store.countOpenSteps(fixture.db)).toBe(0);
-      // A second tick does not decide the row twice.
-      expect(fixture.engine.reap().refused).toEqual([]);
+      // A seventh attempt is impossible: the change has left the queue and no counter moves.
+      poll(fixture, 'writer-extra');
+      expect(changeOf(fixture, change.id)).toMatchObject({ attempts: QUEUE_MAX_ATTEMPTS });
       expect(decisionEvents(fixture, change.id)).toHaveLength(1);
+      expect(store.countOpenSteps(fixture.db)).toBe(1);
     } finally {
       fixture.close();
     }
   });
 
-  it('refuses a premise the queue never reached either — the filing is the same fact', () => {
-    const fixture = createEngineFixture({ filings: 'manual' });
+  it('counts a premise the lane never reached either — the filing is the same fact', () => {
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
+      filings: 'manual',
+      env: { BOOK_BUDGET_DAY_USD: '1' },
+    });
     try {
+      const at = toIso(fixture.clock.now());
+      fixture.db
+        .prepare(
+          `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, model, tokens_in, tokens_out, usd, priced)
+           VALUES (?, ?, 'stp_paused', 1, 'change', NULL, 0, 0, 2, 1)`,
+        )
+        .run(at, at.slice(0, 10));
       const premise = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 3, intent: 'глава о дороге' });
       expect(changeOf(fixture, premise.id)?.premise).toBe(1);
-      fixture.clock.advance(QUEUE_HOURS * 3_600_000 + 1_000);
-      expect(fixture.engine.reap().refused).toEqual([premise.id]);
-      expect(changeOf(fixture, premise.id)).toMatchObject({ status: 'void', outcome: 'dropped' });
+
+      // A paused day waits, and each re-issue of the waiting premise counts: the bound holds even
+      // when nothing is spent. The poll answers the pause's own code, never a decision.
+      for (let claim = 1; claim < QUEUE_MAX_ATTEMPTS; claim += 1) {
+        expect(refusalOf(() => fixture.engine.next({ for: 'fwd', session: `writer-${String(claim)}` }))?.code).toBe(
+          'BUDGET_PAUSED',
+        );
+        expect(changeOf(fixture, premise.id)).toMatchObject({ status: 'pending', attempts: claim });
+      }
+      expect(refusalOf(() => fixture.engine.next({ for: 'fwd', session: 'writer-last' }))?.code).toBe('BUDGET_PAUSED');
+      expect(changeOf(fixture, premise.id)).toMatchObject({
+        status: 'void',
+        outcome: 'dropped',
+        attempts: QUEUE_MAX_ATTEMPTS,
+      });
+      expect(changeOf(fixture, premise.id)?.reason).toBe('заявка не дошла до главы за 6 попыток');
       expect(filingStateOf(fixture, premise.id)).toBe('rejected');
     } finally {
       fixture.close();
     }
   });
 
-  it('leaves a young filing alone', () => {
-    const fixture = chapterOne();
-    try {
-      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'среда вместо четверга' });
-      fixture.clock.advance(QUEUE_HOURS * 3_600_000 - 60_000);
-      expect(fixture.engine.reap().refused).toEqual([]);
-      expect(changeOf(fixture, change.id)?.status).toBe('pending');
-    } finally {
-      fixture.close();
-    }
-  });
-
-  it('refuses the queue at once when the book’s money cap is spent, with the money sentence', () => {
+  it('refuses the queue at once when the book’s money cap is spent, spending no attempt', () => {
     const fixture = createEngineFixture({
       chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
       filings: 'manual',
@@ -275,62 +305,14 @@ describe('the queue is finite (QUEUE_DEADLINE_MS)', () => {
         )
         .run(at, at.slice(0, 10));
 
-      // The day's pause waits (it lifts at 00:00 UTC); the book's stop does not.
+      // The stop is a refusal at once: it neither waits nor spends a claim.
       const report = fixture.engine.reap();
       expect(report.refused).toEqual([change.id]);
-      expect(changeOf(fixture, change.id)).toMatchObject({ status: 'void', outcome: 'dropped' });
+      expect(changeOf(fixture, change.id)).toMatchObject({ status: 'void', outcome: 'dropped', attempts: 0 });
       expect(changeOf(fixture, change.id)?.reason).toBe('потолок книги исчерпан — заявка отклонена');
       expect(filingStateOf(fixture, change.id)).toBe('rejected');
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('budget');
       expect(store.readLane(fixture.db).holder).toBeNull();
-    } finally {
-      fixture.close();
-    }
-  });
-
-  it('waits out a day’s pause instead of refusing the queue: only the deadline ends it', () => {
-    // A pause lifts by itself at 00:00 UTC, so a paused queue is still a queue; the book's stop
-    // (the previous case) is the one that refuses at once.
-    const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
-      filings: 'manual',
-      env: { BOOK_BUDGET_DAY_USD: '1' },
-    });
-    try {
-      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'среда вместо четверга' });
-      const at = toIso(fixture.clock.now());
-      fixture.db
-        .prepare(
-          `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, model, tokens_in, tokens_out, usd, priced)
-           VALUES (?, ?, 'stp_paused', 1, 'change', NULL, 0, 0, 2, 1)`,
-        )
-        .run(at, at.slice(0, 10));
-      expect(fixture.engine.state().budget.state).toBe('pause');
-      expect(fixture.engine.reap().refused).toEqual([]);
-      expect(changeOf(fixture, change.id)?.status).toBe('pending');
-      // And the pause still ends where every queued filing ends: at the deadline.
-      fixture.clock.advance(QUEUE_HOURS * 3_600_000 + 1_000);
-      expect(fixture.engine.reap().refused).toEqual([change.id]);
-    } finally {
-      fixture.close();
-    }
-  });
-
-  it('does not refuse a premise whose first pass is running on that chapter', () => {
-    // A pass is the premise's own answer: its step wall bounds it, and the queue's deadline must
-    // not decide a filing under the session that is writing it.
-    const fixture = createEngineFixture({ filings: 'manual' });
-    try {
-      // The filing is old, and the pass that answers it opens on the last minute of its deadline:
-      // the step is fresh (well inside the 45-minute wall) while the row is past the 6 hours.
-      const premise = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 3, intent: 'глава о дороге' });
-      fixture.clock.advance(QUEUE_HOURS * 3_600_000 - 60_000);
-      const pass = fixture.engine.openChapterPass(3, 'writer-3');
-      expect(pass).not.toBeNull();
-      fixture.clock.advance(120_000);
-      expect(fixture.engine.reap().refused).toEqual([]);
-      expect(changeOf(fixture, premise.id)?.status).toBe('pending');
-      expect(store.getStep(fixture.db, pass?.stepId ?? '')?.outcome).toBeNull();
     } finally {
       fixture.close();
     }

@@ -2,15 +2,17 @@
  * The reaper (ARCHITECTURE.md §6A.11, §6B.4 rule 5, §6B.7).
  *
  * A dead session must never block a chapter, a dead gate must never hold a step open forever,
- * and a queued filing must never wait forever either. Every 15 s (and at the start of every
- * `next`) the engine expires leases, takes a write that landed without being reported, re-issues
- * a job whose session vanished, stops a step whose gate or wall ran out — and refuses a change
- * the queue never reached. Nothing is silently restarted: each action is an event, so "the
- * engine recovered" is auditable like everything else.
+ * and a queued filing must never wait forever either — but the bound on a queued change is a
+ * **count of claims**, never an hour (owner, 2026-10-29). The claim attempts are counted where
+ * the lane is actually asked for the change (`queue.ts`), so this tick has one power left over a
+ * pending change: the book's money stop. Every 15 s (and at the start of every `next`) the engine
+ * expires leases, takes a write that landed without being reported, re-issues a job whose session
+ * vanished, stops a step whose gate or wall ran out. Nothing is silently restarted: each action is
+ * an event, so "the engine recovered" is auditable like everything else.
  *
  * Every stop here is the **refusal** (`refuse.ts`): the text goes back to its pre-pass revision,
  * the change ends `void · dropped` with a sentence, and no filing is left in a state that has no
- * answer. This tick is the enforcer of the queue's deadline and of the money stop.
+ * answer. This tick is the enforcer of the money stop, and of nothing on a clock.
  */
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
@@ -23,7 +25,6 @@ import {
   BUDGET_STOP_REASON,
   gateWindowReason,
   lostSessionReason,
-  queueDeadlineReason,
   refuseChange,
   stepWallReason,
 } from './refuse.ts';
@@ -47,7 +48,7 @@ export type ReapReport = {
   /** Steps whose session vanished and whose job is re-issued by the next poll. */
   reissued: string[];
   gateTimeouts: string[];
-  /** The queue's own deadline and the money stop: changes this tick refused. */
+  /** The book's money stop: queued changes this tick refused at once, with no attempt spent. */
   refused: string[];
   /** Refusals that could not be made (`TEXT_STUCK`) — a stuck chapter, reported not swallowed. */
   refusalFailures: Array<{ changeId: string; code: string }>;
@@ -312,7 +313,8 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     if (store.getVerdict(db, dispatch.step_id, dispatch.role)) continue;
     refuseChange(deps, {
       stepId: step.step_id,
-      because: gateWindowReason(Math.round(deps.config.gateTtlMs / 60_000)),
+      // BOOK-222: a candidate was never served, so the sentence does not claim a restore.
+      because: gateWindowReason(Math.round(deps.config.gateTtlMs / 60_000), step.landed_at !== null),
       cause: 'escalated:gate_timeout',
       premiseCause: 'failed',
       now,
@@ -320,41 +322,36 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     report.gateTimeouts.push(step.step_id);
   }
 
-  // ── the queue's own deadline, and the money stop ──────────────────────────
-  // The finite queue (owner's invariant, 2026-10-29): a filing that never reached a pass cannot
-  // wait forever. This tick is the enforcer — no model, no operator.
-  const deadline = deps.config.queueDeadlineMs;
-  const hours = Math.round(deadline / 3_600_000);
-  // The book's cap ends writing for good (a day's pause lifts at 00:00 UTC, a book's does not),
-  // so a queued filing is refused at once instead of being parked behind a stop.
+  // ── the money stop, and nothing on a clock ────────────────────────────────
+  // The owner's correction (2026-10-29): no hour ends a filing — only a counter does. The queue's
+  // attempts are counted where the lane is actually asked for the change (`queue.ts` `claimHead`),
+  // so this tick keeps exactly one power over a queued change: the book's cap ends writing for
+  // good (a day's pause lifts at 00:00 UTC, a book's does not), so it is refused at once.
   const money = budgetSnapshot(db, budgetCapsOf(deps.config), now);
   const drafting = db.prepare(
     `SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`,
   );
-  for (const change of store.listPending(db)) {
-    if (change.status !== 'pending') continue;
-    // A pass is running on that chapter right now: the premise is the pass's own filing, and the
-    // step wall (45 min) bounds it. Refusing it under the session would decide a filing nobody
-    // has answered yet — `reconcilePremises` keeps the same rule.
-    if (drafting.get(change.chapter) !== undefined) continue;
-    const age = now - Date.parse(change.enqueued_at);
-    // A timestamp nobody can read is not a reason to keep a filing: it reads as overdue.
-    const overdue = !Number.isFinite(age) || age >= deadline;
-    const stopped = money.state === 'stop';
-    if (!stopped && !overdue) continue;
-    try {
-      refuseChange(deps, {
-        changeId: change.id,
-        because: stopped ? BUDGET_STOP_REASON : queueDeadlineReason(hours),
-        cause: stopped ? 'escalated:budget' : 'escalated:gate_timeout',
-        now,
-      });
-      report.refused.push(change.id);
-    } catch (error) {
-      report.refusalFailures.push({
-        changeId: change.id,
-        code: isEngineError(error) ? error.code : 'UNKNOWN',
-      });
+  if (money.state === 'stop') {
+    for (const change of store.listPending(db)) {
+      if (change.status !== 'pending') continue;
+      // A pass is running on that chapter right now: the premise is the pass's own filing, and the
+      // step wall bounds it. Refusing it under the session would decide a filing nobody has
+      // answered yet — `reconcilePremises` keeps the same rule.
+      if (drafting.get(change.chapter) !== undefined) continue;
+      try {
+        refuseChange(deps, {
+          changeId: change.id,
+          because: BUDGET_STOP_REASON,
+          cause: 'escalated:budget',
+          now,
+        });
+        report.refused.push(change.id);
+      } catch (error) {
+        report.refusalFailures.push({
+          changeId: change.id,
+          code: isEngineError(error) ? error.code : 'UNKNOWN',
+        });
+      }
     }
   }
 

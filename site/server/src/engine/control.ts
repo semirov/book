@@ -109,6 +109,11 @@ const landBody = z.object({
   /** BOOK-173 §4: the mode the pass ran, and the estimate it was opened with. */
   mode: z.enum(['patch', 'rewrite']).optional(),
   estimateUsd: z.number().min(0).max(100).optional(),
+  /**
+   * BOOK-222: the lane's own landing is a candidate — validated and held on the step, published by
+   * the close, never before. A refusal drops it and the site keeps the text it already serves.
+   */
+  provisional: z.boolean().optional(),
 });
 
 const verdictBody = z.object({
@@ -254,6 +259,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         sentences: body.sentences,
         mode: body.mode,
         estimateUsd: body.estimateUsd,
+        provisional: body.provisional,
       }),
     };
   });

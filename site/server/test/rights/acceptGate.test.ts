@@ -152,8 +152,9 @@ describe('acceptance — three columns, three writers, no default', () => {
       expect(second).toMatchObject({ code: 'RIGHTS_ALREADY_RECORDED' });
       const row = readCommentRow(fixture.db, id);
       expect(row).toMatchObject({ rights_verdict: 'REFUSED', rights_rule: 'STOP-DRUGS', status: 'rejected' });
-      // The refusal is the reader's own line and the body never represents it.
-      expect(row?.reason).toBe('не принято: содержимое вне закона');
+      // The refusal is the reader's own line, and it names case 1 of the harm lock (owner's
+      // ruling, 2026-10-29): a recipe is not «содержимое вне закона» in the abstract.
+      expect(row?.reason).toBe('не принято: инструкция, как причинить вред — в книге такого не будет');
       expect(JSON.parse(row?.flags ?? '[]')).toContain('illegal-content');
     } finally {
       fixture.close();

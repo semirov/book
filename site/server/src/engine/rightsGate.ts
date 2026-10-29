@@ -27,6 +27,7 @@ import {
   PROSE_PASSES,
   openRightsDispatch,
   recordRightsVerdict,
+  gateTextSha,
   type RightsAnswer,
   type RightsAssignment,
 } from './gates.ts';
@@ -41,7 +42,8 @@ export function createRightsGate(deps: EngineDeps) {
 
   function next(session: string): RightsAssignment | null {
     for (const step of store.listOpenSteps(db)) {
-      if (step.landed_at === null) continue;
+      // BOOK-222: a candidate is the step's text too — the gate asks about it before the close.
+      if (gateTextSha(step) === null) continue;
       // BOOK-61 + the owner's rule of 2026-10-28: every prose pass carries a rights answer. A
       // clean scan is offered too — the session answers it mechanically, without a model call.
       if (!PROSE_PASSES.has(step.pass)) continue;

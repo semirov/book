@@ -107,6 +107,15 @@ export type GateAssignment = {
 
 const SEVERITIES = new Set<FindingSeverity>(['blocker', 'major', 'minor']);
 
+/**
+ * BOOK-222 — the sha of the text a gate reads. A step's text is its **candidate** while the pass
+ * is open (nothing is published before the verdict) and its `landed_sha` once the text is served
+ * (a non-provisional landing, a reopened step). `null` means there is no text to read yet.
+ */
+export function gateTextSha(step: StepRow): string | null {
+  return step.candidate_sha ?? step.landed_sha;
+}
+
 function text(value: unknown, max: number): string {
   const raw = typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim() : '';
   return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
@@ -157,8 +166,9 @@ export function openDispatch(
   const at = toIso(now);
 
   if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
+  const textSha = gateTextSha(step);
+  if (textSha === null) {
+    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text and no candidate — a gate cannot bless a file it has not seen`);
   }
   // BOOK-173 §7: a dispatched gate always sees the plan its change stands on — for a **ripple**.
   // The engine writes the plan row in the same transaction that gives a change the `ripple`
@@ -188,6 +198,7 @@ export function openDispatch(
     session,
     dispatched_at: existing && existing.session === session ? existing.dispatched_at : at,
     expires_at: expiresAt,
+    landed_sha: textSha,
   };
   upsertDispatch(deps.db, dispatch);
   return dispatch;
@@ -239,8 +250,14 @@ export function recordVerdict(
   if (dispatch.session !== session) {
     refuse('GATE_NOT_DISPATCHED', 409, `step ${step.step_id} was dispatched to another session`);
   }
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, 'a verdict for an unlanded file is refused (§6A.11)');
+  const textSha = gateTextSha(step);
+  if (textSha === null) {
+    refuse('NOT_LANDED', 409, 'a verdict for a step with no text is refused (§6A.11)');
+  }
+  if (dispatch.landed_sha !== null && dispatch.landed_sha !== textSha) {
+    // BOOK-222: the gate read one text and the step now holds another. Its answer describes a
+    // text nobody will serve, so it is refused — a gate blesses the candidate it was handed.
+    refuse('CANDIDATE_MOVED', 409, `the text moved under the ${answer.role} gate — read the new candidate`);
   }
 
   const findings = normalizeFindings(answer.findings);
@@ -263,6 +280,7 @@ export function recordVerdict(
     tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
     at,
     late: late ? 1 : 0,
+    source: 'model',
   });
 
   // The assignment is consumed by the answer; a revision will be dispatched again.
@@ -294,6 +312,7 @@ export function recordVerdict(
       tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
       at,
       late: late ? 1 : 0,
+      source: 'model',
     },
     action,
     downgraded,
@@ -358,7 +377,9 @@ export function assignmentOf(
     chapter: step.chapter,
     boundary: step.boundary,
     cycle: step.cycle,
-    landedSha: step.landed_sha,
+    // BOOK-222: the sha the gate is handed is the step's text — the **candidate** while the pass
+    // is open, the published landing otherwise.
+    landedSha: gateTextSha(step),
     note: step.note,
     indexSlice,
     plan,
@@ -391,8 +412,9 @@ export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: str
   const now = deps.clock.now();
   const at = toIso(now);
   if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
+  const textSha = gateTextSha(step);
+  if (textSha === null) {
+    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text and no candidate — a gate cannot bless a file it has not seen`);
   }
   // A `clear` scan is still answered (owner, 2026-10-28): the writer submits the clean verdict
   // mechanically, so the record says what was checked instead of saying nothing. A `flag` is the
@@ -413,6 +435,7 @@ export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: str
     session,
     dispatched_at: existing && existing.session === session ? existing.dispatched_at : at,
     expires_at: expiresAt,
+    landed_sha: textSha,
   });
   return {
     stepId: step.step_id,
@@ -420,7 +443,7 @@ export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: str
     session,
     pass: step.pass,
     chapter: step.chapter,
-    landedSha: step.landed_sha,
+    landedSha: textSha,
     rule,
     block: scan !== null && scan.verdict === 'flag' ? (scan.block ?? null) : null,
     expiresAt,
@@ -456,7 +479,11 @@ export function recordRightsVerdict(
   if (dispatch.session !== session) {
     refuse('GATE_NOT_DISPATCHED', 409, `step ${step.step_id} was dispatched to another session`);
   }
-  if (step.landed_at === null) refuse('NOT_LANDED', 409, 'a verdict for an unlanded file is refused (§6A.11)');
+  const textSha = gateTextSha(step);
+  if (textSha === null) refuse('NOT_LANDED', 409, 'a verdict for a step with no text is refused (§6A.11)');
+  if (dispatch.landed_sha !== null && dispatch.landed_sha !== textSha) {
+    refuse('CANDIDATE_MOVED', 409, 'the text moved under the rights gate — read the new candidate');
+  }
   if (answer.verdict === 'CLEAR' && answer.rule !== null) {
     refuse('RIGHTS_RULE_WITH_CLEAR', 422, 'a CLEAR names no rule');
   }
@@ -479,6 +506,7 @@ export function recordRightsVerdict(
     tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
     at,
     late: dispatch.expires_at <= at ? 1 : 0,
+    source: 'model',
   };
   upsertVerdict(db, row);
   // The assignment is consumed by the answer, exactly as a prose gate's is.

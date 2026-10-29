@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { STOP_REASONS } from '@book/shared';
+import { describe, expect, it } from 'vitest';
 
 import { summarize, type SummarySubject } from '../../src/history/summary.ts';
 

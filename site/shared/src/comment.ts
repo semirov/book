@@ -257,6 +257,15 @@ export type CommentDto = {
    * reason as `hint`: the server always sends it, an older page simply ignores it.
    */
   revise?: CommentRevise;
+  /**
+   * Owner's rule (2026-10-29) — may this filing be **retried** (`POST /api/comments/:id/retry`)?
+   * A retry is not a revision: the words stay and only the machinery that failed is re-armed, so
+   * the flag is true only when the last outcome was a defect on **our** side (a ladder that ran
+   * out, a pass that broke or rolled back, a read that never happened) and false when the last
+   * word was the book's own (a lock, a content refusal, the money cap, a landing, `RETRY_MAX`).
+   * Optional for the same reason as `hint`: `undefined` reads as `false`.
+   */
+  retryable?: boolean;
   createdAt: string;
   decidedAt: string | null;
   changeId: string | null;
@@ -347,6 +356,14 @@ export type ReviseCommentInput = {
 };
 
 export type ReviseCommentResponse = { comment: CommentDto };
+
+/**
+ * Owner's rule (2026-10-29) — `POST /api/comments/:id/retry`. The request carries **nothing**: a
+ * retry re-runs the machinery on the stored filing, so there is no text, anchor or chapter for a
+ * client to send — or to move. The answer is the filing as it stands once re-armed: `new`, no
+ * sentence, its change back in the queue.
+ */
+export type RetryCommentResponse = { comment: CommentDto };
 
 /** §10 `comment:added` — the comment as DATA; the client renders it as text. */
 export type CommentAddedPayload = {

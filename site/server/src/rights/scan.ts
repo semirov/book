@@ -4,8 +4,12 @@
  *
  * Three rules can refuse, one can flag:
  *
- *   • `RIGHTS-STOP`   a match on the closed stop list (`stoplist.ts`), including the curated
- *                     public-figure list — a real living person's full name is `STOP-PERSON`;
+ *   • the entry's own id — a match on the closed stop list (`stoplist.ts`), e.g. `STOP-DRUGS`
+ *                     for a recipe and `STOP-MINOR` for a child; the curated public-figure list
+ *                     refuses with `STOP-PERSON`. The specific id is what names the harm case
+ *                     the refusal is (owner's ruling, 2026-10-29): a recipe is case 1, a child
+ *                     case 3, and `RIGHTS-STOP` — the generic id — only for an entry a test
+ *                     injected, since the operator's detail still carries the whole entry;
  *   • `RIGHTS-QUOTE`  a run of `QUOTE_MIN_CHARS` or more inside «…»/“…” or a `>` blockquote
  *                     with no named source in the same block;
  *   • `RIGHTS-FLAG`   a long `proposed`, a quoted run whose source is only half named, or a
@@ -31,6 +35,7 @@ import {
   PUBLIC_FIGURES,
   STOP_LIST,
   type StopEntry,
+  type StopRuleId,
 } from './stoplist.ts';
 
 /** §3: the shortest quoted run that is a paragraph of somebody's prose, not a term. */
@@ -42,7 +47,7 @@ export const PROPOSED_FLAG_CHARS = QUOTE_MIN_CHARS;
 export type RightsScanVerdict = 'clear' | 'flag' | 'refused';
 
 /** The rules the scan itself can refuse with. `RIGHTS-FLAG` is a flag, never a stored refusal. */
-export type ScanRule = 'RIGHTS-STOP' | 'RIGHTS-QUOTE' | 'STOP-PERSON';
+export type ScanRule = 'RIGHTS-STOP' | 'RIGHTS-QUOTE' | StopRuleId;
 
 export type RightsScan =
   | { verdict: 'clear' }
@@ -121,7 +126,9 @@ export function scanRights(input: RightsInput, options: RightsScanOptions = {}):
       if (entry.patterns.some((pattern) => pattern.test(lower))) {
         return {
           verdict: 'refused',
-          rule: 'RIGHTS-STOP',
+          // The entry's own id names the harm case the refusal is; a `test:` entry (an injected
+          // table) is not a rule id and keeps the generic one.
+          rule: entry.id.startsWith('test:') ? 'RIGHTS-STOP' : (entry.id as StopRuleId),
           block: block.index,
           detail: `${entry.id}: ${entry.reason}`,
         };

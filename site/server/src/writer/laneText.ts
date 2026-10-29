@@ -14,6 +14,18 @@ import { PassRefusal } from './reasons.ts';
 // One implementation lives in `prose.ts` (BOOK-173 §0); the lane re-exports it.
 export { charsOf, finalize, mergeContinuation } from './prose.ts';
 
+/**
+ * The filing's own sentence — the reader's words, verbatim. It is the only text a model-free
+ * patch may put into the book (`patch.ts`, the desperate sixth), so it is read from one place:
+ * the change's intent, or the premise's when the pass only carries a goal.
+ */
+export function filingSentence(assignment: WriterAssignment): string | null {
+  const fromChange = assignment.intent?.value ?? null;
+  const fromPremise = assignment.premise?.intent.value ?? null;
+  const sentence = (fromChange ?? fromPremise ?? '').replace(/\s+/gu, ' ').trim();
+  return sentence.length === 0 ? null : sentence;
+}
+
 /** The assignment as the prompt may quote it (`prompt.ts` narrows it the same way). */
 export function assignmentData(assignment: WriterAssignment): WriterAssignmentData {
   if (typeof assignment.chapter !== 'number') {

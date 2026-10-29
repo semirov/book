@@ -1,6 +1,7 @@
 /**
  * `GET /api/comments`, `GET /api/comments/:id`, `POST /api/comments`,
- * `POST /api/comments/:id/revise` (ARCHITECTURE.md §9, §12.1, §12.8, §14).
+ * `POST /api/comments/:id/revise`, `POST /api/comments/:id/retry`
+ * (ARCHITECTURE.md §9, §12.1, §12.8, §14).
  *
  * Reading is public; writing needs a Yandex session. The author is taken from the session,
  * never from the body, so nobody can post under another reader's name. Every failure has the
@@ -12,6 +13,12 @@
  * takes only the new words — chapter, anchor and base revision stay the stored row's and are
  * never read from the request. The refusal that says «not now» carries `retryAfterMs` (the
  * cooldown) or `reopenAt` (the next UTC day), so the page prints the wait the server means.
+ *
+ * Owner's rule (2026-10-29): a filing whose last outcome was a defect on **our** side may be
+ * **retried** — the same row, a fresh attempt ladder, its change back in the queue. The route
+ * takes no body at all, and answers `RETRY_NOT_OFFERED` (409) when a retry would be a lie; the
+ * public `retryable` flag on the DTO is the same derivation, so the button cannot promise what
+ * the door would refuse.
  */
 
 import { TOTAL_CHAPTERS, type CommentPage, type PostCommentInput, type ReviseCommentInput } from '@book/shared';
@@ -19,6 +26,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { CommentService } from '../../comments/service.ts';
 import { reviseComment } from '../../comments/revise.ts';
+import { retryComment } from '../../comments/retry.ts';
 import { listCommentRows, readCommentRow, toCommentDto } from '../../comments/repo.ts';
 import { parseCookies } from '../../util/cookies.ts';
 import { clientIp, ipKey } from '../../util/ip.ts';
@@ -155,6 +163,27 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
         ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
         ...(result.reopenAt === undefined ? {} : { reopenAt: result.reopenAt }),
       });
+    }
+    return reply.code(result.status).header('cache-control', 'no-store').send(result.body);
+  });
+
+  app.post('/api/comments/:id/retry', async (request, reply) => {
+    const session = authorize(request, reply, deps);
+    if (session === null) return reply;
+    const { id } = request.params as { id: string };
+    const row = readCommentRow(deps.db, id);
+    // A foreign row and a missing one answer alike: the page may not learn whose filing exists.
+    if (row === undefined || row.status === 'hidden') {
+      return reply.code(404).send({ code: 'NOT_FOUND', message: 'нет такого замечания' });
+    }
+    // The request carries nothing: a retry re-runs the machinery on the stored filing, so there
+    // is no text, anchor or chapter a client could move between the failure and the retry.
+    const result = retryComment({ db: deps.db, now: deps.now }, row, session.identity);
+    if (result.ok === false) {
+      // Why the door is shut is an operator's line (`cap`, `refusal`, `not-ours`, …) — the reader
+      // gets one sentence, and the page already knows the flag that hid the button.
+      request.log.info({ code: result.code, commentId: id }, 'retry refused');
+      return reply.code(result.status).send({ code: result.code, message: result.message });
     }
     return reply.code(result.status).header('cache-control', 'no-store').send(result.body);
   });

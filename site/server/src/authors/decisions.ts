@@ -70,6 +70,9 @@ type DecisionRow = {
   carrier_kind: string | null;
   quote_kept: string | null;
   sentence_id: string | null;
+  /** The stored facts a harm lock's case is derived from (`shared/src/disposition.ts`). */
+  flags: string | null;
+  rights_rule: string | null;
   waves: number | null;
   chapters_touched: string | null;
   blocks_changed: number | null;
@@ -107,6 +110,8 @@ const DECISIONS_SQL = `
          c.carrier_kind  AS carrier_kind,
          c.quote_kept    AS quote_kept,
          c.sentence_id   AS sentence_id,
+         c.flags         AS flags,
+         c.rights_rule   AS rights_rule,
          ch.id           AS change_id,
          ch.premise      AS change_premise,
          ch.status       AS change_status,

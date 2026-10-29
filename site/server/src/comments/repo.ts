@@ -28,6 +28,7 @@ import { safeJson } from '../engineState/rows.ts';
 import { findLiveSentence } from '../sentences/store.ts';
 import { dispositionFieldsOf } from './dispositionReport.ts';
 import { refusalHint, reviseState, triageAttemptFailed, unrevisedState } from './attempts.ts';
+import { retryOffer } from './retryOffer.ts';
 import { failedAttempt, isStopped, OWN_STATES, premiseStatus, refusalOf, stoppedLine } from './states.ts';
 // BOOK-174 taught storage to hand the ladder's report out; BOOK-136's selection reads the
 // changes a filing became, so `states.ts` keeps the pure words and this module stays rows.
@@ -399,10 +400,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // revision are the receipt. Never invented: no chapter row, no `applied`.
   const landedReceipt =
     premise && status === 'applied' && base !== undefined ? { chapter: row.chapter, rev: base.rev } : null;
-  // BOOK-136 — an ordinary filing lands the same way: the change names the chapter it entered,
-  // and that chapter's own revision is the receipt. The stored `applied_*` columns are the
-  // second source, never a guess; with neither, `applied` stays null and the page prints the
-  // rights sentence without a number.
+  // BOOK-136 — an ordinary filing lands the same way: the change names its chapter, whose own
+  // revision is the receipt. `applied_*` is the second source, never a guess; with neither,
+  // `applied` stays null and the page prints the sentence without a number.
   const changeBase =
     !premise && status === 'applied' && change !== undefined
       ? readChapterBase(db, change.chapter)
@@ -415,17 +415,21 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     row.applied_chapter !== null && row.applied_rev !== null
       ? { chapter: row.applied_chapter, rev: row.applied_rev }
       : null;
-  // BOOK-158: the gate's word, the actionable line and the way back. All three are derived
-  // once, here, from the stored verdicts and the attempt ledger, so no surface can disagree.
+  // BOOK-158: the gate's word, the actionable line and the way back — derived once, here.
   const refusal = refusalOf(row);
-  // The attempt counts are read only for a row a revision could reopen: a settling row on a
-  // public list owes no ledger question (three COUNTs per row otherwise). A stopped change
-  // (BOOK-206 B2) is not a gate's refusal either — its row was never refused, so the door was
-  // never open and there is nothing to count.
-  const revise =
-    status === 'rejected' && !stopped ? reviseState(db, row, nowMs) : unrevisedState();
-  // BOOK-174: how the filing was read, from the five stored columns — the report is derived
-  // here, once, so every surface prints the same three lines.
+  // The counts are read only for a row a revision could reopen: a settled row owes no ledger
+  // question. A stopped change (BOOK-206 B2) was never refused, so no door was open to count.
+  const revise = status === 'rejected' && !stopped ? reviseState(db, row, nowMs) : unrevisedState();
+  // Owner's rule (2026-10-29): «повторить» is offered only for our own defect, and the same
+  // derivation answers the button and the door (`retryOffer.ts`).
+  const retryable = retryOffer(db, {
+    row,
+    status,
+    refusal,
+    change,
+    landed: landed !== undefined,
+  }).retryable;
+  // BOOK-174: how the filing was read — the word and the carrier, from the stored columns.
   const { disposition, carrierKind } = dispositionFieldsOf(db, row);
   return {
     id: row.id,
@@ -453,17 +457,18 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     // BOOK-221 — the same change's public number, so the trail prints «правка 014» from a real
     // ordinal. `null` when no change holds the filing: the row is then named by its chapter.
     changeSeq: change?.seq ?? null,
-    // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
-    // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
-    // taxonomy is a map of the detector. BOOK-9: `audit_*` never leaves the row either;
-    // an `OFF` reaches the reader only as this `reason`.
+    // Audit m5: the DTO carries the verdict the reader is told and nothing else — `guard`/
+    // `flags`/`audit_*` stay in the row, and an `OFF` reaches the reader only as `reason`.
     reason,
     attempt,
-    // BOOK-158: the actionable line beside a refusal, and the way back to another try. A stopped
-    // change (BOOK-206 B2) is not a refusal of the reader's wording, so it owes no advice — the
-    // door is not open on it either (`revise.allowed` is false for a row triage did not refuse).
+    // BOOK-158: the line beside a refusal and the way back. A stopped change (BOOK-206 B2) was
+    // not refused for its wording, so it owes no advice and no door.
     hint: stopped ? null : refusalHint({ status, refusal, rights_rule: row.rights_rule }),
     revise,
+    // The owner's rule (2026-10-29): the button's own flag, derived once here so no page guesses
+    // whether a retry would be honest. Optional in the type so a page that does not render the
+    // button yet still typechecks; the server always sends it.
+    retryable,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     // BOOK-136 — the door opens the change that decided: the landing when one exists, else the

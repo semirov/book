@@ -455,7 +455,9 @@ describe('a lock’s own sentence (BOOK-218 line 11)', () => {
 
   it.each([
     ['rights', 'не принято: это чужой текст, а чужое мы не переписываем'],
-    ['harm', 'не принято: этим можно навредить живому человеку'],
+    // BOOK-219 narrowed the harm lock to four cases: a `harm` row with no case flag is the
+    // law's own category, and that is the sentence it prints.
+    ['harm', 'не принято: это незаконно публиковать'],
     ['frame', 'не принято: у этой главы есть рамка, и её не сдвигают'],
     ['finale', 'не принято: финал уже назван, его не меняют'],
   ] as const)('says the %s lock’s own line, the verdict word in front', (lock, sentence) => {

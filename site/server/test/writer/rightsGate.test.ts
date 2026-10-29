@@ -101,7 +101,7 @@ describe('Gate B in the lane', () => {
     }
   });
 
-  it('refuses to close a prose step with no rights verdict at all', async () => {
+  it('answers a rights gate that never comes back from the engine’s own check', async () => {
     const harness = await createHarness();
     try {
       harness.premised(CHAPTER, 'в главе 9 появляется документ о допуске');
@@ -112,10 +112,13 @@ describe('Gate B in the lane', () => {
       };
 
       const result = await harness.run({ chapter: CHAPTER });
-      expect(result.status).toBe('parked');
-      expect(result.reason ?? '').toMatch(/^не дошло: /u);
+      // A clean scan owes no rights verdict (the engine asks for one only when the scan flags),
+      // so the mechanical sixth closes the step — no model was asked, and the record says so.
+      expect(result.status).toBe('closed');
       expect(rightsVerdict(harness)).toBeNull();
-      expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
+      expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('rewritten');
+      // The close needed the two prose verdicts only: a clean scan is not a precondition.
+      expect(harness.engineCalls).toContain('done');
     } finally {
       await harness.close();
     }

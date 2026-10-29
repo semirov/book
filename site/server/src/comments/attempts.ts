@@ -146,25 +146,38 @@ function count(db: Db, sql: string, ...args: Array<string | number>): number {
   return (db.prepare(sql).get(...args) as { n: number }).n;
 }
 
-/** The identity's attempts this UTC day, across every filing — refusals included. */
+/**
+ * The retry attempt rows a filing has taken are **the same submission** (owner's rule, 2026-10-29):
+ * a re-arm re-runs our machinery and is not a second thing the reader asked for, so it must not
+ * spend the identity's or the network's day. The ledger row says which attempt it was — the `retry`
+ * event carries its `n` — and this fragment is the one place that link is read.
+ */
+const NOT_A_RETRY = `AND NOT EXISTS (
+    SELECT 1 FROM comment_events e
+     WHERE e.comment_id = a.comment_id AND e.type = 'retry'
+       AND e.meta IS NOT NULL AND json_valid(e.meta)
+       AND json_extract(e.meta, '$.n') = a.n
+  )`;
+
+/** The identity's submissions this UTC day, across every filing — refusals included. */
 export function identityAttemptsToday(db: Db, identityId: string, nowMs: number): number {
   return count(
     db,
     `SELECT COUNT(*) AS n FROM comment_attempts a
        JOIN comments c ON c.id = a.comment_id
-      WHERE c.identity_id = ? AND a.day = ?`,
+      WHERE c.identity_id = ? AND a.day = ? ${NOT_A_RETRY}`,
     identityId,
     isoDay(nowMs),
   );
 }
 
-/** The network's attempts this UTC day, keyed by the stored hash — never by an address. */
+/** The network's submissions this UTC day, keyed by the stored hash — never by an address. */
 export function networkAttemptsToday(db: Db, ipHash: string, nowMs: number): number {
   return count(
     db,
     `SELECT COUNT(*) AS n FROM comment_attempts a
        JOIN comments c ON c.id = a.comment_id
-      WHERE c.ip_hash = ? AND a.day = ?`,
+      WHERE c.ip_hash = ? AND a.day = ? ${NOT_A_RETRY}`,
     ipHash,
     isoDay(nowMs),
   );

@@ -116,7 +116,10 @@ type RippleStopKey =
   | 'laneLost'
   | 'judgeVeto'
   | 'tier0Failed'
-  | 'triageRequired';
+  | 'triageRequired'
+  /** BOOK-219: our own failures — the close published nothing, or the machinery broke. */
+  | 'technical'
+  | 'closeNotPublished';
 
 export const readerSentences: Readonly<
   Record<Exclude<StopReason, 'stopped' | 'gate'> | RippleStopKey, string>
@@ -164,6 +167,12 @@ export const readerSentences: Readonly<
   tier0Failed: STOP_REASONS.stopped,
   /** BOOK-206 + BOOK-173 §4: the filing the patch would be written from has not been read yet. */
   triageRequired: STOP_REASONS.stopped,
+  /**
+   * BOOK-219 — our own failure, said as ours: the close did not publish what the pass wrote, and
+   * the way back is a retry. A refusal of the **text** never borrows either sentence.
+   */
+  technical: STOP_REASONS.shape,
+  closeNotPublished: STOP_REASONS.shape,
 };
 
 /**

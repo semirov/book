@@ -76,6 +76,8 @@ export type VerdictRow = {
   tokens_out: number;
   at: string;
   late: number;
+  /** Who answered: a model, or the engine's own deterministic check (BOOK-222). */
+  source: 'model' | 'mechanical';
 };
 
 export type DispatchRow = {
@@ -84,6 +86,8 @@ export type DispatchRow = {
   session: string;
   dispatched_at: string;
   expires_at: string;
+  /** BOOK-222: the sha the gate was handed — an answer about other text is `CANDIDATE_MOVED`. */
+  landed_sha: string | null;
 };
 
 export type LaneRow = { id: number; holder: string | null; heartbeat_at: string | null };

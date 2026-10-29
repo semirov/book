@@ -73,6 +73,12 @@ export type LandOptions = {
   mode?: WriteMode;
   /** BOOK-173 §4: the pass's estimate, frozen with the plan and replaced by the actual at close. */
   estimateUsd?: number;
+  /**
+   * BOOK-222: hold the text as a **candidate** on the step instead of publishing it. Nothing is
+   * served — no blocks, no revision, no push — until `done`; a second call with the same sha is a
+   * no-op, and a different sha replaces the candidate (the latest attempt wins).
+   */
+  provisional?: boolean;
 };
 
 export type LandResult = {
@@ -87,6 +93,8 @@ export type LandResult = {
    * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
    */
   plan?: RipplePlan | null;
+  /** BOOK-222: the text is held on the step and nothing was published. */
+  provisional?: boolean;
 };
 
 /** BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest, and the
@@ -225,6 +233,11 @@ export function createWriteOps(deps: EngineDeps) {
     if (step.pass === 'draft' && options.noWrite === true) {
       refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
     }
+    // BOOK-222: a provisional land holds a text that has not been published — a step whose text
+    // is already served has no candidate to replace.
+    if (options.provisional === true && step.landed_at !== null) {
+      refuse('ALREADY_LANDED', 409, `step ${step.step_id} already published its text`);
+    }
 
     const supplied = step.pass === 'front' ? options.frontRaw : options.text;
     const front = step.pass === 'front' ? frontTarget(db, supplied) : null;
@@ -328,6 +341,49 @@ export function createWriteOps(deps: EngineDeps) {
     // so a refused chapter leaves no partial state behind.
     const state = scanStepDelta(step, chapter);
     if (state.refusal !== null) refuse('RIGHTS_STOPLIST', 409, state.refusal, { rule: state.rule, block: state.block });
+
+    // BOOK-222 — the lane's own landing is a **candidate**: the text is validated here (size,
+    // frame, the rights scan of its delta) and held on the step, and *nothing* is published. The
+    // reader keeps the chapter the site already serves until the close; a gate reads the
+    // candidate, and a refusal drops it without a revision to take back.
+    if (options.provisional === true) {
+      if (supplied === undefined) {
+        refuse('TARGET_MISSING', 409, 'a provisional land carries its text — there is nothing to serve');
+      }
+      if (step.candidate_sha === sha) {
+        // The same attempt asked again: one candidate, one sha, nothing else to write.
+        return {
+          landed: true,
+          provisional: true,
+          revAfter: step.rev_before ?? 0,
+          sha,
+          changed: false,
+          deltaRatio: 0,
+          blocksTouched: 0,
+        };
+      }
+      // A different sha is a new attempt: the verdicts described the text the gate no longer
+      // sees. The dispatch stays, so a late answer is `CANDIDATE_MOVED` instead of a blessing.
+      if (step.candidate_sha !== null) store.deleteVerdicts(db, step.step_id);
+      const measured = measureDelta(step, chapter?.blocks ?? []);
+      store.updateStep(db, step.step_id, {
+        start_sha: step.start_sha ?? sha,
+        candidate_text: target.raw,
+        candidate_sha: sha,
+        blocks_touched: measured.touched,
+        chars_delta: measured.delta,
+        rights_scan: state.stored,
+      });
+      return {
+        landed: true,
+        provisional: true,
+        revAfter: step.rev_before ?? 0,
+        sha,
+        changed: true,
+        deltaRatio: measured.ratio,
+        blocksTouched: measured.touched,
+      };
+    }
 
     if (step.landed_at !== null) {
       // The text changed after an answer: the old verdicts described a file a gate can no

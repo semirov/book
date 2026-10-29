@@ -17,6 +17,8 @@ import { migrateV32 } from './migrateV32.ts';
 import { migrateV33 } from './migrateV33.ts';
 import { migrateV34 } from './migrateV34.ts';
 import { migrateV35 } from './migrateV35.ts';
+import { migrateV36 } from './migrateV36.ts';
+import { migrateV37 } from './migrateV37.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -334,7 +336,7 @@ const MIGRATIONS: Migration[] = [
   // BOOK-117: `steps.reopened_at` — where the wall's second window starts. Additive and nullable:
   // a row written before a reopen existed was never re-opened, and no value is invented for it.
   { to: 31, up(db) { addColumn(db, 'steps', 'reopened_at', 'TEXT'); } },
-  // BOOK-218: `migrateV32.ts` — the filing's own number, backfilled by the old rowid.
+  // BOOK-218: `migrateV32.ts` — the filing's own public number, backfilled by the old rowid.
   { to: 32, up: migrateV32 },
   // BOOK-173: `migrateV33.ts` — the frozen plan, its mode, price and verification record
   // (BOOK-206 took 30, BOOK-117's `reopened_at` took 31, BOOK-218's `comments.number` took 32).
@@ -344,6 +346,13 @@ const MIGRATIONS: Migration[] = [
   // BOOK-220 (BOOK-DOC-84 §10.8): the ladder's counters, the widening codes, the two stages —
   // 35, after BOOK-209's `reader_places` (34).
   { to: 35, up: migrateV35 },
+  // BOOK-222: `migrateV36.ts` — the candidate a pass wrote and the sha its gate read, plus who
+  // answered a verdict (`source`). Additive: an old landing keeps its `landed_*` facts
+  // (BOOK-173 took 33, BOOK-209 34, BOOK-220's ladder 35).
+  { to: 36, up: migrateV36 },
+  // BOOK-206 (owner, 2026-10-29): `migrateV37.ts` — the ladder's operator note on the attempt
+  // ledger (`widening_note`; BOOK-220's v35 already carries `widened`/`desperate`). Additive.
+  { to: 37, up: migrateV37 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

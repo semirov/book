@@ -52,7 +52,7 @@ export type Context = {
   alerts: EngineAlert[];
   calls: Call[];
   frames: Array<{ type: string; data: unknown }>;
-  post: (overrides?: { body?: string; quote?: string }) => Promise<string>;
+  post: (overrides?: { body?: string; quote?: string; proposedText?: string }) => Promise<string>;
   script: Array<Record<string, unknown>>;
   /** What the scripted provider reports as usage; `estimated` is BOOK-219's «read off the text». */
   reportUsage: (usage: PipelineUsage) => void;
@@ -219,7 +219,7 @@ export async function bootTriage(): Promise<Context> {
           blockId: block.id,
           quote: overrides.quote ?? QUOTE,
           body: overrides.body ?? 'Бумага вместо сцены.',
-          proposedText: WORDING,
+          proposedText: overrides.proposedText ?? WORDING,
         }),
       });
       expect(posted.statusCode).toBe(201);

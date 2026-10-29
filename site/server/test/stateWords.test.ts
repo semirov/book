@@ -30,6 +30,8 @@ const ROOT = join(import.meta.dirname, '../..');
  */
 const COPY_MODULES = [
   'shared/src/stateWords.ts',
+  // BOOK-219: the attempt ladder's own lines (the count, and the sink after the sixth).
+  'shared/src/attempt.ts',
   'shared/src/naming.ts',
   'shared/src/change.ts',
   'shared/src/disposition.ts',
@@ -315,24 +317,20 @@ describe('the reader’s state words', () => {
     expect(offence('внесено в главу 1. это третья редакция')).toBeNull();
   });
 
-  it('keeps the ladder in one place, and no surface prints it yet', () => {
-    // The owner's reading ladder — attempts two to five, the rule-only last one, the refusal
-    // after six — has no engine behind it. It lives as named constants so it lands in one place
-    // when the engine grows the facts; a surface that printed one would be telling a lie.
-    expect(READING_LADDER.again).toBe('не расслышали с первого раза, читают снова · попытка вторая из пяти');
-    expect(READING_LADDER.approach).toContain('третья попытка из пяти');
-    expect(READING_LADDER.fourth).toBe('пробуют иначе · попытка четвёртая из пяти');
-    expect(READING_LADDER.fifth).toBe('пробуют иначе · попытка пятая из пяти');
-    expect(READING_LADDER.ruleOnly).toBe('последняя попытка — по правилу, без машины');
-    expect(READING_LADDER.spent).toBe(
-      'не дошло: пробовали шесть раз и не смогли. правка не отклонена — нажмите «повторить»',
-    );
-    // `reviseLine` spells line 9, and no surface holds the bound it needs either.
-    expect(reviseLine(2, 5)).toBe('редактор просит поправить одно место \u00b7 вторая поправка из пяти');
+  it('keeps the reading ladder in one place, on the count the ledger uses', () => {
+    // BOOK-219 grew the ladder the owner asked for: six counted attempts, the widening recorded
+    // when the third fails, and the refusal after the sixth. The count is `attempt.ts`'s, so the
+    // sentences cannot disagree with the ledger.
+    expect(READING_LADDER.again).toBe('попытка 2 из 6 — не расслышали с первого раза, читают снова');
+    expect(READING_LADDER.approach).toContain('попытка 3 из 6');
+    expect(READING_LADDER.fourth).toContain('попытка 4 из 6');
+    expect(READING_LADDER.fifth).toContain('попытка 5 из 6');
+    expect(READING_LADDER.ruleOnly).toContain('попытка 6 из 6');
+    for (const line of Object.values(READING_LADDER)) expect(line).not.toMatch(/ждёт|в очереди|часов/iu);
+    // `reviseLine` still spells line 9, and no surface holds the bound it needs yet.
+    expect(reviseLine(2, 5)).toBe('редактор просит поправить одно место · вторая поправка из пяти');
     const printed = FILES.filter((file) => /web\/src|server\/src/u.test(file)).map((file) => readFileSync(file, 'utf8'));
-    for (const name of ['READING_LADDER', 'reviseLine']) {
-      expect(printed.some((source) => source.includes(name)), name).toBe(false);
-    }
+    expect(printed.some((source) => source.includes('reviseLine'))).toBe(false);
   });
 
   it('finds a planted word, and ignores the same word in a comment', () => {

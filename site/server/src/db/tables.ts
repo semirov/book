@@ -171,17 +171,18 @@ export const COMMENT_ATTEMPTS_TABLE_SQL = `CREATE TABLE comment_attempts (      
   outcome     TEXT CHECK (outcome IN ('submitted','accepted','refused','held','expired')),
   decided_at  TEXT,
   model       TEXT, tokens_in INTEGER, tokens_out INTEGER, usd REAL, priced INTEGER,
-  -- BOOK-206 (v30): the claim, the tries and the verdict. A filing is claimed by a conditional
-  -- UPDATE on this row, so the queue is the ledger the posting request already writes.
+  -- BOOK-206 (v30): the claim, the tries and the verdict — the ledger the post already writes.
   claim_by    TEXT,                               -- the writer session that holds the claim
   claim_until TEXT,                               -- ISO UTC; an expired claim makes the row due again
   tries       INTEGER NOT NULL DEFAULT 0,         -- calls bought for this attempt (cap 5, BOOK-DOC-84 §10.8)
   next_at     TEXT,                               -- ISO UTC: the backoff a failed call set
   verdict     TEXT,                               -- the validated book.verdict/v1 answer, written once
   verdict_at  TEXT,
-  -- BOOK-DOC-84 §10.8: the third failure widens the reading; the sixth attempt is desperate.
-  widened     TEXT,                               -- the widening code ('as-document'), null before the third failure
-  desperate   INTEGER NOT NULL DEFAULT 0,         -- 1 = the deterministic sixth attempt, no model call
+  -- BOOK-DOC-84 §10.8 / BOOK-206 (v35, v37): the third failure widens the reading and the sixth
+  -- attempt is the deterministic desperate one; widening_note is the operator's own line.
+  widened       TEXT,                             -- the widening code ('as-document'), null before the third failure
+  desperate     INTEGER NOT NULL DEFAULT 0,       -- 1 = the deterministic sixth attempt, no model call
+  widening_note TEXT,                             -- why the reading was widened, for the operator
   UNIQUE (comment_id, n)
 );
 CREATE INDEX comment_attempts_day ON comment_attempts(day);
@@ -239,6 +240,8 @@ CREATE TABLE gate_dispatches (                   -- who was handed the gate for 
   session     TEXT NOT NULL,                     -- the session the verdict must come back from
   dispatched_at TEXT NOT NULL,
   expires_at  TEXT NOT NULL,
+  -- BOOK-222: the sha the gate was handed; a stale sha is CANDIDATE_MOVED, not a blessing.
+  landed_sha  TEXT,
   PRIMARY KEY (step_id, role)
 );
 
@@ -255,15 +258,15 @@ CREATE TABLE gate_verdicts (                     -- provenance of the hidden rol
   tokens_out  INTEGER NOT NULL DEFAULT 0,
   at          TEXT NOT NULL,
   late        INTEGER NOT NULL DEFAULT 0,        -- 1 = arrived after GATE_TTL_MS
+  -- BOOK-222: 'model' or the engine's own deterministic check ('mechanical', the sixth).
+  source      TEXT NOT NULL DEFAULT 'model' CHECK (source IN ('model','mechanical')),
   PRIMARY KEY (step_id, role)
 );`;
 
 /**
- * The `steps` table is the one table M3 needs more than §8 sketched: a step exists *before*
- * it is closed (it carries the lease and hangs both gate verdicts off its id), so `outcome`
- * is null while the step is open, and the land/close facts are columns rather than a second
- * table. `migrate.ts` rebuilds a pre-M3 `steps` table in place; the shape is declared once,
- * here, and reused by the repair so the two cannot drift.
+ * The `steps` table is the one table M3 needs more than §8 sketched: a step exists *before* it is
+ * closed, so `outcome` is null while it is open. `migrate.ts` rebuilds a pre-M3 table in place;
+ * the shape is declared once, here, and reused by the repair so the two cannot drift.
  */
 
 /** Every column a rebuilt `steps` table must carry (the repair in `migrate.ts` checks them). */
@@ -301,6 +304,8 @@ export const STEPS_COLUMNS = [
   'start_sha',
   'landed_at',
   'landed_sha',
+  'candidate_text',
+  'candidate_sha',
   'pre_blocks',
   'rights_scan',
   'closed_at',
@@ -344,17 +349,18 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   start_sha   TEXT,                              -- sha of the text the step started from (recovery)
   landed_at   TEXT,                              -- the file was written (or "already true")
   landed_sha  TEXT,                              -- sha of the landed text; a gate reads this
+  -- BOOK-222: text a pass wrote and no gate blessed yet — never published before done.
+  candidate_text TEXT,                           -- the writer's text, held until the verdict
+  candidate_sha  TEXT,                           -- sha of it; gates read it, the close publishes it
   pre_blocks  TEXT,                              -- JSON block hashes before the write (delta ratio)
-  -- BOOK-61: Gate B's deterministic scan of the blocks this step wrote.
-  -- JSON {"verdict":"clear"|"flag","rule":…,"block":…,"detail":…}; cleared when landed_sha moves.
-  -- A refusal is never stored here: the law's own class refuses the land, a quote is a flag.
+  -- BOOK-61: Gate B's deterministic scan — JSON {"verdict":"clear"|"flag","rule":…}; a refusal
+  -- is never stored here.
   rights_scan TEXT,
   closed_at   TEXT,
   -- BOOK-117: who ran the pass — 'pipeline' (the lane on the pin) or 'operator' (a repair).
   provenance  TEXT CHECK (provenance IN ('pipeline','operator')),
-  -- BOOK-117: when the step was re-opened to be closed with the verdicts it earned. The step
-  -- wall is measured from MAX(at, reopened_at), so a reopen is a fresh window and a step older
-  -- than the wall can still be closed (at itself never moves: it is the step's opening).
+  -- BOOK-117: when the step was re-opened for the verdicts it earned; the wall runs from
+  -- MAX(at, reopened_at), so a reopen is a fresh window.
   reopened_at TEXT,
   -- BOOK-DOC-84 §10.8: the ladder's own facts — the sixth attempt, the widening it runs under.
   -- Null/0 until the ladder moves. The write mode is not repeated here: BOOK-173 records it
@@ -455,17 +461,13 @@ export const COMMENTS_TABLE_SQL = `CREATE TABLE comments (
 );
 `;
 
-/**
- * BOOK-218 — the filing's public number is unique and never reused. Created beside the table so
- * a fresh install (`SCHEMA_SQL`) and an upgrade (`migrateV32`) state the same index once.
- */
+/** BOOK-218 — the filing's public number is unique and never reused (fresh install = upgrade). */
 export const COMMENTS_NUMBER_INDEX_SQL =
   'CREATE UNIQUE INDEX IF NOT EXISTS comments_number ON comments(number);';
 
 /**
- * BOOK-174 §7 — the editor's materialised reading of how often the world refuses. One row per
- * scope (`reader_chapter` | `chapter` | `part`), recomputed from `comments` and read by the
- * operator's `feedback.mjs limits` only: no counter ever reaches a reader surface.
+ * BOOK-174 §7 — the editor's materialised count of refusals per scope, read by the operator's
+ * `feedback.mjs limits` only: no counter ever reaches a reader surface.
  */
 export const DISPOSITION_COUNTS_TABLE_SQL = `CREATE TABLE IF NOT EXISTS disposition_counts (
   scope      TEXT NOT NULL CHECK (scope IN ('reader_chapter','chapter','part')),

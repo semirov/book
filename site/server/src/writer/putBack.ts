@@ -1,13 +1,13 @@
 /**
  * The compensating revert of a writer pass (BOOK-219, AC3).
  *
- * The engine dispatches a gate only for a **landed** step (`engine/gates.ts` `NOT_LANDED`), so a
- * pass must publish before its verdict can exist. When the gate never answers, the text it
- * published is not a decision but it *is* live, and the reader was being told «заявка остаётся в
- * очереди» over a revision nobody checked. The fix is therefore not a reorder — it is an undo:
- * the pass puts its own landing back as a new `restore` revision, proves the chapter reads the
- * revision it started from (the returned sha is the pre-pass sha), and marks that restore as
- * reconciled so the panel stops asking about it.
+ * Since BOOK-222 a pass lands its text as a **candidate**, so the ordinary exits leave nothing to
+ * undo: the refusal drops it and the chapter keeps the text the site already serves. This module
+ * is the safety net for the one land that still publishes — a **resumed** step, whose re-landing
+ * the engine refuses to hold (there is no unserved revision to replace). When such a pass does not
+ * reach `done`, its own landing is live, and the fix is an undo: the pass puts it back as a new
+ * `restore` revision, proves the chapter reads the revision it started from (the returned sha is
+ * the pre-pass sha), and marks that restore as reconciled so the panel stops asking about it.
  *
  * Three answers, and the caller says a different sentence for two of them:
  *

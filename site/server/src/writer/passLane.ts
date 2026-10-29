@@ -341,6 +341,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     try {
       const published = await engine.land(job.leaseId, {
         text: value,
+        // BOOK-222: the lane's landing is a candidate; the close publishes it, once.
+        provisional: true,
         ...(sentences === null ? {} : { sentences }),
         ...(mode === null ? {} : { mode }),
         ...(estimate === null ? {} : { estimateUsd: estimate.usd }),

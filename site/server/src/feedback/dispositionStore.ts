@@ -28,6 +28,7 @@ import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments
 import { dispositionAnchorOf } from '../comments/dispositionReport.ts';
 import { isBasisSlot } from '../engine/text.ts';
 import { safeJson } from '../engineState/rows.ts';
+import { harmCaseOfFacts } from '../rights/rules.ts';
 import {
   chooseDisposition,
   type ChooseDispositionInput,
@@ -144,6 +145,8 @@ export function lineOfDecision(decision: DispositionDecision): string {
     disposition: decision.disposition,
     lock: decision.lock,
     carrierKind: decision.carrierKind,
+    // BOOK-219: the harm lock's four cases are four sentences, so the case travels with the word.
+    harmCase: decision.harmCase,
   });
 }
 
@@ -158,6 +161,7 @@ export function paperDecisionOf(db: Db, comment: CommentRow): DispositionDecisio
   return {
     disposition: 'through_paper',
     lock: null,
+    harmCase: null,
     carrierKind: 'document',
     reason: chainLine({ disposition: 'through_paper', lock: null, carrierKind: 'document' }),
     quoteKept: null,
@@ -178,11 +182,18 @@ export function storedDecision(row: CommentRow): DispositionDecision | null {
   const disposition = normalizeDisposition(row.disposition);
   if (disposition === null) return null;
   const lock = normalizeDispositionLock(row.lock);
+  // The case a stored `harm` lock spoke is derived from the row's own facts — a lock lifted and
+  // re-judged is not a second guess about which case it was (BOOK-219).
+  const harmCase =
+    lock === 'harm'
+      ? harmCaseOfFacts({ rule: row.rights_rule ?? null, flags: safeJson<string[]>(row.flags) ?? [] })
+      : null;
   return {
     disposition,
     lock,
+    harmCase,
     carrierKind: normalizeCarrierKind(row.carrier_kind),
-    reason: chainLine({ disposition, lock, carrierKind: normalizeCarrierKind(row.carrier_kind) }),
+    reason: chainLine({ disposition, lock, harmCase, carrierKind: normalizeCarrierKind(row.carrier_kind) }),
     quoteKept: row.quote_kept,
     sentenceId: row.sentence_id,
     blockIndex: null,

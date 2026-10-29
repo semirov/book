@@ -1,14 +1,18 @@
 /**
- * BOOK-219, the invariant: **a pass either closes with `done`, or the chapter goes back to the
- * revision the pass found.** There is no third exit.
+ * BOOK-222 — a pass's text is a **candidate** until the close publishes it.
  *
- * `passEstimated.test.ts` proves it for a gate that never answered. This file proves the rest of
- * the exits, in particular the worst one: the rights gate refuses the text, the engine closes the
- * step as `escalated:rights`, and before this fix the refused revision stayed published while the
- * reader was told «правка не принята». Also covered: an answer that never parses, a revision that
- * never validates, a thrown failure after the landing, a close the engine refuses after the gates
- * answered — and the ordinary close, which must announce the landing exactly once: at the close,
- * never at `land`.
+ * This file used to prove BOOK-219's invariant by watching a restore revision: the pass published,
+ * a gate never answered, the writer put the chapter back. The owner's rule of 2026-10-29 removed
+ * that whole story: the engine holds the text on the step, the gates read the candidate, and the
+ * close publishes it once. A pass that does not reach `written` leaves nothing to restore — the
+ * chapter still reads what the site served, and there is no revision nobody judged.
+ *
+ * So what is proved here is the *end* of each exit, not the way back:
+ *
+ *  · Gate B's refusal is the engine's own (`escalated:rights`, the change `void · dropped`);
+ *  · a close the engine refuses is the sink, in our own words, with the text never published;
+ *  · a rights question that never parses ends in the sink too, with the rule named in the record;
+ *  · and the ordinary close announces the landing exactly once: at `done`, never at `land`.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -82,8 +86,8 @@ function claims(harness: Harness): Array<{ chapter: number; kind: string }> {
   }>;
 }
 
-describe('a pass closes `done` or puts the chapter back', () => {
-  it('takes the refused text back when the rights gate refuses it', async () => {
+describe('a pass closes `done` or leaves the chapter untouched', () => {
+  it('drops the candidate when Gate B refuses it, and the sentence is about the text', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
@@ -92,54 +96,42 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
       const result = await harness.run({ lanes: ['filing'] });
 
+      // The filing is refused with Gate B's own sentence: this one really is about the text.
       expect(result.status).toBe('parked');
-      // The refused revision is not live: the chapter reads what the pass found, as a restore.
+      expect(result.reason).toBe(readerSentences.rightsMissing);
+      // Nothing of the candidate reached the reader, and nothing had to be taken back.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['restore', 'change', 'draft']);
-      // The step was stopped by the engine (`escalated:rights` is the step's word), and the change
-      // is refused: `void · dropped` with the gate's sentence, never `escalated`.
+      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['draft']);
+      expect(harness.engineCalls).not.toContain('restore');
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
       expect(changeRow(harness, changeId)).toEqual({ status: 'void', outcome: 'dropped' });
-      expect(changeRow(harness, changeId)?.outcome).not.toBe('applied');
-      // Gate B's refusal **is** the engine's refusal: the step closes and the text is put back
-      // before the writer asks, so the writer's own `putBack` finds nothing of its own to move
-      // (`откат не нужен`) and its copy falls to «новый текст стоит без проверки прав».
-      // The fact the reader can check is the engine's: the chapter reads the pre-pass text. The
-      // sentence is `writer/**`'s and is the seam this change leaves open (see the report).
-      expect(result.reason).toBe(readerSentences.rightsUnverified);
-      expect(harness.logs.join('\n')).toContain('откат не нужен');
-      // Nothing was announced about a landing, and no stage claims one.
       expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
-      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
       expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
-      expect(stagesOf(harness)).toContain('verdict');
     } finally {
       await harness.close();
     }
   });
 
-  it('puts the chapter back when the close is refused after the gates answered', async () => {
+  it('ends in the sink when the close is refused after the gates answered: nothing was published', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const changeId = filed(harness);
       harness.script.push(chapterAnswer('Глава сорок', 'новый'), 'HOLDS', 'HOLDS');
-      // Every verdict is in and the engine still refuses the close: there is no `done` to keep.
       harness.hooks.beforeCall = (name) => {
         if (name === 'done') throw new EngineRefusalError('VERDICTS_REQUIRED', 'the step has no verdicts', 409);
       };
 
       const result = await harness.run({ lanes: ['filing'] });
 
-      expect(result.status).toBe('parked');
+      expect(result.status).toBe('refused');
+      // The candidate was never published, so the sentence says that and not «текст стоит».
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.closeReverted);
+      expect(result.reason).toBe(readerSentences.closeNotPublished);
       expect(changeRow(harness, changeId)?.status).toBe('void');
-      // A close that failed leaves no «глава написана» line and no push claim behind.
+      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['draft']);
       expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
-      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
       expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
       expect(harness.logs.join('\n')).toContain('VERDICTS_REQUIRED');
@@ -156,7 +148,8 @@ describe('a pass closes `done` or puts the chapter back', () => {
       const atLand: number[] = [];
       const atDone: number[] = [];
       harness.hooks.beforeCall = (name) => {
-        // The hook runs before each call: at `done` the rows still hold nothing about a landing.
+        // The hook runs before each call: at both `land` and `done` no claim exists yet — since
+        // BOOK-222 the text at `land` is a candidate, and the close is what publishes it.
         if (name === 'land') atLand.push(claims(harness).length);
         if (name === 'done') atDone.push(claims(harness).length);
       };
@@ -178,7 +171,7 @@ describe('a pass closes `done` or puts the chapter back', () => {
     }
   });
 
-  it('puts the chapter back when the gate’s revision never validates', async () => {
+  it('puts the filing’s own sentence into the chapter when the revision never validates', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
@@ -186,51 +179,54 @@ describe('a pass closes `done` or puts the chapter back', () => {
       harness.script.push(
         chapterAnswer('Глава сорок', 'новый'),
         'GAP\nblocker · глава 40, «служебный абзац» · повтор вместо прозы · переписать абзац',
-        // Both revision answers break the shape: the pass has landed and cannot revise.
+        // The revision's answers break the shape, and the ladder is on its own from there.
         'мусор',
         'мусор',
       );
 
       const result = await harness.run({ lanes: ['filing'] });
 
-      expect(result.status).toBe('parked');
-      expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
-      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
-      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
-      expect(stagesOf(harness)).not.toContain('landed');
+      // The pen's sixth is deterministic: the reader's sentence, placed after the first
+      // paragraph, and the pass closes on the machine's own verdicts when the gates stay silent.
+      expect(result.status).toBe('closed');
+      const written = harness.fixture.readChapter(CHAPTER);
+      expect(written).toContain('в главе 40 появляется документ о допуске');
+      expect(written?.startsWith('Глава сорок\n\n')).toBe(true);
+      expect(stagesOf(harness)).toContain('landed');
     } finally {
       await harness.close();
     }
   });
 
-  it('puts the chapter back when a gate answer never parses', async () => {
+  it('names the rights rule in the record when the rights question never parses', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
-      filed(harness);
-      // A flagged scan asks the copyright question; both answers break its shape.
+      const changeId = filed(harness);
+      // A flagged scan asks the copyright question; both answers break its shape, and every
+      // attempt after that is refused too — the machine's sixth checks the scan itself.
       harness.script.push(quotedAnswer(), 'HOLDS', 'HOLDS', 'мусор', 'мусор');
 
       const result = await harness.run({ lanes: ['filing'] });
 
-      expect(result.status).toBe('parked');
+      expect(result.status).toBe('refused');
+      // The rights question was never answered, so the close refused: nothing was published, and
+      // the sentence says exactly that instead of claiming a refusal nobody made.
+      expect(result.reason).toBe(readerSentences.closeNotPublished);
       expect(harness.logs.join('\n')).toContain('GATE_UNPARSED');
+      // Nothing was served, and the engine's own refusal names the rule it could not clear.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.reverted);
+      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['draft']);
+      expect(changeRow(harness, changeId)?.status).toBe('void');
       expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
-      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
-      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
+      expect(stagesOf(harness).at(-1)).toBe('refused');
     } finally {
       await harness.close();
     }
   });
 
-  it('puts the chapter back when a thrown failure follows the landing', async () => {
+  it('ends in the sink when a thrown failure follows the landing', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
@@ -244,19 +240,17 @@ describe('a pass closes `done` or puts the chapter back', () => {
         if (name !== 'text') return;
         reads += 1;
         // Reads 1 and 2 are the prompt and the editor's dispatch; the third is the revision's
-        // own re-read, and it dies there — after the draft landed, outside the gate's catch. The
-        // way back reads the chapter once more, so only that one call is broken.
+        // own re-read, and it dies there — after the draft, outside the gate's catch.
         if (reads === 3) throw new Error('the rows could not be read');
       };
 
       const result = await harness.run({ lanes: ['filing'] });
 
-      expect(result.status).toBe('parked');
+      expect(result.status).toBe('refused');
+      expect(result.reason).toBe(readerSentences.technical);
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.reverted);
+      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['draft']);
       expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
-      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
       expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
     } finally {
       await harness.close();
