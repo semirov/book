@@ -11,11 +11,11 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OFFLINE_SENTENCE as WORKER_SENTENCE, offlineDocument } from '../../../scripts/lib/sw.mjs';
 import { firstDeclarations } from './cssRules.ts';
-import { Offline, OFFLINE_RETRY, OFFLINE_SENTENCE, isOffline } from './Offline.tsx';
+import { Offline, OFFLINE_RETRY, OFFLINE_SENTENCE, isOffline, reloadWhenOnline } from './Offline.tsx';
 
 /** Every stylesheet as text: the row's shape is a claim about the sheet, not a snapshot. */
 const sheets = import.meta.glob<string>('../styles/*.css', {
@@ -102,6 +102,39 @@ describe('the offline page', () => {
     expect(text).not.toMatch(/\d/u); // no chapter number, no count, no progress
     for (const word of ['глава написана', 'пишется глава', 'замысел', 'книга ·', 'офлайн-режим', 'установить']) {
       expect(text, word).not.toContain(word);
+    }
+  });
+});
+
+describe('the offline shell does not keep an old deploy', () => {
+  it('reloads once when the network returns: the shell came from a cache, not from this deploy', () => {
+    // The crash-loop defect: a navigation answered with the worker's own document keeps the
+    // release that served it. The host comes back, so one reload is the whole repair.
+    const events = new EventTarget();
+    let reloads = 0;
+    const stop = reloadWhenOnline(events, () => {
+      reloads += 1;
+    });
+    events.dispatchEvent(new Event('online'));
+    events.dispatchEvent(new Event('online'));
+    expect(reloads).toBe(1);
+    stop();
+    events.dispatchEvent(new Event('online'));
+    expect(reloads).toBe(1);
+  });
+
+  it('subscribes the mounted offline page to that event', async () => {
+    const spies: EventListenerOrEventListenerObject[] = [];
+    const original = window.addEventListener.bind(window);
+    const spy = vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'online') spies.push(listener as EventListenerOrEventListenerObject);
+      return original(type, listener, options);
+    });
+    try {
+      await mount();
+      expect(spies.length).toBe(1);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

@@ -38,6 +38,8 @@ export type EngineOverlay = {
   fingerprint: string;
   engine: StateSnapshot['engine'];
   queue: StateSnapshot['queue'];
+  /** BOOK-DOC-84 #3/#22: the lane's day, so a snapshot and a frame announce one number. */
+  lane: NonNullable<StateSnapshot['lane']>;
   cascade: StateSnapshot['cascade'];
   unresolved: StateSnapshot['unresolved'];
   current: StateSnapshot['current'];
@@ -74,7 +76,7 @@ function stageOf(db: Db, changeId: string): string {
 }
 
 /** The public headline `«4 замечания в очереди»` and the change card's position (§9). */
-export function readQueue(db: Db, nowMs: number): QueueDto {
+export function readQueue(db: Db, nowMs: number, options: { pendingLimit?: number } = {}): QueueDto {
   // BOOK-7: a premise waits for the chapter's first pass, not for the lane, so it is not a
   // queued change and never becomes the head.
   const pending = countRows(db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0`);
@@ -88,6 +90,18 @@ export function readQueue(db: Db, nowMs: number): QueueDto {
   const lastDecided = db
     .prepare(`SELECT MAX(finished_at) AS at FROM changes WHERE finished_at IS NOT NULL`)
     .get() as { at: string | null } | undefined;
+  // BOOK-DOC-84 #3: the waiting filings themselves — the lane's order is `changes.seq`, and a
+  // row's `ahead` is how many older pending filings it has (never a second query per row).
+  const limit = options.pendingLimit ?? 0;
+  const waiting =
+    limit <= 0
+      ? []
+      : (db
+          .prepare(
+            `SELECT id, chapter, seq, kind, enqueued_at FROM changes
+              WHERE status = 'pending' AND premise = 0 ORDER BY seq LIMIT ?`,
+          )
+          .all(limit) as Array<{ id: string; chapter: number; seq: number; kind: string; enqueued_at: string }>);
 
   return {
     depth: pending,
@@ -117,6 +131,14 @@ export function readQueue(db: Db, nowMs: number): QueueDto {
             stage: stageOf(db, processingRow.id),
           },
     lastDecidedAt: lastDecided?.at ?? null,
+    pending: waiting.map((row, index) => ({
+      id: row.id,
+      chapter: row.chapter,
+      seq: row.seq,
+      ahead: index,
+      kind: row.kind,
+      enqueuedAt: row.enqueued_at,
+    })),
   };
 }
 
@@ -296,10 +318,30 @@ export function readCurrent(db: Db): StateSnapshot['current'] {
   };
 }
 
+/** `writer_state`'s day: the passes that spent money today, the bound, the last one. */
+export function readLaneDay(db: Db, nowMs: number, maxPasses: number): NonNullable<StateSnapshot['lane']> {
+  const row = db.prepare('SELECT day, passes, last_pass_at FROM writer_state WHERE id = 1').get() as
+    | { day: string; passes: number; last_pass_at: string | null }
+    | undefined;
+  if (row === undefined) return { passesToday: 0, maxPasses, writerAt: null };
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  // A row for another day is a fresh day: the counter is per-day by construction (BOOK-187 AC5).
+  return {
+    passesToday: row.day === today ? row.passes : 0,
+    maxPasses,
+    writerAt: row.last_pass_at,
+  };
+}
+
 /** Everything the snapshot needs from the engine, plus a cheap change detector. */
-export function readEngineOverlay(db: Db, nowMs: number): EngineOverlay {
+export function readEngineOverlay(
+  db: Db,
+  nowMs: number,
+  options: { pendingLimit?: number; maxPasses?: number } = {},
+): EngineOverlay {
   const health = readEngineHealth(db, nowMs);
-  const queue = readQueue(db, nowMs);
+  const queue = readQueue(db, nowMs, { pendingLimit: options.pendingLimit ?? 0 });
+  const lane = readLaneDay(db, nowMs, options.maxPasses ?? 4);
   const cascade = readOpenCascade(db);
   const unresolved = readUnresolved(db);
   const current = readCurrent(db);
@@ -312,6 +354,10 @@ export function readEngineOverlay(db: Db, nowMs: number): EngineOverlay {
     queue.head?.id ?? null,
     queue.processing?.id ?? null,
     queue.lastDecidedAt,
+    (queue.pending ?? []).map((entry) => [entry.id, entry.ahead]),
+    lane.passesToday,
+    lane.maxPasses,
+    lane.writerAt,
     cascade?.id ?? null,
     cascade?.wave ?? null,
     cascade?.stepChapter ?? null,
@@ -327,6 +373,7 @@ export function readEngineOverlay(db: Db, nowMs: number): EngineOverlay {
       laneId: health.laneId,
     },
     queue,
+    lane,
     cascade,
     unresolved,
     current,

@@ -31,6 +31,10 @@ export const STAGGER_MS = 80;
 
 /** The caret stays after the last grapheme, greys for 220 ms, then leaves (§3). */
 export const TITLE_REST_MS = 220;
+/** §3 — the cover's own rate: the title types at 18 cps, on the sheet's fixed table. */
+export const TITLE_CPS = 18;
+/** The table's first row: a grapheme lands one 18-cps interval after the previous, the first too. */
+export const TITLE_FIRST_INK_MS = 1_000 / TITLE_CPS;
 /** A renamed title lands whole at 400 ms: the budget is a constant of the sheet, not a word. */
 export const TITLE_CAP_MS = 400;
 /** The whole budget: the last paragraph starts at 1 700 and ends at 1 920 — 390 and 1440 alike. */

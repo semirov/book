@@ -1,7 +1,7 @@
 /**
  * BOOK-121 — where a pass wrote.
  *
- * `passMotion.ts` times a change it is handed; this module finds one: the minimal grapheme span
+ * `printPlan.ts` times a change it is handed; this module finds one: the minimal grapheme span
  * between the text the reader saw and the text the pass left, plus the place that span holds in
  * the final block. Both are grapheme-level, never code-unit-level: half a surrogate pair or a
  * stranded combining mark would be painted as a character that exists in neither text.
@@ -12,7 +12,7 @@
  * caller gets the start with the span, and `passRunOf` cuts the final text with it.
  */
 
-import type { PassKind } from './passMotion.ts';
+import type { PrintKind } from './printPlan.ts';
 import { graphemes } from './reveal.ts';
 
 export type PassSpan = {
@@ -20,7 +20,7 @@ export type PassSpan = {
   before: string;
   /** What it wrote: `''` for a deletion. */
   after: string;
-  kind: PassKind;
+  kind: PrintKind;
   /** The run's start in the final text, in graphemes — the common prefix's length. */
   offset: number;
 };
@@ -54,7 +54,7 @@ export function passSpanOf(before: string, after: string): PassSpan | null {
   const removed = old.slice(prefix, old.length - suffix).join('');
   const added = next.slice(prefix, next.length - suffix).join('');
   if (removed === '' && added === '') return null;
-  const kind: PassKind = removed === '' ? 'insertion' : added === '' ? 'deletion' : 'replacement';
+  const kind: PrintKind = removed === '' ? 'insertion' : added === '' ? 'deletion' : 'replacement';
   return { before: removed, after: added, kind, offset: prefix };
 }
 

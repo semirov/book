@@ -2,7 +2,7 @@
  * BOOK-136 — one state, from the change: applied, pending, refused.
  *
  * The owner's prod rows: the writer said «пока нечего писать: заявок нет», the header said «в
- * очереди 2 правки», and two filings still read «идёт · правка в очереди на запись · входит в
+ * очереди 2 правки», and two filings still read «идёт · правка ждёт записи · входит в
  * книгу». The linked changes were `done applied` and the comment rows stayed `accepted`, because
  * triage is the last thing that writes a comment's own status.
  *
@@ -342,7 +342,7 @@ describe('BOOK-206 B2 — one derivation, four surfaces', () => {
     expect(stopped.attempt).toBeNull();
     expect(stopped.hint).toBeNull();
     expect(stopped.revise?.allowed).toBe(false);
-    expect(JSON.stringify(stopped)).not.toContain('в очереди на запись');
+    expect(JSON.stringify(stopped)).not.toContain('ждёт записи');
     expect(JSON.stringify(stopped)).not.toContain('входит в книгу');
   });
 

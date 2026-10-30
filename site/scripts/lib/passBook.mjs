@@ -61,7 +61,7 @@ export async function prepareTemp() {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   // Schema v21 (this branch understands v20) only added two nullable columns; pin the marker.
   const version = db.prepare('PRAGMA user_version').get().user_version;
-  if (version > 20) db.exec('PRAGMA user_version = 20');
+  if (version < 20) db.exec('PRAGMA user_version = 20');
   db.close();
   return dir;
 }

@@ -233,6 +233,42 @@ describe('BookSocket', () => {
     expect(rig.delays).toEqual([]);
   });
 
+  it('schedules its own wait with no receiver: the default timer is a wrapper, not `window.setTimeout`', () => {
+    // A browser's `setTimeout` is a method of `window`: calling it as `this.schedule(…)` throws
+    // «Illegal invocation» and the first close would end the reconnect for good (the phone's
+    // head that never healed). The default is a plain function, so it is called with no receiver.
+    const real = globalThis.setTimeout;
+    const calls: number[] = [];
+    const stub = function (this: unknown, callback: () => void, delayMs?: number): unknown {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+      calls.push(delayMs ?? 0);
+      return real(callback, delayMs);
+    };
+    (globalThis as { setTimeout: unknown }).setTimeout = stub;
+    try {
+      const sockets: FakeSocket[] = [];
+      // No scheduler handed in: the class's own default is the one under test.
+      const socket = new BookSocket(
+        'ws://example.test/ws',
+        { onEvent: () => undefined, onStatus: () => undefined },
+        () => {
+          const next = new FakeSocket();
+          sockets.push(next);
+          return next;
+        },
+        undefined,
+        () => 0.5,
+      );
+      socket.connect();
+      sockets[0]!.serverClose(1006);
+      // The wait was scheduled (0.5 s × 1.0, the jitter of `() => 0.5`), not thrown away.
+      expect(calls).toEqual([500]);
+      socket.close();
+    } finally {
+      (globalThis as { setTimeout: unknown }).setTimeout = real;
+    }
+  });
+
   it('sends a ping only on an open socket', () => {
     const rig = setup();
     rig.socket.sendPing(5);

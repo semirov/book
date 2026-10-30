@@ -137,8 +137,13 @@ export function normalizeFindings(raw: unknown): Finding[] {
   return findings;
 }
 
-export function hasBlocker(findings: readonly Finding[]): boolean {
-  return findings.some((finding) => finding.severity === 'blocker');
+/**
+ * §10.8 — what blocks, by the requirements the attempt runs under. Before the widening only a
+ * `blocker` stops the text; a widened attempt (the third failure widened the rules) treats a
+ * `major` as blocking too. The set is explicit, so no severity silently becomes advisory.
+ */
+export function hasBlocker(findings: readonly Finding[], widened = false): boolean {
+  return findings.some((finding) => finding.severity === 'blocker' || (widened && finding.severity === 'major'));
 }
 
 /** Hand the step to a gate session, or resume the session that already holds it. */
@@ -239,9 +244,11 @@ export function recordVerdict(
   }
 
   const findings = normalizeFindings(answer.findings);
-  const downgraded = answer.verdict === 'GAP' && !hasBlocker(findings);
+  // §10.8: a widened step checks stricter — `major` blocks as well as `blocker`.
+  const widened = step.widened !== null;
+  const downgraded = answer.verdict === 'GAP' && !hasBlocker(findings, widened);
   const verdict: 'HOLDS' | 'GAP' = downgraded ? 'HOLDS' : answer.verdict;
-  const blocking = verdict === 'GAP' && hasBlocker(findings);
+  const blocking = verdict === 'GAP' && hasBlocker(findings, widened);
   const cycles = step.cycle;
   const late = dispatch.expires_at <= at;
 
@@ -304,6 +311,11 @@ export function missingVerdicts(db: Db, step: StepRow): MissingVerdict[] {
   if (readRightsScan(step)?.verdict === 'flag' && getVerdict(db, step.step_id, RIGHTS_ROLE) === undefined) {
     missing.push(RIGHTS_ROLE);
   }
+  // §10.8: a widened attempt checks stricter — the rights gate is no longer skippable on a clean
+  // scan; the step cannot close without its answer.
+  if (step.widened !== null && getVerdict(db, step.step_id, RIGHTS_ROLE) === undefined) {
+    missing.push(RIGHTS_ROLE);
+  }
   return missing;
 }
 
@@ -311,7 +323,10 @@ export function missingVerdicts(db: Db, step: StepRow): MissingVerdict[] {
 export function blockingVerdict(db: Db, stepId: string, role: GateRole): boolean {
   const verdict = getVerdict(db, stepId, role);
   if (!verdict || verdict.verdict !== 'GAP') return false;
-  return hasBlocker(normalizeFindings(JSON.parse(verdict.findings) as unknown));
+  const step = db.prepare('SELECT widened FROM steps WHERE step_id = ?').get(stepId) as
+    | { widened: string | null }
+    | undefined;
+  return hasBlocker(normalizeFindings(JSON.parse(verdict.findings) as unknown), step?.widened != null);
 }
 
 /**

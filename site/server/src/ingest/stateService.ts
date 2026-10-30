@@ -28,6 +28,12 @@ export class StateService {
     private readonly db: Db,
     private readonly clock: () => Date = () => new Date(),
     private readonly caps: BudgetCaps = DEFAULT_BUDGET_CAPS,
+    /**
+     * BOOK-DOC-84 #3/#22: what the snapshot announces about the lane — the queue block's own cap
+     * and the day's pass bound. The defaults mirror `queueSoftCap` and `WRITER_MAX_PASSES_PER_DAY`;
+     * a caller that has the config hands it its own values.
+     */
+    private readonly live: { queueSoftCap: number; maxPasses: number } = { queueSoftCap: 15, maxPasses: 4 },
   ) {}
 
   /**
@@ -90,7 +96,10 @@ export class StateService {
     const readerChanges = this.readerChanges();
     const started = this.started();
     const now = this.clock();
-    const overlay = readEngineOverlay(this.db, now.getTime());
+    const overlay = readEngineOverlay(this.db, now.getTime(), {
+      pendingLimit: this.live.queueSoftCap,
+      maxPasses: this.live.maxPasses,
+    });
     // BOOK-117: the one money answer, from the ledger; a spend moves the fingerprint, so the
     // version and the ETag move with it.
     const budget = budgetSnapshot(this.db, this.caps, now.getTime());

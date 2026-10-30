@@ -1,7 +1,7 @@
 import type { CommentDto } from '@book/shared';
 import { interventionKindLabel } from '@book/shared';
 
-import { filingInk, filingNum, filingNumber, stripFilings } from '../lib/filings.ts';
+import { filingInk, filingNumber, stripFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
 
 /**
@@ -36,27 +36,37 @@ export function PhoneStrip({
         const marginalia = filingMarginalia(comment);
         const ink = filingInk(comment);
         const kind = interventionKindLabel(comment.interventionKind);
+        // BOOK-218 — the filing's own public number, the same one the mark prints.
+        const number = Number.isFinite(comment.number) ? filingNumber(comment) : null;
         return (
           <button
             key={comment.id}
             type="button"
             className="phone-strip-row"
             data-status={comment.status}
-            data-number={filingNum(comment)}
+            data-number={number ?? undefined}
             onClick={(event) => onOpen(comment, event.currentTarget)}
           >
-            <span className={`phone-strip-n ink-word-${ink.tone}`}>{filingNumber(comment)}</span>
+            {/* §11.3 — the phone's number is the change's own, as the mark's is: a token cut
+                from an id is not an ordinal the book can back. */}
+            {number === null ? null : (
+              <span className={`phone-strip-n ink-word-${ink.tone}`}>{number}</span>
+            )}
             {kind === null ? null : (
               <>
-                <span className="phone-strip-dot" aria-hidden="true">
-                  ·
-                </span>
+                {number === null ? null : (
+                  <span className="phone-strip-dot" aria-hidden="true">
+                    ·
+                  </span>
+                )}
                 <span className="phone-strip-kind">{kind}</span>
               </>
             )}
-            <span className="phone-strip-dot" aria-hidden="true">
-              ·
-            </span>
+            {number === null && kind === null ? null : (
+              <span className="phone-strip-dot" aria-hidden="true">
+                ·
+              </span>
+            )}
             <span className={`phone-strip-word ink-word-${ink.tone}`}>{marginalia.word}</span>
             <span className="phone-strip-go" aria-hidden="true">
               →

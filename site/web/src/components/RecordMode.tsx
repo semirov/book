@@ -1,10 +1,17 @@
-import type { CatalogEntry, FrontDto, StateSnapshot, ViewerDto } from '@book/shared';
+import type {
+  CatalogEntry,
+  FilingUpdatePayload,
+  FrontDto,
+  LiveFiling,
+  StateSnapshot,
+  ViewerDto,
+} from '@book/shared';
 import type { ReactElement } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { ClientState } from '../lib/clientState.ts';
+import type { ConnectionState } from '../lib/socketStatus.ts';
 import type { ChapterLoader } from '../lib/place.ts';
-import type { Stages } from '../lib/useStages.ts';
-import type { SocketStatus } from '../lib/ws.ts';
 import type { BookView } from './ViewSwitch.tsx';
 import { CapacityPlate } from './CapacityPlate.tsx';
 import { Chronicle } from './Chronicle.tsx';
@@ -53,8 +60,10 @@ export function RecordMode({
   markers,
   onOpenChange,
   live,
-  socket,
-  stages,
+  client,
+  connection,
+  filings,
+  filingUpdates,
   reading,
   viewer,
   front,
@@ -72,9 +81,13 @@ export function RecordMode({
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
   live: boolean;
-  /** BOOK-218: the page's connection, so a record page's head says `связи нет` too. */
-  socket: SocketStatus;
-  stages: Stages;
+  /** BOOK-DOC-84 §11.1: the page's folded frames — the record's head is derived from them. */
+  client?: ClientState | null;
+  /** BOOK-218/BOOK-DOC-84: the socket's state, so a record page's head says `связи нет` too. */
+  connection?: ConnectionState | null;
+  /** The viewer's own filings from `hello.live.filings` / `filing:update` (no mount-only fetch). */
+  filings?: readonly LiveFiling[];
+  filingUpdates?: Readonly<Record<string, FilingUpdatePayload>>;
   reading: { n: number | null; page: number | null };
   viewer: ViewerDto;
   front: FrontDto;
@@ -90,7 +103,8 @@ export function RecordMode({
         <TrailView
           state={state} ribbon={ribbon} catalog={catalog}
           markers={markers} onOpenChange={onOpenChange}
-          live={live} socket={socket} stages={stages} reading={reading} viewer={viewer}
+          live={live} client={client} connection={connection} reading={reading} viewer={viewer}
+          filings={filings} filingUpdates={filingUpdates}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
           exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
         />

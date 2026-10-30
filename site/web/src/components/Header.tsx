@@ -2,12 +2,13 @@ import type { CatalogEntry, StateSnapshot } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
-import type { HeadSocket } from '../lib/headStatus.ts';
+import type { ClientState } from '../lib/clientState.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
-import type { Stages } from '../lib/useStages.ts';
+import type { ConnectionState } from '../lib/socketStatus.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
-import { HeadStatus } from './HeadStatus.tsx';
+import { HeadLine } from './HeadLine.tsx';
 import { PageNumber } from './PageNumber.tsx';
+import { PrintFollow } from './PrintFollow.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -34,10 +35,10 @@ function titleOf(catalog: readonly CatalogEntry[], n: number | null): string | n
  * panels, the chronicle and the end matter: the chip that used to stand here («пишется
  * глава N», «правка приостановлена», «последняя запись · 25.10», «глав ещё нет») is gone.
  *
- * One fact is the exception (BOOK-156 #3814, owner 2026-10-28): **whether the book is being
- * written now**. It is not a chip in the row — it is one 12 px line in the row's free space,
- * present only while a pass is in flight, so the reading surface says the one thing a reader
- * looking up from the prose needs and nothing else.
+ * One fact is the exception (BOOK-156 #3814, owner 2026-10-28; BOOK-DOC-84 §11.1): **what the
+ * book is doing now**. It is not a chip in the row — it is one 12 px line in the head's flow
+ * under the row, present only while a state is live, so the reading surface says the one thing
+ * a reader looking up from the prose needs and nothing else. Idle prints no line at all.
  *
  * BOOK-104 / BOOK-207: the head names the chapter at the reading line and the folio prints its
  * page — one model, resolved once in `App` and handed down.
@@ -49,8 +50,8 @@ export function Header({
   markers: escalation,
   onOpenChange,
   live,
-  stages,
-  socket,
+  client,
+  connection,
   nowMs,
   reading,
 }: {
@@ -61,10 +62,17 @@ export function Header({
   onOpenChange: (changeId: string) => void;
   /** BOOK-56: the ribbon is history; off means it is not on the page at all. */
   live: boolean;
-  /** BOOK-156 #3814: the page's stage log — the head says the book is being written. */
-  stages?: Stages;
-  /** BOOK-218: the page's socket status — with no live line the head says `связи нет`. */
-  socket?: HeadSocket;
+  /**
+   * BOOK-DOC-84 §11.1 — the page's folded frames: the head's status line is derived from them
+   * (`lib/nowState.ts`), never from a second fetch. Absent where a caller draws no line.
+   */
+  client?: ClientState | null;
+  /**
+   * §11.1 — what the socket is doing (`lib/socketStatus.ts`): a connection word outranks the
+   * state line while it has something true to say, and says nothing at all while `connecting`.
+   * Absent where a caller draws no line.
+   */
+  connection?: ConnectionState | null;
   /** A fixed clock for a test; a page hands none in. */
   nowMs?: number;
   /**
@@ -115,14 +123,16 @@ export function Header({
               </>
             )}
           </span>
-          {/* BOOK-156 #3814: the book's state, in the row's free space — after the chapter
-              cluster and before the folio, which stays the row's right end. BOOK-218: the idle
-              word is `тихо`, and the head never prints nothing. */}
-          <HeadStatus state={state} stages={stages} socket={socket} nowMs={nowMs} />
+          {/* BOOK-220 §11.2 — «следить»: the print's one control, absent when nothing prints. */}
+          <PrintFollow />
           {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />
         </div>
+        {/* BOOK-220 §11.1 — the head's status line: its own block under the brand row, in the
+            head's flow (inside `.top-in`, after `.top-row`), so the head's measured height
+            includes it and `--offset-top` follows. Idle renders no node at all. */}
+        <HeadLine client={client} connection={connection} nowMs={nowMs} />
       </div>
       <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} live={live} />
     </header>

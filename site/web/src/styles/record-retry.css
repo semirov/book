@@ -1,0 +1,37 @@
+/**
+ * BOOK-220 §11.3 — «повторить» and its honest line: a word in the record's register.
+ *
+ * Its own sheet because `record.css` is at the 500-line gate the architecture check holds; it
+ * follows the record so the word inherits the same reset (a bare button, no colour, no icon).
+ */
+/* §11.3 — «повторить» is a word in the record's register: lowercase mono 12, the shape of
+   `вмешаться`, no primary button, no colour, no icon. It stands on its own line, under the
+   failure it answers. */
+.rec-retry {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
+  color: var(--ink-2);
+  text-decoration: underline 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.rec-retry:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+/* The cap's line, and a repeat the endpoint would not take: the same mono rung, no colour. */
+.rec-retry-line {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}

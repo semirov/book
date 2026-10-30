@@ -372,12 +372,10 @@ describe('decisions tailing — the site turns a file line into an event', () =>
       change_id: 'chg_tail1',
     });
     expect(h.db.prepare('SELECT status FROM changes WHERE id = ?').get('chg_tail1')).toEqual({ status: 'pending' });
-    expect(emitted.map((event) => event.type).sort()).toEqual(['change:queued', 'comment:decision']);
-    expect(emitted.find((event) => event.type === 'comment:decision')?.data).toMatchObject({
-      id,
-      status: 'accepted',
-      changeId: 'chg_tail1',
-    });
+    // BOOK-DOC-84 #17: the filing's own row travels with the decision.
+    expect(emitted.map((event) => event.type).sort()).toEqual(['change:queued', 'comment:decision', 'filing:update']);
+    const decision = emitted.find((event) => event.type === 'comment:decision');
+    expect(decision?.data).toMatchObject({ id, status: 'accepted', changeId: 'chg_tail1' });
   });
 
   it('announces a decision the CLI has already applied (the running-site path)', async () => {

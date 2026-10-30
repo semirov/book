@@ -62,9 +62,9 @@ afterEach(() => {
 });
 
 describe('migration v33 — the frozen plan on a fresh install', () => {
-  it('creates change_plans, reaches version 34, and does not duplicate main’s graph', () => {
+  it('creates change_plans, reaches the head version, and does not duplicate main’s graph', () => {
     db = openDatabase(':memory:');
-    expect(SCHEMA_VERSION).toBe(34);
+    expect(SCHEMA_VERSION).toBe(35);
     expect(migrate(db).to).toBe(SCHEMA_VERSION);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
@@ -279,7 +279,7 @@ describe('migration v33 — the same shape on an upgraded install', () => {
       shapeWithoutPlan(db, from);
       expect(migrate(db)).toEqual({ from, to: SCHEMA_VERSION });
     }
-    // A v34 volume is not served by a v33 build: the boot refuses, no DDL.
+    // A v35 volume is not served by a v34 build: the boot refuses, no DDL.
     db.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
     expect(() => migrate(db)).toThrow(/understands/u);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION + 1);

@@ -89,11 +89,13 @@ describe('runPass — one pass, end to end', () => {
       expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 5_000, out: 1_000, cachedIn: 0 }));
 
       // 3. The premise settles as applied — the change is not a cascade.
-      expect(harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId)).toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 40' });
+      expect(harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId))
+        .toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 40' });
 
-      // 4. The stages, in the order the work happened; one producer per stage.
-      const stages = listStages(harness.fixture.db, CHAPTER);
-      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict', 'verdict', 'verdict', 'landed']);
+      const stages = listStages(harness.fixture.db, CHAPTER); // BOOK-DOC-84 D3: start + answer per gate
+
+      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict',
+        'verdict', 'verdict', 'verdict', 'verdict', 'landed']);
       for (const stage of stages) {
         expect(stage.chapter).toBe(CHAPTER);
         expect(stage.passId).toBe(result.stepId);
@@ -102,8 +104,8 @@ describe('runPass — one pass, end to end', () => {
       }
       expect(stages[0]?.summary).toContain('замысел: в главе 40 появляется документ о допуске');
       expect(stages[1]?.summary).toContain('промпт собран');
-      expect(stages[4]?.summary).toBe('редактор: HOLDS · замечаний нет');
-      expect(stages[5]?.summary).toBe('консультант: HOLDS · замечаний нет');
+      expect(stages.slice(4, 8).map((stage) => stage.summary)).toEqual(['редактор: запрос к модели',
+        'редактор: HOLDS · замечаний нет', 'консультант: запрос к модели', 'консультант: HOLDS · замечаний нет']);
 
       // 5. `landed` names the chapter's blocks and charges the pass once.
       const landed = stages.at(-1);
@@ -167,8 +169,7 @@ describe('runPass — one pass, end to end', () => {
       expect(stepRow(harness.fixture, stepId)?.model).toBe(harness.config.model);
       expect(spendRow(harness, stepId)).toMatchObject({ model: harness.config.model, priced: 1 });
       expect(Number(spendRow(harness, stepId)?.usd)).toBeGreaterThan(0);
-      // The mismatch is evidence, and it stays an operator line: a receipt names shas and lengths,
-      // never a model string in free text (BOOK-187 AC7).
+      // Evidence, an operator line: a receipt names shas and lengths, never a model string.
       expect(harness.logs.some((line) => line.includes('другими весами: deepseek-v4-pro-0901'))).toBe(true);
       expect(transcriptRows(harness, stepId).map((row) => row.content_redacted).join('\n')).not.toContain('deepseek');
     } finally {
@@ -229,8 +230,8 @@ describe('runPass — one pass, end to end', () => {
       expect(revisions.n).toBe(2);
 
       const stages = listStages(harness.fixture.db, CHAPTER);
-      // editor + consultant per round, plus Gate B once per landed revision.
-      expect(stages.filter((stage) => stage.stage === 'verdict')).toHaveLength(6);
+      // Two rounds of editor + consultant (start and answer each), plus Gate B per revision.
+      expect(stages.filter((stage) => stage.stage === 'verdict')).toHaveLength(10);
       expect(stages.filter((stage) => stage.stage === 'landed')).toHaveLength(1);
       expect(stages.some((stage) => stage.summary.includes('консультант: GAP · замечаний 1 · блокеров 1'))).toBe(true);
     } finally {
@@ -282,12 +283,13 @@ describe('runPass — one pass, end to end', () => {
       // No model call wrote prose: only the two gates answered, and the rows did not move.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(landed);
       expect(harness.calls.map((call) => call.messages[0]?.content.slice(0, 2))).toHaveLength(2);
-      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'verdict', 'verdict', 'verdict', 'landed']);
+      // A resumed step: gates start and answer again; Gate B answers alone.
+      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued',
+        'verdict', 'verdict', 'verdict', 'verdict', 'verdict', 'landed']);
     } finally {
       await harness.close();
     }
   });
-
   it('answers a dry run with the plan and never touches the engine', async () => {
     const harness = await createHarness();
     try {

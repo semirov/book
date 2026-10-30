@@ -87,7 +87,8 @@ export type EngineClientOptions = {
 export type EngineStateView = {
   status: string;
   lane: { holder: string | null; heartbeatAt: string | null };
-  queue: { pending: number; processing: number; openCascades: number };
+  /** `filings` (BOOK-DOC-84 D4): the pending premises a prose pass serves. */
+  queue: { pending: number; processing: number; filings: number; openCascades: number };
   steps: { open: number; leased: number };
   /** Information, not a bound: the day is bounded by money (`budget`). */
   tokens: { today: number; dailyBudget: number };

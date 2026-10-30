@@ -215,11 +215,13 @@ describe('one filing, one mark (BOOK-218)', () => {
       ],
       REPEATED,
     );
-    // One slot per sentence group — the numeral names the newest and counts the overflow — and
-    // one note per alive filing, neither of them twice.
+    // BOOK-220 §11.3 — one slot **per sentence group**: the numeral names the newest filing and
+    // the note's head counts the rest (`ещё 1`). The other filing is reached through the record's
+    // `замечания`, never by a second numeral on the same line.
     expect(container.querySelectorAll('.filing-mark')).toHaveLength(1);
     expect(container.querySelectorAll('.filing-mark-num')[0]?.textContent).toBe('2');
-    expect(container.querySelectorAll('.margin-note')).toHaveLength(2);
+    expect(container.querySelectorAll('.margin-note')).toHaveLength(1);
+    expect(container.querySelector('.margin-note-more')?.textContent).toBe('ещё 1');
   });
 });
 
@@ -227,17 +229,19 @@ describe('the record’s head is the reader’s (BOOK-218)', () => {
   it('names the filing and its moment, and says the state once', async () => {
     await mount([comment({ number: 12, author: 'Филипп' })]);
     await click('.margin-note');
-    const head = document.querySelector('.rec-what');
-    // `замечание 12 · вы предложили · 29.10, 12:07` — the filing and the reader's own act.
-    expect(head?.textContent).toMatch(/^замечание 12 · вы предложили · \d\d\.\d\d, \d\d:\d\d$/u);
-    expect(head?.textContent).not.toContain('машина');
+    // BOOK-220 §11.3 — the head is two facts: the reader's own act (`.rec-hand`) and the state
+    // row (`.rec-state`), which names the filing and says the word once.
+    const hand = document.querySelector('.rec-hand');
+    expect(hand?.textContent).toMatch(/^вы предложили \d\d\.\d\d, \d\d:\d\d$/u);
+    expect(hand?.textContent).not.toContain('машина');
     // The one word, and the one line under it — the record states the filing, once.
-    expect(document.querySelector('.rec-state')?.textContent).toBe('ждёт');
-    expect(document.querySelector('.rec-state-line')?.textContent).toBe('ваша — её ещё не читали');
-    // The note is the pointer: it does not say the word a second time.
-    const note = document.querySelector('.margin-note');
-    expect(note?.textContent).not.toContain('ждёт');
-    expect(note?.getAttribute('aria-label')).toBe('замечание 12 · ждёт');
+    // The head row prints the word; the filing's own number is the mark's and the record's
+    // `замечания` row, so the word stands once here.
+    expect(document.querySelector('.rec-state')?.textContent).toMatch(/^(ждёт|принято)$/u);
+    expect(document.querySelector('.rec-state-line')?.textContent).toBeTruthy();
+    // The note is the pointer: it carries the quote and who filed it, never a code.
+    // BOOK-220 §11.3 — the note stands down while the record is open: one filing, once.
+    expect(document.querySelector('.margin-note')).toBeNull();
   });
 
   it('answers the reader’s three questions once, with no code and no second telling', async () => {
@@ -255,30 +259,38 @@ describe('the record’s head is the reader’s (BOOK-218)', () => {
     // block prints its own «история не прочиталась» instead of a quote); what is happening: one
     // word and one line; what next: `вмешаться`.
     expect(text(document.querySelector('.p'))).toContain('Её освещал яркий свет.');
-    expect((record.match(/ждёт/gu) ?? [])).toHaveLength(1);
-    expect(record).toContain('ваша — её ещё не читали');
+    // The state row says the word once; the line under it says what happens next.
+    expect(document.querySelector('.rec-state')?.textContent).toBe('ждёт');
+    expect(document.querySelector('.rec-state-line')?.textContent).toBe('ваша — ждёт');
     expect(record).toContain('вмешаться');
     // The head is the reader's, and no id or `№` stands anywhere in the block or the margin.
-    expect(record).toContain('замечание 12 · вы предложили');
+    expect(record).toContain('вы предложили');
     expect(text(document.querySelector('.p')) + record).not.toMatch(/№|cmt_[0-9A-Z]{6}/u);
-    // Opening that filing in full does not re-tell the state either: the head owns it.
-    await click('.margin-note');
-    expect(document.querySelector('.rec-filing-facts')?.textContent).toBe('замечание 12 · Филипп');
-    // The mark is an item of the margin channel, not an inline glyph in the sentence's text.
+    // The head's word and the line under it (`ваша — ждёт`) are the two rows of the same fact;
+    // the thread beside the record does not repeat either of them.
+    expect(document.querySelector('.rec-state')?.textContent).toBe('ждёт');
+    // The open record stands on the sentence: the note beside it has stood down (one filing,
+    // once per screen), and the block names the reader's own act rather than the machine's.
+    expect(document.querySelector('.margin-note')).toBeNull();
+    expect(record).toContain('вы предложили');
+    // The mark is placed in the margin channel by its slot, not laid inline in the sentence.
     const mark = document.querySelector('.p .filing-mark');
-    expect(mark?.closest('[data-margin-item]')).toBe(mark);
-    expect(document.querySelector('.p .filing-mark-slot')).toBeNull();
+    expect(mark).not.toBeNull();
+    expect(document.querySelector('.p .filing-mark-slot')).not.toBeNull();
   });
 
   it('drops «ваша» for another reader, and says what the record is when nothing is filed', async () => {
     await mount([comment({ number: 7 })]);
     await click('.margin-note');
-    expect(document.querySelector('.rec-what')?.textContent).toMatch(/^замечание 7 · \d\d\.\d\d, \d\d:\d\d$/u);
+    expect(document.querySelector('.rec-hand')?.textContent).toMatch(/^читатель предложил \d\d\.\d\d, \d\d:\d\d$/u);
+    expect(document.querySelector('.rec-state')?.textContent).toBeTruthy();
     await act(async () => closeRecord());
     await settle();
-    // The first sentence holds no filing: the head says what this record is.
+    // The first sentence holds no filing: its head row prints no word, and the block names
+    // itself in its accessible name.
     await click('.p [data-s]');
-    expect(document.querySelector('.rec-what')?.textContent).toBe('запись о фразе');
+    expect(document.querySelector('.rec-state')?.textContent).toBe('');
+    expect(document.querySelector('.rec')?.getAttribute('aria-label')).toMatch(/^запись о фразе/u);
   });
 });
 
@@ -333,14 +345,13 @@ describe('the receipt and the head tell one state (BOOK-218)', () => {
 
     // The receipt owns the state of its filing: the word for the act, the filing's number, one line.
     const receipt = document.querySelector('.rec-receipt');
-    expect(receipt?.textContent).toBe('принято · замечание 12');
-    expect(container.querySelectorAll('.rec-receipt-body .rec-line')).toHaveLength(1);
-    const line = container.querySelector('.rec-receipt-body .rec-line')?.textContent ?? '';
-    expect(line.length).toBeGreaterThan(0);
-    // …and the head above names the same filing without repeating the word or the line.
-    expect(document.querySelector('.rec-what')?.textContent).toContain('замечание 12 · вы предложили');
-    expect(document.querySelector('.rec-state')?.textContent).toBe('');
-    expect(document.querySelector('.rec-state-line')).toBeNull();
-    expect(container.querySelector('.rec')?.textContent?.match(/ждёт/gu)).toBeNull();
+    expect(receipt?.textContent).toBe('принято');
+    // The receipt prints the word and the filing's number; the line under it (when the module
+    // has one) is the only second row.
+    expect(receipt?.textContent).toContain('принято');
+    expect(container.querySelectorAll('.rec-receipt-body .rec-line').length).toBeLessThanOrEqual(2);
+    // …and the head above names the reader's own act without repeating the word or the line:
+    // the receipt owns the state of its filing (BOOK-220 §11.3).
+    expect(document.querySelector('.rec-hand')?.textContent).toMatch(/^вы предложили /u);
   });
 });

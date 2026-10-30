@@ -92,6 +92,21 @@ export function createGates(input: GateInput): Gates {
       role,
       note: gate.note,
     };
+    // §10.1: the gate's name and round are written, never parsed out of the summary's prose.
+    const round = Math.max(1, Math.min(5, gate.cycle + 1));
+    // BOOK-DOC-84 D3: the gate call gets its start row — the head words «сейчас проверяют»
+    // stand on a stage the moment the call begins, not only when the answer arrives.
+    await deps.emit({
+      stage: 'verdict',
+      chapter,
+      passId: job.stepId,
+      changeId: job.changeId,
+      summary: stageSummary.verdictStarted({ role }),
+      model: config.model,
+      gate: role,
+      round,
+      at: input.now(),
+    });
     const gateAnswer = await askGateAnswer({
       role,
       build: (hint) =>
@@ -143,6 +158,8 @@ export function createGates(input: GateInput): Gates {
         blockers: parsed.findings.filter((finding) => finding.severity === 'blocker').length,
       }),
       model: config.model,
+      gate: role,
+      round,
       at: input.now(),
     });
     return { revise: action === 'revise', findings: parsed.findings };

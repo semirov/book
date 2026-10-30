@@ -376,7 +376,7 @@ const APPLIED: ChapterDto = {
 /** The frame the site publishes: one replaced paragraph, and the change behind it. */
 function landed(overrides: Partial<ChapterRevisionPayload> = {}): ChapterRevisionPayload {
   return {
-    n: 1, rev: 2, title: null, chars: 100, delta: NEW_TEXT.length - LOADED.blocks[1]!.text.length, kind: 'edit',
+    n: 1, rev: 2, hseq: 7, title: null, chars: 100, delta: NEW_TEXT.length - LOADED.blocks[1]!.text.length, kind: 'edit',
     patch: [{ op: 'replace', id: 'ch01#bbbb2222', i: 1, newId: 'ch01#dddd4444', text: NEW_TEXT }], patchTruncated: false,
     attributed: true, updatedAt: '2026-10-20T09:21:00Z',
     cause: { changeId: 'chg_01J9Z8K4Q7', cascadeId: null, wave: null, lane: null, direction: null, stepId: null, seamsIn: [], seamsOut: [] },
@@ -449,14 +449,14 @@ describe('the change a reader made is printed, not landed whole (§1 typing)', (
     expect(view.querySelector('.ch-print')).toBeNull();
   });
 
-  it('keeps a machine rewrite a cross-fade: the patch lands whole, nothing prints', async () => {
+  it('lands a machine rewrite whole: no print plan, and no cross-fade either', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => answer(LOADED)));
     const view = await draw();
     await draw({ entry: { ...ENTRY, rev: 2 }, revision: rewritten() });
 
     expect(chars(view, 'ch01#dddd4444')).toBe(String(NEW_TEXT.length));
     expect(view.querySelector('.ch-print')).toBeNull();
-    expect(view.querySelector('[data-block-id="ch01#dddd4444"]')?.className).toContain('is-revised');
+    expect(view.querySelector('.is-revised')).toBeNull();
   });
 
   it('brings the change to the reading line only when it is off-screen', async () => {

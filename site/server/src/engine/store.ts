@@ -4,6 +4,9 @@
 import type { InterventionKind } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import type { LeaseRow, StepRow } from './storeRows.ts';
+
+export type { LeaseRow, StepRow } from './storeRows.ts';
 import { insertRow, updateRow } from './rows.ts';
 
 export { getMeta, setMeta } from './rows.ts';
@@ -44,72 +47,6 @@ export type ChangeRow = {
   started_at: string | null;
   finished_at: string | null;
   attempts: number;
-};
-
-export type StepRow = {
-  step_id: string;
-  cascade_id: string | null;
-  seq: number;
-  wave: number;
-  lane: 'forward' | 'backward' | null;
-  pass: 'draft' | 'change' | 'cascade' | 'front' | 'ending' | 'sweep';
-  chapter: number | null;
-  boundary: string;
-  /** BOOK-7 — the premise this draft step consumes; null for every other pass. */
-  premise_change: string | null;
-  outcome:
-    | 'rewritten'
-    | 'holds'
-    | 'published_with_finding'
-    | 'evaluated'
-    | 'escalated'
-    | 'interrupted'
-    | null;
-  rev_before: number | null;
-  rev_after: number | null;
-  seams_in: string | null;
-  seams_out: string | null;
-  blocks_touched: number | null;
-  chars_delta: number | null;
-  model: string | null;
-  tokens_in: number;
-  tokens_out: number;
-  cost_rub: number;
-  /** BOOK-23: 1 = `cost_rub` is a measurement, 0 = never priced. */
-  cost_priced: number;
-  hseq_from: number | null;
-  hseq_to: number | null;
-  lease_id: string | null;
-  session: string | null;
-  at: string;
-  ms: number | null;
-  note: string | null;
-  cycle: number;
-  last_findings: string | null;
-  start_sha: string | null;
-  landed_at: string | null;
-  landed_sha: string | null;
-  pre_blocks: string | null;
-  rights_scan: string | null;         // BOOK-61 — Gate B's scan of the new blocks, as JSON
-  closed_at: string | null; reopened_at: string | null;  // BOOK-117: the wall's second window
-};
-
-export type LeaseRow = {
-  id: string;
-  step_id: string;
-  change_id: string | null;
-  cascade_id: string | null;
-  lane: 'forward' | 'backward' | null;
-  chapter: number | null;
-  is_front: number;
-  kind: 'draft' | 'change' | 'cascade' | 'front' | 'ending' | 'sweep';
-  session: string;
-  expected_rev: number;
-  acquired_at: string;
-  heartbeat_at: string;
-  expires_at: string;
-  released_at: string | null;
-  release_reason: string | null;
 };
 
 export type CascadeRow = {
@@ -219,6 +156,9 @@ export function countPending(db: Db): number {
     db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0`).get() as { n: number }
   ).n;
 }
+
+/** BOOK-DOC-84 D4 — pending premises: the writer's work, which `countPending` excludes. */
+export const countPendingFilings = (db: Db): number => (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 1`).get() as { n: number }).n;
 
 export function countProcessing(db: Db): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'processing'`).get() as { n: number }).n;
@@ -464,7 +404,7 @@ export function listDispatches(db: Db, stepId: string): DispatchRow[] {
   return db.prepare('SELECT * FROM gate_dispatches WHERE step_id = ?').all(stepId) as DispatchRow[];
 }
 
-/** The beat's rule for a reading gate: a live dispatch moves out, an expired one belongs to the reaper. */
+/** A live dispatch moves out; an expired one belongs to the reaper. */
 export function extendDispatches(db: Db, stepId: string, atIso: string, expiresAt: string): void {
   db.prepare('UPDATE gate_dispatches SET expires_at = ? WHERE step_id = ? AND expires_at > ?').run(expiresAt, stepId, atIso);
 }
@@ -475,7 +415,7 @@ export function readLane(db: Db): LaneRow {
   return db.prepare('SELECT * FROM lane WHERE id = 1').get() as LaneRow;
 }
 
-/** The FIFO mutex: at most one holder, and claiming is a conditional UPDATE, not a check. */
+/** The FIFO mutex: one holder; claiming is a conditional UPDATE, not a check. */
 export function claimLaneRow(db: Db, holder: string, at: string): boolean {
   return (
     db.prepare('UPDATE lane SET holder = ?, heartbeat_at = ? WHERE id = 1 AND holder IS NULL').run(holder, at)
@@ -490,10 +430,7 @@ export function heartbeatLaneRow(db: Db, holder: string, at: string): boolean {
 }
 
 export function releaseLaneRow(db: Db, holder: string): boolean {
-  return db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1 AND holder = ?').run(holder)
-    .changes === 1;
+  return db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1 AND holder = ?').run(holder).changes === 1;
 }
 
-export function forceReleaseLane(db: Db): void {
-  db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1').run();
-}
+export const forceReleaseLane = (db: Db): void => { db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1').run(); };

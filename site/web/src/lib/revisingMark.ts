@@ -1,32 +1,30 @@
 /**
- * `block:revising` — the ochre rule under a paragraph being rewritten. The frame carries its own
- * deadline: the page clears the mark when it expires, and a later mark for the same chapter
- * replaces it (the `since` stamp is what tells two marks apart). Extracted from the socket switch
- * so `App.tsx` stays a switch and not a catalogue of every frame's bookkeeping.
+ * The ochre rule under a paragraph being rewritten (§11.4), read from the snapshot.
+ *
+ * BOOK-DOC-84 deleted the `block:revising` frame: it had no emitter and never would, because the
+ * mark's own carrier is `state.revising` in the snapshot. What is left is this one projection —
+ * the snapshot's entries as the slot's prop — so the page keeps exactly the list it always had
+ * and the dead frame is gone from the switch.
  */
 
-import type { BlockRevisingPayload } from '@book/shared';
+import type { BlockRevisingPayload, StateSnapshot } from '@book/shared';
 
 export type RevisingState = Record<number, BlockRevisingPayload>;
 
-export function applyRevisingMark(
-  mark: BlockRevisingPayload,
-  setRevising: (update: (current: RevisingState) => RevisingState) => void,
-  schedule: (run: () => void, ms: number) => void,
-): void {
-  const clear = (): void =>
-    setRevising((current) => {
-      if (current[mark.n]?.since !== mark.since) return current;
-      const next = { ...current };
-      delete next[mark.n];
-      return next;
-    });
-
-  if (!mark.active) {
-    clear();
-    return;
+export function revisingOf(marks: StateSnapshot['revising'] | undefined): RevisingState {
+  const out: RevisingState = {};
+  for (const mark of marks ?? []) {
+    out[mark.chapter] = {
+      n: mark.chapter,
+      active: true,
+      blockIds: mark.blockIds,
+      cause: mark.cause,
+      changeId: mark.changeId,
+      // A mark in the snapshot is the live lease's own target; the lane is not part of the mark.
+      lane: null,
+      since: mark.since,
+      expiresAt: mark.expiresAt,
+    };
   }
-  setRevising((current) => ({ ...current, [mark.n]: mark }));
-  const expiresIn = Math.max(0, Date.parse(mark.expiresAt) - Date.now());
-  schedule(clear, Number.isNaN(expiresIn) ? 0 : expiresIn + 250);
+  return out;
 }

@@ -73,8 +73,6 @@ export type ProseParagraphProps = {
   onReanchor?: (draft: SeamDraft) => void;
   /** The reveal's caret rests after this block (§11.3); printing is the lane's own state. */
   caret?: { printing: boolean; live: boolean } | null;
-  /** A rewrite cross-fades in place (§10.4). */
-  revised?: boolean;
   /** A step is rewriting this block: the ochre label and rule (§11.5). */
   revising?: string | null;
   /**
@@ -98,7 +96,6 @@ export function ProseParagraph({
   onPosted,
   onReanchor,
   caret = null,
-  revised = false,
   revising = null,
   history,
 }: ProseParagraphProps) {
@@ -161,7 +158,6 @@ export function ProseParagraph({
   const classes = ['p'];
   if (caret?.printing === true) classes.push('is-printing');
   if (revising !== null) classes.push('is-revising');
-  if (revised) classes.push('is-revised');
 
   const openAt = useCallback(
     (offset: number, target: HTMLElement): void => {
@@ -401,12 +397,10 @@ export function ProseParagraph({
     />
   ) : null;
 
-  // BOOK-90 §4: the phone strip is the paragraph's last child, after every sentence. A row
-  // whose sentence has its seam open is skipped — the seam's own rows already show it.
-  const phone =
-    alive.length === 0 ? null : (
-      <PhoneStrip comments={alive} skipQuote={anchor?.quote ?? null} onOpen={openFilingRow} />
-    );
+  // BOOK-90 §4: the phone strip is the paragraph's last child; a row whose seam is open is skipped.
+  // §11.3 — the record speaks for the sentence it is open on: its strip row stands down too.
+  const skip = recordHere && record !== null ? (record.anchor?.quote ?? null) : (anchor?.quote ?? null);
+  const phone = alive.length === 0 ? null : <PhoneStrip comments={alive} skipQuote={skip} onOpen={openFilingRow} />;
 
   return (
     <>
@@ -433,7 +427,8 @@ export function ProseParagraph({
         onPointerEnter={hint}
       >
         {revising === null ? null : <span className="revising-label">{revising}</span>}
-        {frameOnly ? null : (
+        {/* §11.3 — one action per screen: an open record owns `вмешаться`; no margin rail. */}
+        {frameOnly || recordHere ? null : (
           <button
             type="button"
             className="seam-rail"

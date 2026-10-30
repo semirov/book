@@ -120,32 +120,7 @@ CREATE TRIGGER events_no_delete BEFORE DELETE ON events
 /** The names of those two guards — the launch reset drops exactly these before its wipe. */
 export const EVENTS_TRIGGER_NAMES = ['events_no_update', 'events_no_delete'] as const;
 
-/**
- * The writer lane's stages (docs/writer-lane.md §3, BOOK-117): one row per stage a pass
- * passed. `seq` is the store's own order and the replay cursor; `stage_seq` is the order
- * inside the pass, assigned by the store when the site emits a stage it holds no counter for.
- * No foreign key to `steps`: a stage is a fact about what happened even if the step is reaped.
- * It lives here because both the full schema and migration v16 (BOOK-117) build the same table.
- */
-export const PASS_STAGES_TABLE_SQL = `CREATE TABLE pass_stages (                 -- one row per lane stage (docs/writer-lane.md §2)
-  seq           INTEGER PRIMARY KEY AUTOINCREMENT,   -- the store's own order = the replay cursor
-  pass_id       TEXT NOT NULL,                       -- the engine's step id
-  chapter       INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
-  stage_seq     INTEGER NOT NULL,                    -- monotonic inside the pass, from 1
-  stage         TEXT NOT NULL CHECK (stage IN
-                  ('queued','read','verdict','drafting','typing','landed','refused')),
-  at            TEXT NOT NULL,                       -- ISO-8601 UTC, when the work happened
-  actor_process TEXT NOT NULL CHECK (actor_process IN ('engine','writer','site','auditor')),
-  actor_model   TEXT,                                -- null when no model ran
-  change_id     TEXT,                                -- the change this pass carries, when any
-  summary       TEXT NOT NULL,                       -- one factual line, ≤200 chars
-  span          TEXT,                                -- JSON StageSpan[], null off 'landed'
-  tokens_in     INTEGER,                             -- one call's on 'drafting', the pass's on 'landed'
-  tokens_out    INTEGER,
-  cost_usd      REAL,                                -- null off 'landed'
-  UNIQUE (pass_id, stage_seq)
-);
-CREATE INDEX pass_stages_chapter_seq ON pass_stages(chapter, seq);`;
+export { PASS_STAGES_TABLE_SQL } from './stageTables.ts';
 
 /**
  * The money ledger (BOOK-117): one row per pass that closed, the only place a spend total
@@ -200,10 +175,13 @@ export const COMMENT_ATTEMPTS_TABLE_SQL = `CREATE TABLE comment_attempts (      
   -- UPDATE on this row, so the queue is the ledger the posting request already writes.
   claim_by    TEXT,                               -- the writer session that holds the claim
   claim_until TEXT,                               -- ISO UTC; an expired claim makes the row due again
-  tries       INTEGER NOT NULL DEFAULT 0,         -- calls bought for this attempt (cap 3)
+  tries       INTEGER NOT NULL DEFAULT 0,         -- calls bought for this attempt (cap 5, BOOK-DOC-84 §10.8)
   next_at     TEXT,                               -- ISO UTC: the backoff a failed call set
   verdict     TEXT,                               -- the validated book.verdict/v1 answer, written once
   verdict_at  TEXT,
+  -- BOOK-DOC-84 §10.8: the third failure widens the reading; the sixth attempt is desperate.
+  widened     TEXT,                               -- the widening code ('as-document'), null before the third failure
+  desperate   INTEGER NOT NULL DEFAULT 0,         -- 1 = the deterministic sixth attempt, no model call
   UNIQUE (comment_id, n)
 );
 CREATE INDEX comment_attempts_day ON comment_attempts(day);
@@ -328,6 +306,8 @@ export const STEPS_COLUMNS = [
   'closed_at',
   'provenance',
   'reopened_at',
+  'desperate',
+  'widened',
 ] as const;
 
 /**
@@ -376,6 +356,11 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   -- wall is measured from MAX(at, reopened_at), so a reopen is a fresh window and a step older
   -- than the wall can still be closed (at itself never moves: it is the step's opening).
   reopened_at TEXT,
+  -- BOOK-DOC-84 §10.8: the ladder's own facts — the sixth attempt, the widening it runs under.
+  -- Null/0 until the ladder moves. The write mode is not repeated here: BOOK-173 records it
+  -- with the plan (change_plans.mode), and the widening is read from the widened column.
+  desperate   INTEGER NOT NULL DEFAULT 0,
+  widened     TEXT,
   UNIQUE (cascade_id, seq)
 );
 CREATE INDEX steps_chapter ON steps(chapter, at);

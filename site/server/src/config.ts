@@ -87,6 +87,12 @@ const schema = z.object({
    */
   editSubmissionsPerDay: z.coerce.number().int().min(1).default(1),
   queueSoftCap: z.coerce.number().int().min(1).default(15),
+  /**
+   * BOOK-DOC-84 §5 — the lane's day bound, announced (`engine:state{passesToday,maxPasses}`) and
+   * carried by the snapshot's `lane`. The writer enforces it (`WRITER_MAX_PASSES_PER_DAY`); the
+   * site only reports it, from the same variable and the same default.
+   */
+  writerMaxPasses: z.coerce.number().int().min(1).default(4),
   /** The file exchange with triage (§12.2, §12.6): batches and `decisions.jsonl`. */
   feedbackDir: z.string().default(resolve(SITE_ROOT, 'data', 'feedback')),
   // ── identity (ADR-021) ── placeholders until the owner registers the OAuth app ──
@@ -161,8 +167,9 @@ const schema = z.object({
   upwardLagWaves: z.coerce.number().int().min(0).default(0),
   /** A repair may replace at most this share of its chapter (§6A.6 MAX_DELTA_RATIO). */
   maxDeltaRatio: z.coerce.number().min(0).max(1).default(0.35),
-  /** Writer revisions per step before the text is published with its finding (§6B.4). */
-  gateCycles: z.coerce.number().int().min(1).default(3),
+  /** Writer revisions per step before the text is published with its finding (§6B.4).
+   *  §10.8: five cycles — the ladder's five attempts, not three. */
+  gateCycles: z.coerce.number().int().min(1).default(5),
   /** How long a gate may read before its dispatch is dead: a real editor read took 4–7 min, and
    *  the old five minutes killed a normal pass. The beat extends a live one; the wall still bounds. */
   gateTtlMs: z.coerce.number().int().min(1).default(1_200_000),
@@ -172,9 +179,12 @@ const schema = z.object({
    * the column that is the step's opening (there is no `opened_at` on `steps`).
    * The engine beats a step's own lease (a real 20 000–30 000-character pass plus both gates
    * outlives `leaseTtlMs`), so this wall is the only bound on a step's growth: past it the
-   * reaper escalates the step and releases its lease. 45 min covers a slow model with room.
+   * reaper escalates the step and releases its lease. §10.8: five attempts must fit one wall —
+   * 225 min (5 × 45), because a 45-min wall closes a ladder at its second attempt.
    */
-  stepWallMs: z.coerce.number().int().min(1).default(2_700_000),
+  stepWallMs: z.coerce.number().int().min(1).default(13_500_000),
+  /** §10.8: a desperate attempt is a dispatch, not work — 180 s, never the step's wall. */
+  desperateDeadlineMs: z.coerce.number().int().min(1).default(180_000),
   /** A lane whose holder stopped beating is reclaimed after this long (§6A.3). */
   laneTtlMs: z.coerce.number().int().min(1).default(90_000),
   reaperMs: z.coerce.number().int().min(100).default(15_000),
@@ -313,6 +323,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     commentsPerHourIdentity: env.COMMENTS_PER_HOUR_IDENTITY,
     editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
     queueSoftCap: env.QUEUE_SOFT_CAP,
+    writerMaxPasses: env.WRITER_MAX_PASSES_PER_DAY,
     feedbackDir: env.FEEDBACK_DIR ?? (env.EXCHANGE_DIR === undefined ? undefined : resolve(env.EXCHANGE_DIR, 'feedback')),
     // BOOK-205: the pair is OPTIONAL — compose always declares both mounts, so a host that carries
     // neither file mounts an empty directory, which loadConfig reads as "sign-in off" (one warning,
@@ -348,6 +359,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gateTtlMs: env.GATE_TTL_MS,
     leaseTtlMs: env.LEASE_TTL_MS,
     stepWallMs: env.STEP_WALL_MS,
+    desperateDeadlineMs: env.DESPERATE_DEADLINE_MS,
     laneTtlMs: env.LANE_TTL_MS,
     reaperMs: env.ENGINE_REAPER_MS,
     maxConcurrentSteps: env.ENGINE_MAX_CONCURRENT_STEPS,

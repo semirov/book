@@ -10,12 +10,20 @@
  */
 
 import {
+  DESPERATE_ATTEMPT,
+  MAX_ATTEMPTS,
+  MAX_ITERATIONS,
+  STAGE_DEADLINE_MS,
   TOTAL_CHAPTERS,
   normalizeStageEvent,
+  widenedWord,
+  type GateName,
   type PassStage,
   type PassStageEvent,
   type StageSpan,
   type StageSpanInput,
+  type StageVerdictWord,
+  type WidenedNote,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
@@ -35,6 +43,14 @@ type StageRow = {
   tokens_in: number | null;
   tokens_out: number | null;
   cost_usd: number | null;
+  attempt: number | null;
+  max_attempts: number | null;
+  widened: string | null;
+  desperate: number;
+  gate: string | null;
+  round: number | null;
+  iteration: number | null;
+  verdict: string | null;
 };
 
 export type StageAppendInput = {
@@ -49,6 +65,16 @@ export type StageAppendInput = {
   span?: readonly StageSpanInput[] | null;
   tokens?: { in: number; out: number } | null;
   costUsd?: number | null;
+  /** §10.8 — the ladder's fields; `attempt`/`iteration` default to the store's own rows. */
+  attempt?: number | null;
+  maxAttempts?: number | null;
+  widened?: string | null;
+  desperate?: boolean;
+  gate?: GateName | null;
+  round?: number | null;
+  iteration?: number | null;
+  verdict?: StageVerdictWord | null;
+  deadlineAt?: number | null;
 };
 
 /** The store refused the input; the HTTP door turns the code into a 422, never a 500. */
@@ -104,10 +130,28 @@ export function nextStageSeq(db: Db, passId: string): number {
 
 const INSERT_SQL = `INSERT INTO pass_stages
   (pass_id, chapter, stage_seq, stage, at, actor_process, actor_model, change_id, summary, span,
-   tokens_in, tokens_out, cost_usd)
+   tokens_in, tokens_out, cost_usd, attempt, max_attempts, widened, desperate, gate, round,
+   iteration, verdict)
   VALUES (@passId, @chapter, @stageSeq, @stage, @at, @actorProcess, @actorModel, @changeId, @summary,
-          @span, @tokensIn, @tokensOut, @costUsd)
+          @span, @tokensIn, @tokensOut, @costUsd, @attempt, @maxAttempts, @widened, @desperate,
+          @gate, @round, @iteration, @verdict)
   ON CONFLICT (pass_id, stage_seq) DO NOTHING`;
+
+/**
+ * §10.1 — the attempt is the store's own number: it counts the step's leases. The writer process
+ * does not know it (it holds one lease), so a stage cannot claim a try the engine did not hand
+ * out. A step the engine re-issued has more than one lease; a first claim has one.
+ */
+export function stepAttempt(db: Db, passId: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS n FROM leases WHERE step_id = ?').get(passId) as { n: number };
+  return Math.max(1, Math.min(DESPERATE_ATTEMPT, row.n));
+}
+
+/** `steps.cycle` at the pass's start — how many times the text was revised (0..4). */
+export function stepIteration(db: Db, passId: string): number {
+  const row = db.prepare('SELECT cycle FROM steps WHERE step_id = ?').get(passId) as { cycle: number } | undefined;
+  return Math.max(0, Math.min(MAX_ITERATIONS, row?.cycle ?? 0));
+}
 
 /**
  * Append one stage. A repeat of `(passId, stageSeq)` returns the row already stored — the
@@ -121,6 +165,7 @@ export function appendStage(db: Db, input: StageAppendInput): PassStageEvent {
   if (!normalized.ok) throw new StageInputError(normalized.code, normalized.reason);
   const value = normalized.value;
 
+  const attempt = value.desperate ? DESPERATE_ATTEMPT : (input.attempt ?? stepAttempt(db, value.passId));
   const row = {
     passId: value.passId,
     chapter: input.chapter,
@@ -136,6 +181,16 @@ export function appendStage(db: Db, input: StageAppendInput): PassStageEvent {
     tokensIn: value.tokens === null ? null : value.tokens.in,
     tokensOut: value.tokens === null ? null : value.tokens.out,
     costUsd: value.costUsd,
+    attempt: Math.max(1, Math.min(DESPERATE_ATTEMPT, attempt)),
+    maxAttempts: value.desperate
+      ? DESPERATE_ATTEMPT
+      : Math.max(attempt, input.maxAttempts ?? value.maxAttempts ?? MAX_ATTEMPTS),
+    widened: value.widened?.code ?? null,
+    desperate: value.desperate ? 1 : 0,
+    gate: value.gate,
+    round: value.round,
+    iteration: Math.max(0, Math.min(MAX_ITERATIONS, input.iteration ?? stepIteration(db, value.passId))),
+    verdict: value.verdict,
   };
 
   if (value.stageSeq === null) {
@@ -199,6 +254,9 @@ function toEvent(row: StageRow): PassStageEvent {
   const span = row.span === null ? null : (JSON.parse(row.span) as StageSpan[]);
   const tokens =
     row.tokens_in === null && row.tokens_out === null ? null : { in: row.tokens_in ?? 0, out: row.tokens_out ?? 0 };
+  const widened: WidenedNote | null =
+    row.widened === null ? null : { code: row.widened as WidenedNote['code'], sentence: widenedWord(row.widened) };
+  const at = Date.parse(row.at);
   return {
     passId: row.pass_id,
     chapter: row.chapter,
@@ -211,5 +269,17 @@ function toEvent(row: StageRow): PassStageEvent {
     span,
     tokens,
     costUsd: row.cost_usd,
+    attempt: row.attempt ?? 1,
+    maxAttempts: row.max_attempts ?? MAX_ATTEMPTS,
+    widened,
+    desperate: row.desperate === 1,
+    gate: (row.gate ?? null) as GateName | null,
+    round: row.round,
+    // A row written before v31 has no iteration; the pass's first cycle (0) is the honest answer,
+    // not an invented count.
+    iteration: row.iteration ?? 0,
+    maxIterations: MAX_ITERATIONS,
+    verdict: (row.verdict ?? null) as StageVerdictWord | null,
+    deadlineAt: at + STAGE_DEADLINE_MS,
   };
 }

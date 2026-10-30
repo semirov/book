@@ -1,0 +1,105 @@
+{
+  "ticket": "BOOK-220",
+  "commit": "a424300",
+  "host": "http://192.168.1.76:8091",
+  "collectedAt": "2026-10-29T10:3x/11:0x UTC (session)",
+  "method": {
+    "store": "public HTTP API only (GET), no DB file opened",
+    "clock": "verbatim port of site/web/src/lib/passMotion.ts planPass/frameAt run in JS on the real landed span",
+    "dom": "NOT MEASURED - no shell in this session, in-app browser is display-only (drivable=false)"
+  },
+
+  "store_census": {
+    "pass_stages_rows": 253,
+    "passes": 31,
+    "chapters_with_stages": 17,
+    "by_stage": { "queued": 43, "read": 32, "drafting": 79, "verdict": 47, "landed": 26, "refused": 26, "typing": 0 },
+    "typing_ever_written": false,
+    "note": "typing is written only when the file ingest attributes to a live lease (ingest/attribution.ts:61-72, typingStage.ts:21); 0/253 says that never happened"
+  },
+
+  "measured_pass": {
+    "passId": "stp_01M63ES21MFEXRZZ0A8BQXTGZ5",
+    "chapter": 1,
+    "day": "2026-10-29",
+    "stages": [
+      { "stage": "queued",   "at": "09:10:10.744Z", "dtMs": 0 },
+      { "stage": "read",     "at": "09:10:10.754Z", "dtMs": 10 },
+      { "stage": "drafting", "at": "09:10:10.756Z", "dtMs": 12, "note": "model call starts" },
+      { "stage": "drafting", "at": "09:13:20.284Z", "dtMs": 189528, "note": "model returns (models call = 189.528 s)" },
+      { "stage": "landed",   "at": "09:13:26.374Z", "dtMs": 195630, "note": "gates = 6.090 s after the draft; the print can start only here" },
+      { "stage": "refused",  "at": "09:13:26.380Z", "dtMs": 195636, "note": "+6 ms after landed" }
+    ],
+    "passWallClockMs": 195636,
+    "modelCallMs": 189528,
+    "gatesAfterDraftMs": 6090,
+    "landedToRefusedMs": 6,
+    "chapterTextLiveAt": "2026-10-29T09:13:20Z (catalog.updatedAt for ch1; = the drafting-return second)",
+    "inkStartsAfterTextLiveMs": 6090,
+    "inkStartsAfterTextLiveNote": "vs the drafting-return instant 09:13:20.284Z; catalog.updatedAt rounds to 09:13:20Z (6.37 s)",
+    "spanEntries": 8,
+    "spanBlocksPainted": 1,
+    "paintedEntry": {
+      "blockId": "ch01#4a41f831",
+      "beforeGraphemes": 237,
+      "afterGraphemes": 261,
+      "diffRunGraphemes": 87,
+      "diffOffset": 60,
+      "kind": "replacement",
+      "pauses": { "breath": 4, "sentence": 0 }
+    }
+  },
+
+  "plan_desktop_1440": {
+    "layout": { "linePx": 30.24, "blockLines": 4, "cpl": 71, "runFirstLine": 0, "runLastLine": 2 },
+    "cps": 40,
+    "splitMs": 260,
+    "inkMs": 2390,
+    "persistMs": 2650,
+    "blue": { "fromMs": 260, "toMs": 2830, "climbMs": 1000, "travelPx": 120.96, "pxPerSec": 120.96, "direction": "top decreases (rises)", "linesPerSec": 4.0 },
+    "red": { "fromMs": 260, "toMs": 3207, "tailMs": 417, "travelPx": 30.24, "pxPerSec": 72.576, "direction": "top increases (descends)", "linesPerSec": 2.4 },
+    "settleMs": 3207,
+    "caretVisibleMs": 2947
+  },
+
+  "plan_phone_390": {
+    "layout": { "linePx": 28.56, "blockLines": 7, "cpl": 40, "runFirstLine": 1, "runLastLine": 3 },
+    "cps": 34,
+    "splitMs": 260,
+    "inkMs": 2769,
+    "persistMs": 3029,
+    "blue": { "fromMs": 260, "toMs": 3209, "climbMs": 1750, "travelPx": 199.92, "pxPerSec": 114.24, "direction": "top decreases (rises)", "linesPerSec": 4.0 },
+    "red": { "fromMs": 260, "toMs": 4419, "tailMs": 1250, "travelPx": 85.68, "pxPerSec": 68.544, "direction": "top increases (descends)", "linesPerSec": 2.4 },
+    "settleMs": 4419,
+    "caretVisibleMs": 4159
+  },
+
+  "window": {
+    "desktop": { "animationMs": 3207, "visibleInkMs": 2947, "passMs": 195636, "shareOfPassPct": 1.64, "inkShareOfPassPct": 1.51 },
+    "phone": { "animationMs": 4419, "visibleInkMs": 4159, "passMs": 195636, "shareOfPassPct": 2.26, "inkShareOfPassPct": 2.13 },
+    "worstPassSameHour": { "passId": "stp_01M61D6ZYX0C1NPKWMN36V35NK", "passMs": 916943, "gatesAfterDraftMs": 728288, "desktopShareOfPassPct": 0.35, "phoneShareOfPassPct": 0.48 }
+  },
+
+  "plan_assumptions": {
+    "estimated": ["blockLines (71 chars/line at 1440, 40 at 390)", "runLines distribution (uniform)"],
+    "exact": ["splitMs", "inkTimes/pauses", "persistMs", "climb/tail durations", "cps from rateFor()"],
+    "settleErrorBoundMs": 400
+  },
+
+  "hypotheses": {
+    "a_when_a_caret_exists": "only in [mount, settleMs): element present with opacity 0 from mount, first visible frame at splitMs=260 (replacement), removed at finish(); never under prefers-reduced-motion",
+    "b_do_they_move_as_designed": "yes by construction: blue 4.0 lines/s upward, red 2.4 lines/s downward; 121.0/72.6 px/s at 1440, 114.2/68.5 px/s at 390",
+    "c_mid_pass_arrival": "frameAt is absolute from startAt: 30/70/95% paint from the current frame, no restart; >= settleMs settles with no carets ever created (LivePass.tsx:156-160)",
+    "d_after_the_pass": "no carets, plain paragraph; nothing on the page records the pass (useStages is socket-only; GET /api/chapters/:n/stages has no client caller)"
+  },
+
+  "not_measured": [
+    "60-100 ms DOM sampling of .caret-read/.caret-write (present, opacity, rect)",
+    "measured px/s and start/end tops in the browser",
+    "a real page mounted at 30/70/95% of settleMs",
+    "screenshots at 1440 and 390",
+    "a pass watched live on :8091 (no pass ran during the session: queue depth 0, writer.passes=1, lastPassAt 09:13:26Z)",
+    "prefers-reduced-motion on the owner's browser"
+  ],
+  "not_measured_reason": "shell is denied for this session (no node/CDP/docker), and the in-app browser panel is display-only (drivable=false); probe/carets.probe.mjs is ready to run where a shell exists"
+}

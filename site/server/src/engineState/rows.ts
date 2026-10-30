@@ -72,6 +72,8 @@ export type StepRow = {
   wave: number;
   lane: 'forward' | 'backward' | null;
   pass: StepPass;
+  /** BOOK-7 — the chapter-level premise a draft consumes (null for every other pass). */
+  premise_change: string | null;
   chapter: number | null;
   boundary: string;
   outcome:
@@ -102,6 +104,12 @@ export type StepRow = {
   note: string | null;
   cycle: number;
   closed_at: string | null;
+  /** §10.8: 1 = the sixth, deterministic attempt; 0 otherwise. */
+  desperate: number;
+  /** §10.8: the widening code this attempt runs under, null before the third failure. */
+  widened: string | null;
+  /** The writer's mode for this attempt: a patch, or the widened rewrite. */
+  mode: 'patch' | 'rewrite' | null;
 };
 
 export type LeaseRow = {

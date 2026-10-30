@@ -86,11 +86,11 @@ function putAnonymous(h: Harness, body: unknown) {
 }
 
 describe('migrate — BOOK-209 (v34): the reader’s place', () => {
-  it('creates the table on a fresh install, at v34, keyed by the identity', () => {
+  it('creates the table on a fresh install, at the head version, keyed by the identity', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(34);
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(34);
+    expect(SCHEMA_VERSION).toBe(35);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(35);
 
     expect(tableColumns(db, 'reader_places')).toEqual(['identity_id', 'chapter', 'sentence_id', 'delta_px', 'at']);
     expect(REQUIRED_TABLES).toContain('reader_places');
@@ -119,11 +119,12 @@ describe('migrate — BOOK-209 (v34): the reader’s place', () => {
        VALUES (7, 2, 'Седьмая', 'abc', 10, 1, '2026-10-28T08:00:00Z', '2026-10-28T08:00:00Z')`,
     ).run();
 
-    // A v33 install: the table this step adds is not there yet and the cursor is one step back.
+    // A v33 install: `reader_places` is not there yet and the cursor is two steps back (v34, the
+    // place, then BOOK-220's v35), so this proves the step still chains onto an existing store.
     db.exec('DROP TABLE reader_places');
     db.pragma('user_version = 33');
 
-    expect(migrate(db)).toEqual({ from: 33, to: 34 });
+    expect(migrate(db)).toEqual({ from: 33, to: SCHEMA_VERSION });
     expect(tableColumns(db, 'reader_places')).toEqual(['identity_id', 'chapter', 'sentence_id', 'delta_px', 'at']);
     // Nothing of the book or the reader moved.
     expect(db.prepare('SELECT title, rev FROM chapters WHERE n = 7').get()).toEqual({ title: 'Седьмая', rev: 2 });
@@ -139,7 +140,7 @@ describe('migrate — BOOK-209 (v34): the reader’s place', () => {
 
     // A stored place survives a replay, and a second migrate is a no-op.
     writePlace(db, identity.id, PLACE);
-    expect(migrate(db)).toEqual({ from: 34, to: 34 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect(placeRows(db, identity.id)).toHaveLength(1);
     expect(readPlace(db, identity.id)).toEqual(PLACE);
     db.close();

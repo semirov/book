@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { PRINT } from './printPlan.ts';
 import {
   REVEAL,
   activeBlockId,
-  blockDurationMs,
   blockText,
   chapterReveal,
   createReveal,
@@ -20,6 +20,8 @@ import {
 const blocks = (count: number) =>
   Array.from({ length: count }, (_, index) => ({ id: `ch08#b${index}`, text: 'Абзац '.repeat(8) }));
 
+const BASE = 1_000 / PRINT.cps.desktop;
+
 describe('graphemes', () => {
   it('never splits a combining mark or a surrogate pair', () => {
     expect(graphemes('е\u0301')).toEqual(['е\u0301']);
@@ -28,36 +30,59 @@ describe('graphemes', () => {
   });
 });
 
-describe('blockDurationMs', () => {
-  it('clamps a short block and a long block', () => {
-    expect(blockDurationMs('а')).toBe(REVEAL.minBlockMs);
-    expect(blockDurationMs('а'.repeat(500))).toBe(REVEAL.maxBlockMs);
+describe('the clock is the print engine’s (BOOK-220 §11.2)', () => {
+  it('schedules a block on the device rate, with no duration cap', () => {
+    const state = createReveal([{ id: 'ch08#b0', text: 'абвгд' }]);
+    const block = state.blocks[0];
+    expect(block?.inkTimes).toHaveLength(5);
+    expect(block?.durationMs).toBeGreaterThan(0);
+    // A long block is minutes, not the old 2 600 ms ceiling: 500 letters at 30 cps ≈ 17 s.
+    const long = createReveal([{ id: 'ch08#b1', text: 'а'.repeat(500) }]);
+    expect(long.blocks[0]?.durationMs).toBeGreaterThan(15_000);
+    expect(long.blocks[0]?.inkTimes).toHaveLength(500);
   });
 
-  it('keeps the cover word at the house rate: «Бланк» is 277.8 ms at 18 cps', () => {
-    // BOOK-DOC-49 §3: 5 graphemes ÷ 18 cps = 277.78 ms — the number the sequence's table prints,
-    // and the reason the caret's rest ends at 498 (277.8 + 220). Linear: a rate is not a curve.
-    expect(blockDurationMs('Бланк')).toBeCloseTo(277.8, 1);
-    expect(graphemeCount('Бланк')).toBe(5);
+  it('keeps the interval bounds: ±25 % of the base, ×1.4 at a word’s end, never past 180 ms', () => {
+    const state = createReveal([{ id: 'ch08#b0', text: 'абвгд её' }]);
+    const times = state.blocks[0]?.inkTimes ?? [];
+    const gaps = times.slice(1).map((time, index) => time - (times[index] ?? 0));
+    for (const gap of gaps) {
+      expect(gap).toBeGreaterThanOrEqual(BASE * (1 - PRINT.jitter) - 1e-6);
+      expect(gap).toBeLessThanOrEqual(BASE * (1 + PRINT.jitter) * PRINT.wordEnd + 1e-6);
+      expect(gap).toBeLessThanOrEqual(180);
+    }
+    // The gap after the fifth grapheme («д» ends the word) is the ×1.4 one.
+    expect(gaps[4]).toBeGreaterThan(BASE * 1.25);
   });
 
-  it('prints a 180-character block in ten seconds worth of prose at 18 cps (clamped)', () => {
-    expect(blockDurationMs('а'.repeat(180))).toBe(REVEAL.maxBlockMs);
-    expect(blockDurationMs('а'.repeat(90))).toBe(2_600);
-    expect(blockDurationMs('а'.repeat(45))).toBe(2_500);
+  it('seeds the jitter by the block’s own id: a reload prints the same way', () => {
+    const first = createReveal([{ id: 'ch08#b0', text: 'Она походила на мою подпись.' }]);
+    const again = createReveal([{ id: 'ch08#b0', text: 'Она походила на мою подпись.' }]);
+    const other = createReveal([{ id: 'ch08#b7', text: 'Она походила на мою подпись.' }]);
+    expect([...(first.blocks[0]?.inkTimes ?? [])]).toEqual([...(again.blocks[0]?.inkTimes ?? [])]);
+    expect([...(other.blocks[0]?.inkTimes ?? [])]).not.toEqual([...(first.blocks[0]?.inkTimes ?? [])]);
   });
 
-  it('divides by the drain speed', () => {
-    expect(blockDurationMs('а'.repeat(45), REVEAL.offscreenSpeedUp)).toBeCloseTo(2_500 / 8, 5);
+  it('joins a print already under way at the current frame, never at zero', () => {
+    const text = 'Новая глава пишется с первого знака и до последнего.';
+    const startAt = Date.parse('2026-10-29T09:00:00Z');
+    const fresh = createReveal([{ id: 'ch20#b0', text }], { startAt, now: startAt });
+    expect(fresh.blocks[0]?.revealed).toBe(0);
+    const joined = createReveal([{ id: 'ch20#b0', text }], { startAt, now: startAt + 1_200 });
+    const shown = joined.blocks[0]?.revealed ?? 0;
+    expect(shown).toBeGreaterThan(0);
+    // 1 200 ms of a 30 cps clock ≈ 30 graphemes; the hold (220 ms) is behind us.
+    expect(shown).toBeGreaterThan(20);
+    expect(shown).toBeLessThan(graphemes(text).length);
   });
 });
 
 describe('planReveal', () => {
-  it('prints the opening of a live chapter, never more than 12 blocks', () => {
+  it('prints the whole of a live chapter, block after block, with no block cap', () => {
     const plan = planReveal({ blocks: blocks(30), mode: 'live', chapterAgeMs: 0 });
-    expect(plan.queued).toHaveLength(REVEAL.maxQueueBlocks);
+    expect(plan.queued).toHaveLength(30);
     expect(plan.queued[0]).toBe('ch08#b0');
-    expect(plan.instant).toHaveLength(18);
+    expect(plan.instant).toEqual([]);
   });
 
   it('animates only blocks in the viewport; the rest appear instantly', () => {
@@ -123,10 +148,10 @@ describe('a change is printed, a machine pass is not (BOOK-117 §1)', () => {
     expect(plan.instant).toHaveLength(3);
   });
 
-  it('caps a large change at the queue bound', () => {
+  it('prints every block a change touched: no queue cap', () => {
     const many = blocks(30).map((block, index) => ({ ...block, id: `ch08#d${index}` }));
     const plan = planReveal({ blocks: many, mode: 'change', changedIds: new Set(many.map((block) => block.id)), chapterAgeMs: 0 });
-    expect(plan.queued).toHaveLength(REVEAL.maxQueueBlocks);
+    expect(plan.queued).toHaveLength(30);
   });
 
   it('reads the frame: a reader’s change prints, a cascade or a rewrite cross-fades', () => {
@@ -141,15 +166,17 @@ describe('a change is printed, a machine pass is not (BOOK-117 §1)', () => {
 });
 
 describe('reveal state', () => {
-  it('reveals grapheme by grapheme inside a block', () => {
-    let state = createReveal([{ id: 'b1', text: 'абв' }]);
+  it('reveals grapheme by grapheme, at the engine’s own instants', () => {
+    const state = createReveal([{ id: 'b1', text: 'абв' }]);
+    const ink = state.blocks[0]?.inkTimes ?? [];
     expect(state.active).toBe(0);
     expect(blockText(state, 'b1', 'абв')).toBe('');
-    state = tickReveal(state, REVEAL.minBlockMs / 2);
-    expect(blockText(state, 'b1', 'абв')).toBe('а');
-    state = tickReveal(state, REVEAL.minBlockMs / 2);
-    expect(blockText(state, 'b1', 'абв')).toBe('абв');
-    expect(revealComplete(state)).toBe(true);
+    // One grapheme per ink time: the count is the engine's, not a proportional guess.
+    const half = tickReveal(state, (ink[0] ?? 0) + 1);
+    expect(blockText(half, 'b1', 'абв')).toBe('а');
+    const later = tickReveal(state, (ink[1] ?? 0) + 1);
+    expect(blockText(later, 'b1', 'абв')).toBe('аб');
+    expect(revealComplete(tickReveal(state, 10_000))).toBe(true);
   });
 
   it('prints blocks in order and carries leftover time into the next', () => {
@@ -157,18 +184,14 @@ describe('reveal state', () => {
       { id: 'b1', text: 'а' },
       { id: 'b2', text: 'б' },
     ]);
-    state = tickReveal(state, REVEAL.minBlockMs);
+    const first = state.blocks[0]?.durationMs ?? 0;
+    state = tickReveal(state, first + 1);
     expect(activeBlockId(state)).toBe('b2');
     expect(blockText(state, 'b1', 'а')).toBe('а');
     expect(blockText(state, 'b2', 'б')).toBe('');
-    state = tickReveal(state, REVEAL.minBlockMs);
-    expect(revealComplete(state)).toBe(true);
-  });
 
-  it('drains at 8× when the reader scrolls away', () => {
-    const state = createReveal([{ id: 'b1', text: 'абв' }]);
-    const drained = tickReveal(state, 20, REVEAL.offscreenSpeedUp);
-    expect(drained.blocks[0]?.revealed).toBeGreaterThan(0);
+    state = tickReveal(state, state.blocks[1]?.durationMs ?? 0);
+    expect(revealComplete(state)).toBe(true);
   });
 
   it('skips blocks outside the viewport and moves the caret to the next visible one', () => {
@@ -191,7 +214,8 @@ describe('reveal state', () => {
     expect(revealComplete(ticked)).toBe(true);
   });
 
-  it('finishes at once on «показать сразу» and stays complete', () => {    const state = createReveal([{ id: 'b1', text: 'абв' }, { id: 'b2', text: 'где' }]);
+  it('finishes at once on «показать сразу» and stays complete', () => {
+    const state = createReveal([{ id: 'b1', text: 'абв' }, { id: 'b2', text: 'где' }]);
     const done = finishReveal(state);
     expect(revealComplete(done)).toBe(true);
     expect(blockText(done, 'b1', 'абв')).toBe('абв');
@@ -205,21 +229,18 @@ describe('reveal state', () => {
     expect(blockText(state, 'b1', 'абв')).toBe('абв');
   });
 
-  it('lands a long title whole at its own 400 ms cap, never at its 5 000 (BOOK-DOC-49 §3)', () => {
-    // A renamed title: 90 graphemes are 5 000 ms of prose at 18 cps and 2 600 even after the
-    // engine's ceiling. The cover's budget is a constant of the sheet, so the word is whole at
-    // 400 — 399 is not enough, and that is the whole point of the number.
+  it('lands a long cover title whole at the sheet’s own 400 ms budget (BOOK-DOC-49 §3)', () => {
+    // The cover is not a print: its sequence has one constant, and the engine is the same.
     const title = 'я'.repeat(90);
-    expect(blockDurationMs(title)).toBe(REVEAL.maxBlockMs);
-
     const capped = createReveal([{ id: 'title', text: title }], { capBlockMs: 400 });
     expect(capped.blocks[0]?.durationMs).toBe(400);
-    expect(revealComplete(tickReveal(capped, 399))).toBe(false);
+    // The ceiling is the sheet's: whole by 400, still arriving a quarter of the way in.
+    expect(revealComplete(tickReveal(capped, 100))).toBe(false);
     expect(blockText(tickReveal(capped, 400), 'title', title)).toBe(title);
 
     // Without the cap the same run is still printing at 400: the option is what changed.
     const uncapped = createReveal([{ id: 'title', text: title }]);
-    expect(uncapped.blocks[0]?.durationMs).toBe(REVEAL.maxBlockMs);
+    expect(uncapped.blocks[0]?.durationMs).toBeGreaterThan(400);
     expect(blockText(tickReveal(uncapped, 400), 'title', title)).not.toBe(title);
   });
 
@@ -246,6 +267,14 @@ describe('chapterReveal', () => {
 
     const joined = chapterReveal(chapter('2026-10-01T09:00:00Z'), { fresh: false, now });
     expect(joined.blocks).toEqual([]);
+  });
+
+  it('prints a chapter being written from its own clock, joining mid-print', () => {
+    const startAt = now;
+    const state = chapterReveal(chapter('2026-10-27T09:00:00Z'), { fresh: false, live: true, startAt, now: startAt + 1_500 });
+    expect(state.blocks.map((block) => block.id)).toEqual(['ch08#b0', 'ch08#b1']);
+    // The first block is under way and not restarting from zero.
+    expect(state.blocks[0]?.revealed ?? 0).toBeGreaterThan(10);
   });
 
   it('prints only the blocks a change names', () => {

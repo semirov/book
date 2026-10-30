@@ -22,6 +22,19 @@ import {
  */
 export type PipelineUsage = { in: number; out: number; cachedIn: number; estimated?: boolean };
 
+/**
+ * Two calls' usage, summed for the pass's own line. BOOK-219: the flag is sticky — one estimated
+ * call makes the pass's line an estimate.
+ */
+export function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
+  return {
+    in: total.in + usage.in,
+    out: total.out + usage.out,
+    cachedIn: total.cachedIn + usage.cachedIn,
+    ...(total.estimated === true || usage.estimated === true ? { estimated: true } : {}),
+  };
+}
+
 /** One model's rates, USD per million tokens (BOOK-114's shape). */
 export type PipelineRates = { input: number; output: number; cacheRead: number };
 

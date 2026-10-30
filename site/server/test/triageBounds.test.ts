@@ -14,8 +14,15 @@
 import { READING_RESCHEDULED_LINE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { TRIAGE_CALL_TIMEOUT_MS, TRIAGE_CLAIM_TTL_MS, rescheduleTomorrow } from '../src/comments/attempts.ts';
+import {
+  TRIAGE_BACKOFF_MS,
+  TRIAGE_CALL_TIMEOUT_MS,
+  TRIAGE_CLAIM_TTL_MS,
+  TRIAGE_MAX_TRIES,
+  rescheduleTomorrow,
+} from '../src/comments/attempts.ts';
 import { readCommentRow, toCommentDto } from '../src/comments/repo.ts';
+import { EngineBridge } from '../src/engineState/bridge.ts';
 import { answerOf, asSaid, attemptOf, bootTriage, type Call, type Context } from './filingTriageHarness.ts';
 
 let context: Context | null = null;
@@ -61,12 +68,12 @@ describe('a claim abandoned by a crash is named, once (BOOK-206 M4)', () => {
     const { db, h } = context;
     const id = await context.post();
 
-    // Three claims, each outliving its writer: no `fail` is ever called, so nothing else speaks.
-    for (let claim = 0; claim < 3; claim += 1) {
+    // Five claims (the ladder's ceiling), each outliving its writer: no `fail` is ever called.
+    for (let claim = 0; claim < TRIAGE_MAX_TRIES; claim += 1) {
       expect((await context.client.nextTriage(`writer-${String(claim)}`)).assignment).toMatchObject({ commentId: id, attempt: 1 });
       h.clock.advance(TRIAGE_CLAIM_TTL_MS + 1);
     }
-    expect(attemptOf(db, id)).toMatchObject({ tries: 3 });
+    expect(attemptOf(db, id)).toMatchObject({ tries: TRIAGE_MAX_TRIES });
 
     // One more pulse: the row is capped and nobody called `fail` — the sweep settles it.
     expect((await context.client.nextTriage('writer-after')).assignment).toBeNull();
@@ -98,7 +105,7 @@ describe('a claim abandoned by a crash is named, once (BOOK-206 M4)', () => {
     context = await bootTriage();
     const { db, h } = context;
     const id = await context.post();
-    for (let claim = 0; claim < 3; claim += 1) {
+    for (let claim = 0; claim < TRIAGE_MAX_TRIES; claim += 1) {
       await context.client.nextTriage(`writer-${String(claim)}`);
       h.clock.advance(TRIAGE_CLAIM_TTL_MS + 1);
     }
@@ -148,21 +155,87 @@ describe('a retried fail report counts nothing twice (BOOK-206 B5)', () => {
     context = await bootTriage();
     const { db, h } = context;
     const id = await context.post();
+    // §10.8: five bought calls, each after its own backoff; the fifth is the cap.
     await context.pulse();
-    h.clock.advance(60_001);
-    await context.pulse();
-    h.clock.advance(600_001);
-    await context.pulse();
-    expect(attemptOf(db, id)).toMatchObject({ tries: 0, next_at: NEXT_UTC_MIDNIGHT });
+    for (const backoff of TRIAGE_BACKOFF_MS) {
+      h.clock.advance(backoff + 1);
+      await context.pulse();
+    }
+    expect(attemptOf(db, id)).toMatchObject({
+      tries: TRIAGE_MAX_TRIES,
+      next_at: null,
+      desperate: 1,
+      claim_until: null,
+    });
 
+    // A report retried after the cap is the same fifth failure: no second event, no new wait.
     expect(await context.client.failTriage({ commentId: id, n: 1, code: 'PROVIDER_TIMEOUT', spend })).toMatchObject({
       already: true,
       cap: true,
-      nextAt: NEXT_UTC_MIDNIGHT,
+      nextAt: null,
     });
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 3 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({
+      n: TRIAGE_MAX_TRIES,
+    });
     expect(db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get()).toEqual({ n: 0 });
-    expect(attemptOf(db, id)).toMatchObject({ tries: 0, next_at: NEXT_UTC_MIDNIGHT });
+    expect(attemptOf(db, id)).toMatchObject({ tries: TRIAGE_MAX_TRIES, next_at: null, desperate: 1 });
     expect(context.alerts).toHaveLength(1);
+  });
+});
+
+describe('§10.8 — the reading ladder', () => {
+  it('widens at the third failure, marks the desperate sixth and settles it', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    const id = await context.post();
+
+    // Three broken calls: 60 s, then 10 min, then the widening.
+    await context.pulse();
+    h.clock.advance(TRIAGE_BACKOFF_MS[0]! + 1);
+    await context.pulse();
+    h.clock.advance(TRIAGE_BACKOFF_MS[1]! + 1);
+    await context.pulse();
+
+    expect(attemptOf(db, id)).toMatchObject({ tries: 3, widened: 'as-document' });
+    const widened = db
+      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.widened'`)
+      .all(id) as Array<{ meta: string }>;
+    expect(widened).toHaveLength(1);
+    expect(JSON.parse(widened[0]!.meta)).toMatchObject({ widened: 'as-document', try: 3 });
+
+    // Attempt 4 is read under the widened requirement, after the 6 h rung it waits on.
+    h.clock.advance(TRIAGE_BACKOFF_MS[2]! + 1);
+    const fourth = await context.client.nextTriage('writer-4');
+    expect(fourth.assignment).toMatchObject({ commentId: id, attempt: 1, widened: 'as-document' });
+    await context.client.failTriage({ commentId: id, n: 1, code: 'PROVIDER_SHAPE' });
+
+    // Attempt 5 is the last bought call; its failure hands over to the desperate sixth.
+    h.clock.advance(TRIAGE_BACKOFF_MS[3]! + 1);
+    const fifth = await context.client.nextTriage('writer-5');
+    expect(fifth.assignment).not.toBeNull();
+    expect(await context.client.failTriage({ commentId: id, n: 1, code: 'PROVIDER_TIMEOUT' })).toMatchObject({
+      cap: true,
+      desperate: true,
+      nextAt: null,
+    });
+    expect(attemptOf(db, id)).toMatchObject({ tries: 5, desperate: 1, next_at: null });
+
+    // The site settles the sixth without a model call: a visible defect, one frame, no loop.
+    expect(context.place()).toBe(1);
+    expect(attemptOf(db, id)).toMatchObject({ tries: 6, outcome: 'held', desperate: 1 });
+    expect(context.place()).toBe(0);
+
+    const frames: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const bridge = new EngineBridge({
+      db,
+      emit: (type, data) => frames.push({ type, data: data as Record<string, unknown> }),
+      replay: true,
+      progressThrottleMs: 0,
+      now: () => h.clock.ms,
+    });
+    bridge.prime();
+    bridge.tick();
+    const reading = frames.filter((frame) => frame.type === 'filing:reading').at(-1)?.data;
+    expect(reading).toMatchObject({ commentId: id, phase: 'failed', attempt: 6, maxAttempts: 6, desperate: true });
   });
 });

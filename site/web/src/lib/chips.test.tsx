@@ -267,11 +267,12 @@ describe('the removed chips are gone from their surfaces', () => {
     vi.unstubAllGlobals();
   });
 
-  it('prints the book’s title and its one idle word in the header — no chip, no count', () => {
+  it('prints the book’s title and no idle word in the header — no chip, no count', () => {
     const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live reading={{ n: null, page: null }} />);
-    // BOOK-112, BOOK-218: the head prints the book's own title and one word about now.
-    expect(textOf(html)).toBe('Книгатихо');
-    expect(html).toContain('data-kind="idle"');
+    // BOOK-112: the head prints the book's own title, and the running head's facts.
+    // BOOK-220 §11.1 — idle prints no word at all: the head is the brand and the folio.
+    expect(textOf(html)).toBe('Книга');
+    expect(html).not.toContain('head-line');
     expect(html).not.toContain('class="live"');
     expect(html).not.toContain('глав ещё нет');
     expect(html).not.toContain('class="queue"');

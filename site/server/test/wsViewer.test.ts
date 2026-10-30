@@ -42,8 +42,10 @@ async function boot(): Promise<void> {
     stateThrottleMs: 0,
     resolveViewer: (request) =>
       request.headers.cookie === 'book_session=known'
-        ? { signedIn: true, displayName: 'Аня' }
-        : { signedIn: false, displayName: null },
+        ? { viewer: { signedIn: true, displayName: 'Аня', isAuthor: false }, identityId: 'idt_1' }
+        : request.headers.cookie === 'book_session=author'
+          ? { viewer: { signedIn: true, displayName: 'Филипп', isAuthor: true }, identityId: 'idt_author' }
+          : { viewer: { signedIn: false, displayName: null, isAuthor: false }, identityId: null },
   });
   app = await buildApp({ config, db: fixture.db, state, wsHub: hub, version: 'test', logger: false });
   await app.ready();
@@ -81,7 +83,7 @@ describe('hello — viewer and composer', () => {
     await boot();
     const frame = await hello();
     expect(frame.type).toBe('hello');
-    expect(frame.data.viewer).toEqual({ signedIn: false, displayName: null });
+    expect(frame.data.viewer).toEqual({ signedIn: false, displayName: null, isAuthor: false });
     expect(frame.data.composer).toEqual({
       minChars: COMMENT_MIN_CHARS,
       maxChars: COMMENT_MAX_CHARS,
@@ -108,6 +110,12 @@ describe('hello — viewer and composer', () => {
   it('resolves a signed-in reader from the session cookie', async () => {
     await boot();
     const frame = await hello({ cookie: 'book_session=known' });
-    expect(frame.data.viewer).toEqual({ signedIn: true, displayName: 'Аня' });
+    expect(frame.data.viewer).toEqual({ signedIn: true, displayName: 'Аня', isAuthor: false });
+  });
+
+  it('names the author from `identities.is_author`, with no second fetch (§10.4)', async () => {
+    await boot();
+    const frame = await hello({ cookie: 'book_session=author' });
+    expect(frame.data.viewer).toEqual({ signedIn: true, displayName: 'Филипп', isAuthor: true });
   });
 });

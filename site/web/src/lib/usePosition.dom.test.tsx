@@ -9,6 +9,7 @@ import { landingLine } from './landing.ts';
 import { ANCHOR_EPS } from './pageTrack.ts';
 import { PLACE_KEY, readPlace } from './placeStore.ts';
 import { placeAtLine, type Place } from './position.ts';
+import { beginPrint, followingInk, reportCaret, resetPrintFollow, setPrintFollow } from './printFollow.ts';
 import { forgetBootPlace, jumpToChapter, resumePending, usePosition } from './usePosition.ts';
 
 /**
@@ -66,8 +67,10 @@ let nextId = 1;
 const scrollTo = vi.fn((options: ScrollToOptions) => {
   scroll.y = Number(options.top ?? 0);
 });
-const scrollBy = vi.fn((options: ScrollToOptions) => {
-  scroll.y += Number(options.top ?? 0);
+// Both shapes the page uses: the options form (a relative step by `top`) and the two-argument
+// form the follow control writes while the ink prints (`scrollBy(0, delta)`).
+const scrollBy = vi.fn((first: ScrollToOptions | number, delta: number | undefined = undefined) => {
+  scroll.y += typeof first === 'number' ? delta ?? 0 : Number(first.top ?? 0);
 });
 
 function rect(top: number, height: number): DOMRect {
@@ -148,6 +151,8 @@ function mount(ready: boolean, signedIn = false): void {
 beforeEach(() => {
   vi.clearAllMocks();
   forgetBootPlace();
+  resetPrintFollow();
+  window.sessionStorage.clear();
   window.localStorage.clear();
   scroll.y = 0;
   queued = [];
@@ -173,6 +178,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  resetPrintFollow();
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   container.remove();
@@ -392,5 +398,86 @@ describe('a reload', () => {
     mount(true);
     await pump(0);
     expect(window.history.scrollRestoration).toBe('manual');
+  });
+});
+
+/**
+ * BOOK-220 × BOOK-209 — the follow control and the place do not fight. «следить» scrolls only
+ * while something prints and stops on a hand scroll; the place restores on navigation and back.
+ * So a restore never lands while a print is followed (the follow's own scroll would undo it in
+ * the next frame), and the follow never calls the position layer at all.
+ */
+describe('a followed print and the place', () => {
+  it('does not land an entry’s place while the ink is followed', async () => {
+    scrollToTop(940);
+    mount(true);
+    await pump(0);
+    const stop = beginPrint();
+    setPrintFollow(true);
+    expect(followingInk()).toBe(true);
+
+    const before = scroll.y;
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { bookPlace: place({ deltaPx: 12 }) } }));
+    });
+    await pump(10);
+
+    // The page did not move: the follow owns it, and a restore would be undone next frame.
+    expect(scroll.y).toBe(before);
+    expect(scrollTo).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('does not spend the resume while the ink is followed', async () => {
+    window.localStorage.setItem(PLACE_KEY, JSON.stringify(place({ deltaPx: 12 })));
+    forgetBootPlace();
+    const stop = beginPrint();
+    setPrintFollow(true);
+
+    await act(async () => root?.render(<Probe ready />));
+    await pump(12);
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    // The one resume is spent unused: nothing lands under the control once the print ends.
+    expect(resumePending()).toBe(false);
+    stop();
+  });
+
+  it('lands the place again as soon as the print stops being followed', async () => {
+    mount(true);
+    await pump(0);
+    const stop = beginPrint();
+    setPrintFollow(true);
+
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { bookPlace: place({ deltaPx: 12 }) } }));
+    });
+    await pump(10);
+    expect(boxTop('#ch-1 [data-s="0"]')).not.toBeCloseTo(landingLine() + 12, 1);
+
+    stop();
+    setPrintFollow(false);
+    expect(followingInk()).toBe(false);
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { bookPlace: place({ deltaPx: 12 }) } }));
+    });
+    await pump(10);
+    expect(boxTop('#ch-1 [data-s="0"]')).toBeCloseTo(landingLine() + 12, 1);
+  });
+
+  it('moves the page itself without a landing: the follow never calls the position layer', async () => {
+    mount(true);
+    await pump(0);
+    const stop = beginPrint();
+    setPrintFollow(true);
+    scrollToTop(0);
+    // A caret far below the 45 % line: one `scrollBy(0, delta)`, no `scrollTo`, no landing chain.
+    reportCaret(1_000, VIEWPORT, 0);
+    await pump(10);
+    expect(scrollBy).toHaveBeenCalledTimes(1);
+    // The caret's centre on the 45 % line, and nothing else moved the page.
+    expect(scroll.y).toBeCloseTo(1_000 - VIEWPORT * 0.45, 1);
+    expect(scrollTo).not.toHaveBeenCalled();
+    stop();
   });
 });

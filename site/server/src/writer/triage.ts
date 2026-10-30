@@ -131,10 +131,14 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
         // AC5: a call that failed the post-check or the recorded-verdict guard still cost money.
         ...(spend === undefined ? {} : { spend: spendOf(deps, spend) }),
       });
-      // At the cap the engine alerts and puts the attempt back to the next UTC midnight; this
-      // line is the operator's copy of that fact, never «видимый дефект» (BOOK-206 B5).
+      // §10.8: five bought calls are the ceiling; the sixth is deterministic (no model call) and
+      // the site settles it. This line is the operator's copy, never «видимый дефект».
       if (result.cap) {
-        log(`[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки за день — следующее чтение после 00:00 UTC`);
+        log(
+          result.desperate === true
+            ? `[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки не дали ответа — шестая, последняя, без звонка модели`
+            : `[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки за день — следующее чтение после 00:00 UTC`,
+        );
       }
     } catch (error) {
       log(`[writer] триаж: отказ не записан (${failureCodeOf(error)})`);

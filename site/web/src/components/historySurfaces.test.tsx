@@ -300,8 +300,9 @@ describe('a pending filing is visible at its anchor while history stays off (BOO
     document.body.innerHTML = html;
     const note = document.querySelector('.margin-note');
     expect(note, 'the margin note renders with history off').not.toBeNull();
-    // BOOK-218 — the note is the pointer (number, quote, who); the word travels in its name.
-    expect(note?.getAttribute('aria-label') ?? '').toContain('ждёт');
+    // BOOK-220 §11.3 — the note is the pointer (quote, kind, author, the next line); the word
+    // travels in the strip row and in the record the note opens.
+    expect(note?.textContent ?? '').toContain('ждёт');
     expect(note?.textContent ?? '').toContain('Её освещал яркий свет.');
     // The phone strip is the same object at <1024, and it prints the same word.
     expect(document.querySelector('.phone-strip')?.textContent ?? '').toContain('ждёт');

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>reconnect harness</title>
+    <style>
+      /* The React root adds no box of its own: `.top` must be a child of the one canvas so its
+         `position: sticky` is bounded by the page, exactly as in `main.tsx`. */
+      #mount {
+        display: contents;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      BOOK-DOC-84 §11.1 — the CDP harness page for the **reconnect**: the real `BookSocket`, the
+      real frame fold and the real head, against the harness's own `/ws` (`scripts/lib/wsHub.mjs`).
+
+      The script refuses the endpoint for six attempts, then answers again with a snapshot that
+      carries the three frames the page missed. Nothing here decides anything: the words come
+      from `lib/socketStatus.ts` and `lib/nowState.ts`, the timeline is recorded from the
+      committed DOM, and `scripts/ws-reconnect-cdp.mjs` is what asserts.
+    -->
+    <div class="canvas">
+      <div id="mount"></div>
+      <main class="page">
+        <article class="page ch" id="ch-3" data-n="3" data-rev="1" aria-label="глава 3">
+          <div class="ch-h">
+            <span class="ch-id"><span class="ch-n">03</span></span>
+            <span class="ch-meta">глава 3</span>
+          </div>
+          <p class="p" id="first">
+            Свет был включён до меня, и никто не говорил об этом. Я сел у окна и стал ждать, пока
+            улица начнёт просыпаться.
+          </p>
+          <p class="p">
+            Дверь закрылась за спиной, и коридор стал длиннее, чем был. Я шёл, считая лампы.
+          </p>
+        </article>
+      </main>
+    </div>
+    <script type="module" src="/harness/reconnect.tsx"></script>
+  </body>
+</html>

@@ -432,7 +432,8 @@ export function driveStub(fixture: Fixture, assignment: WriterAssignment, script
   }
 
   let revisions = 0;
-  const maxRevisions = script.maxRevisions ?? 4;
+  // §10.8: five gate cycles per step (GATE_CYCLES), so the harness may follow all five.
+  const maxRevisions = script.maxRevisions ?? 5;
   for (;;) {
     const editor = submitGate(fixture, 'editor', script);
     if (editor.action === 'revise') {

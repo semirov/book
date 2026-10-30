@@ -9,6 +9,7 @@
 
 import type { Finding, Relevance, SeamRef, ScopeHint, StepPass } from './change.ts';
 import type { InterventionKind } from './intervention.ts';
+import type { WidenedNote } from './stage.ts';
 
 /**
  * BOOK-44 — a reader-written value travels marked. The mark sits *inside* the value, so a nested
@@ -74,4 +75,19 @@ export type WriterAssignment = {
   };
   changeId: string | null;
   cascadeId: string | null;
+  // ── BOOK-DOC-84 §10.8 — the ladder's fields on the assignment ──────────────
+  /** The step's lease count (1..6); the engine counts, the writer obeys. */
+  attempt: number;
+  maxAttempts: number;
+  /**
+   * The widening this attempt runs under, `null` before the third failure. A widened attempt is
+   * a rewrite: BOOK-173's mode table (`writer/mode.ts`) is what the widened pass runs through.
+   */
+  widened: WidenedNote | null;
+  /** 1..6: the sixth is the desperate one — one call, cheap, deterministic. */
+  desperate: boolean;
+  /** The attempt's own bound in ms: the step's wall, or 180 s on the desperate attempt. */
+  deadlineAt: number;
+  /** On a re-issue: when this attempt was picked up again; `null` on a first claim. */
+  retryAt: number | null;
 };

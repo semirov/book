@@ -1,0 +1,1235 @@
+{
+  "capturedAt": "2026-10-29T10:18:21.891Z",
+  "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum",
+  "runs": [
+    {
+      "width": 1440,
+      "mountBeat": "type",
+      "mountMs": 0,
+      "samples": [
+        {
+          "tMs": 0,
+          "pass": true,
+          "beat": "type",
+          "pending": 69,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.203,
+            "top": 579.57,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.203,
+            "top": 428.45,
+            "left": 1013.5,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 510,
+          "pass": true,
+          "beat": "type",
+          "pending": 48,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 510.93,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 568.42,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 656,
+          "pass": true,
+          "beat": "type",
+          "pending": 42,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 463.81,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 624.8,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 798,
+          "pass": true,
+          "beat": "type",
+          "pending": 37,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 426.84,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 669.91,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 924,
+          "pass": true,
+          "beat": "type",
+          "pending": 32,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 400.2,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 715.42,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1081,
+          "pass": true,
+          "beat": "type",
+          "pending": 28,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 378.67,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 748.02,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1243,
+          "pass": true,
+          "beat": "type",
+          "pending": 21,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 361.55,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 812.13,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1402,
+          "pass": true,
+          "beat": "type",
+          "pending": 17,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 351.63,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 850.11,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1560,
+          "pass": true,
+          "beat": "type",
+          "pending": 13,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 344.48,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 882.05,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1710,
+          "pass": true,
+          "beat": "type",
+          "pending": 7,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 340.13,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 935.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 1867,
+          "pass": true,
+          "beat": "type",
+          "pending": 1,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 338.17,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 458.69,
+            "left": 985.8,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2016,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.754,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 468.79,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2295,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 489.06,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2440,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 498.74,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2588,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 509.49,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2741,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 521.14,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 2894,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 531.79,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 3028,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 541.47,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 3174,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "read": {
+            "present": true,
+            "opacity": 0.378,
+            "top": 337.73,
+            "left": 1003.75,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.734,
+            "top": 549.41,
+            "left": 995.77,
+            "visible": true
+          },
+          "blockTop": 337.73,
+          "blockHeight": 242.88,
+          "lines": 8
+        },
+        {
+          "tMs": 3335,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "present": false,
+            "opacity": null,
+            "top": null,
+            "left": null,
+            "visible": false
+          },
+          "write": {
+            "present": false,
+            "opacity": null,
+            "top": null,
+            "left": null,
+            "visible": false
+          },
+          "blockTop": 337.73,
+          "blockHeight": 241.88,
+          "lines": 8
+        }
+      ],
+      "bluePxPerSec": {
+        "samples": 11,
+        "min": -322.7,
+        "max": -3,
+        "median": -105.7
+      },
+      "redPxPerSec": {
+        "samples": 9,
+        "min": 54.4,
+        "max": 76.1,
+        "median": 69.6
+      }
+    },
+    {
+      "width": 390,
+      "mountBeat": "type",
+      "mountMs": 0,
+      "samples": [
+        {
+          "tMs": 0,
+          "pass": true,
+          "beat": "type",
+          "pending": 33,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 640.53,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 66.78,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 192,
+          "pass": true,
+          "beat": "type",
+          "pending": 26,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 633.72,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 133.8,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 349,
+          "pass": true,
+          "beat": "type",
+          "pending": 24,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 621.58,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 146.44,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 522,
+          "pass": true,
+          "beat": "type",
+          "pending": 20,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 599.8,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 182.97,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 696,
+          "pass": true,
+          "beat": "type",
+          "pending": 14,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 566.22,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 238.75,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 869,
+          "pass": true,
+          "beat": "type",
+          "pending": 10,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 520.53,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 268.8,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1029,
+          "pass": true,
+          "beat": "type",
+          "pending": 5,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.69,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 470.56,
+            "left": 308.33,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1203,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 419.1,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 474.32,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1376,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 375.26,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 486.21,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1536,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 342.45,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 497.1,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1709,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 313.33,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 509.07,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 1883,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 290.42,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 520.81,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2055,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 271.6,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 532.83,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2230,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 256.65,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 544.73,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2403,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 244.74,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 556.57,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2577,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 235.24,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 568.49,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2745,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 228.37,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 579.43,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 2924,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 222.3,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 592.13,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3098,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 218.18,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 1,
+            "top": 604.19,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3248,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 215.82,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.912,
+            "top": 613.36,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3418,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 214.13,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.055,
+            "top": 613.36,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3583,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 1,
+            "top": 213.54,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.055,
+            "top": 613.36,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3766,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "read": {
+            "present": true,
+            "opacity": 0.151,
+            "top": 213.52,
+            "left": 24,
+            "visible": true
+          },
+          "write": {
+            "present": true,
+            "opacity": 0.055,
+            "top": 613.36,
+            "left": 355.61,
+            "visible": true
+          },
+          "blockTop": 213.52,
+          "blockHeight": 430.86,
+          "lines": 15
+        },
+        {
+          "tMs": 3937,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "present": false,
+            "opacity": null,
+            "top": null,
+            "left": null,
+            "visible": false
+          },
+          "write": {
+            "present": false,
+            "opacity": null,
+            "top": null,
+            "left": null,
+            "visible": false
+          },
+          "blockTop": 213.52,
+          "blockHeight": 428.2,
+          "lines": 15
+        }
+      ],
+      "bluePxPerSec": {
+        "samples": 22,
+        "min": -311.5,
+        "max": -0.1,
+        "median": -77.3
+      },
+      "redPxPerSec": {
+        "samples": 13,
+        "min": 21.6,
+        "max": 70.9,
+        "median": 68.4
+      }
+    }
+  ],
+  "arrivals": [
+    {
+      "width": 1440,
+      "fraction": 0.3,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": true,
+        "beat": "type",
+        "pending": 28,
+        "read": true,
+        "write": true
+      },
+      "plainParagraph": false
+    },
+    {
+      "width": 1440,
+      "fraction": 0.7,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": true,
+        "beat": "tail",
+        "pending": 0,
+        "read": false,
+        "write": true
+      },
+      "plainParagraph": false
+    },
+    {
+      "width": 1440,
+      "fraction": 0.95,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": true,
+        "beat": "tail",
+        "pending": 0,
+        "read": false,
+        "write": true
+      },
+      "plainParagraph": false
+    },
+    {
+      "width": 390,
+      "fraction": 0.3,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": true,
+        "beat": "tail",
+        "pending": 0,
+        "read": true,
+        "write": true
+      },
+      "plainParagraph": false
+    },
+    {
+      "width": 390,
+      "fraction": 0.7,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": true,
+        "beat": "tail",
+        "pending": 0,
+        "read": true,
+        "write": true
+      },
+      "plainParagraph": false
+    },
+    {
+      "width": 390,
+      "fraction": 0.95,
+      "sawPassAtMount": false,
+      "first": {
+        "pass": false,
+        "beat": null,
+        "pending": 0
+      },
+      "at400ms": {
+        "pass": false,
+        "beat": null,
+        "pending": 0,
+        "read": false,
+        "write": false
+      },
+      "plainParagraph": true
+    }
+  ],
+  "after": [
+    {
+      "width": 1440,
+      "pass": false,
+      "carets": {
+        "read": null,
+        "write": null
+      },
+      "beat": null,
+      "passAttribute": "none",
+      "note": "no stage rows: this is a reader who arrives after the pass"
+    },
+    {
+      "width": 390,
+      "pass": false,
+      "carets": {
+        "read": null,
+        "write": null
+      },
+      "beat": null,
+      "passAttribute": "none",
+      "note": "no stage rows: this is a reader who arrives after the pass"
+    }
+  ],
+  "consoleErrors": []
+}

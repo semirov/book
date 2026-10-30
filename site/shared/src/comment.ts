@@ -282,7 +282,12 @@ export type CommentPage = {
 };
 
 /** What the composer may show about the signed-in reader (§9, §12.8). */
-export type ViewerDto = { signedIn: boolean; displayName: string | null };
+/**
+ * BOOK-DOC-84 §10.4 — the viewer as `hello` carries it. `isAuthor` is read from
+ * `identities.is_author` (the column `GET /api/authors/me` already reads), so the head and the
+ * author's line need no second fetch; an anonymous reader is never the author.
+ */
+export type ViewerDto = { signedIn: boolean; displayName: string | null; isAuthor?: boolean };
 
 /** §9 response 201: what is left, so the limit is never a surprise. */
 export type CommentBudget = {
@@ -357,6 +362,12 @@ export type CommentAddedPayload = {
   status: CommentStatus;
   reason: string | null;
   createdAt: string;
+  /**
+   * BOOK-DOC-84 #18 — the whole stored row, sanitized and bounded like every DTO. The frame
+   * used to be only a trigger (`GET /api/comments` carried the row); the thread inserts this
+   * DTO instead, so a second tab and the poster see the same row without a refetch.
+   */
+  comment: CommentDto;
 };
 
 /**
@@ -413,11 +424,15 @@ export type CommentDecisionPayload = {
    * transition moved no text at all.
    */
   applied?: { chapter: number; rev: number } | null;
+  // BOOK-DOC-84 §10.1 — `attempt` was deleted: the reading's own numbers travel on
+  // `filing:reading` (one fact, one carrier), and this frame carries the sinks only.
   /**
-   * BOOK-206 B5 — the attempt behind the filing came back empty (the triage cap, an abandoned
-   * claim). `retryAt` is the hour the next read is bought, `null` when no attempt is scheduled.
+   * BOOK-DOC-84 #19 — the filing's tries left today, from the attempt ledger. The row of the
+   * record prints «осталось N попыток» from the frame, not from a second GET.
    */
-  attempt?: { state: 'failed'; retryAt: string | null };
+  attemptsLeft: number;
+  /** BOOK-DOC-84 #19 — ms epoch of the decision (the `decidedAt` ISO, in ms). */
+  at: number;
 };
 
 export type FeedbackBatchPayload = {

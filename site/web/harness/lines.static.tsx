@@ -166,9 +166,18 @@ export function HeadRow() {
             <span className="top-chapter-n">7</span>
             <span className="top-chapter-w">Ночная смена</span>
           </span>
-          <span className="head-status" data-kind="live" role="status">
-            <span className="head-nib" aria-hidden="true" />
-            <span className="head-status-full">сейчас пишется</span>
+          <span className="head-line" data-kind="writing" role="status">
+            <span className="head-line-text">
+              <span className="head-line-part">машина пишет главу 1</span>
+              <span className="head-line-part">
+                <span className="head-line-sep" aria-hidden="true">·{' '}</span>
+                попытка 1 из 5
+              </span>
+              <span className="head-line-part hl-time">
+                <span className="head-line-sep" aria-hidden="true">·{' '}</span>
+                14:21
+              </span>
+            </span>
           </span>
           <span className="folio" data-page={142} aria-hidden="true">
             142

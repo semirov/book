@@ -22,7 +22,8 @@ import type { EngineDeps } from './types.ts';
 export type EngineState = {
   status: 'running' | 'throttled';
   lane: { holder: string | null; heartbeatAt: string | null };
-  queue: { pending: number; processing: number; openCascades: number };
+  /** `filings` (BOOK-DOC-84 D4) is the pending premise count the writer's pacing reads. */
+  queue: { pending: number; processing: number; filings: number; openCascades: number };
   steps: { open: number; leased: number };
   tokens: { today: number; dailyBudget: number };
   alerts: unknown;
@@ -45,6 +46,7 @@ export function createOverview(deps: EngineDeps) {
       queue: {
         pending: store.countPending(db),
         processing: store.countProcessing(db),
+        filings: store.countPendingFilings(db),
         openCascades: store.listOpenCascades(db).length,
       },
       steps: { open: store.countOpenSteps(db), leased: store.liveLeases(db).length },

@@ -83,7 +83,8 @@ describe('a filing in the paragraph', () => {
     expect(html).toContain('class="margin-note');
     // BOOK-218 — the note is a pointer; the mark beside it carries the word for a screen reader.
     expect(html).toContain('aria-label="замечание 1 · ждёт"');
-    expect(html).not.toContain(STATE_LINES.waiting);
+    // BOOK-220 §11.3 — the note also says what happens next, in the module's own line.
+    expect(html).toContain(STATE_LINES.waiting);
     // The note is inside the sentence span whose quote it cites: the sentence opens, the note
     // follows it before the span closes.
     const sentence = html.indexOf('data-quote="Её освещал яркий свет."');
@@ -94,7 +95,7 @@ describe('a filing in the paragraph', () => {
     // and both are items of the margin's own ledger (`data-margin-item`).
     expect(html.indexOf('class="filing-mark filing-alive')).toBeGreaterThan(sentence);
     expect(html.indexOf('class="filing-mark filing-alive')).toBeLessThan(note);
-    expect(html).toContain('data-margin-item="mark"');
+    expect(html).toContain('class="filing-mark-slot"');
   });
 
   it('puts the phone strip after every sentence, as the paragraph’s last child', () => {
@@ -108,7 +109,7 @@ describe('a filing in the paragraph', () => {
     const html = render();
     expect(html).not.toContain('margin-note');
     expect(html).not.toContain('phone-strip');
-    expect(html).not.toContain('ждёт');
+    expect(html).not.toContain('в очереди');
   });
 
   it('keeps a held, rejected or expired filing alive in both surfaces', () => {
@@ -151,7 +152,7 @@ describe('a filing in the paragraph', () => {
     // Both anchors resolve to the same rewritten sentence; the alive filing wins the slot (the
     // same rule `FilingMark` uses), so a pending note is never displaced by a landed tick.
     const CHANGED = 'Я вошёл в пустую комнату. Свет был включён до меня и горел всю ночь.';
-    const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
+    const pending = comment({ changeSeq: 12, anchor: { ...comment().anchor, quote: 'Свет был включён' } });
     const landed = comment({
       id: 'cmt_01J9Z8K4Q8',
       number: 2,

@@ -11,13 +11,10 @@ import type { RetroMode } from './change.ts';
 import type { CarrierKind, Disposition, DispositionLock } from './disposition.ts';
 import { DEFAULT_FRAME_MODE } from './frame.ts';
 import { boundWord, countWord, ordinalWord } from './naming.ts';
-
-/**
- * The running head's deck: one short word, lowercase, about **now** (owner, 2026-10-29).
- * `web/src/lib/headStatus.ts` chooses it; `HeadStatus.tsx` draws it.
- */
+/** The running head's deck, one word about **now**; `idle` is an internal kind with no rendered
+ * word (owner, 2026-10-29) — its entry is empty, and nothing prints a line when nothing happens. */
 export const HEAD_WORDS = {
-  idle: 'тихо',
+  idle: '',
   reading: 'правку читают',
   waiting: 'правка ждёт',
   drafting: 'главу пишут',
@@ -28,7 +25,7 @@ export const HEAD_WORDS = {
 
 export type HeadWord = keyof typeof HEAD_WORDS;
 
-/** The sentences a reader reads about a filing and the page (BOOK-218): one module spells them. */
+/** The sentences a reader reads about a filing and the page (BOOK-218). */
 export const FILING_LINES = {
   /** 1 — a filing delivered to the reading. */
   reading: 'вашу правку читают',
@@ -497,3 +494,4 @@ export const AGE_WORDS = {
   leave: 'мне нет 18 — уйти',
   refusal: 'книга 18+ — сначала подтвердите, что вам есть 18',
 } as const;
+export * from './liveWords.ts';

@@ -62,11 +62,18 @@ export type WriterConfigRedacted = {
   continueMax: number;
   dailyTokens: number;
   maxPassesPerDay: number;
+  /** BOOK-DOC-84 D4: the idle poll — how long the lane sleeps when nothing waits. */
   pauseMs: number;
+  /** BOOK-DOC-84 D4: the breath between two passes while a filing is pending (3 000 ms). */
+  breathMs: number;
   /** BOOK-206: the triage cadence — a filing is claimed every 5 s, prose keeps `pauseMs`. */
   triagePollMs: number;
   /** The reading call's cap: one verdict and one reading, a reasoning call like a gate's. */
   triageTokens: number;
+  /** §10.8: the desperate sixth's cap — one cheap call, never a second reasoning pass. */
+  desperateTokens: number;
+  /** §10.8: the ordinary writing mode. A widening switches this attempt to `rewrite`. */
+  mode: 'patch' | 'rewrite';
   engineUrl: string;
   /** The engine's own cap, per request (`WRITER_ENGINE_TIMEOUT_MS`). */
   engineTimeoutMs: number;
@@ -224,11 +231,19 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     continueMax: integer(env, 'WRITER_CONTINUE_MAX', 2, 0),
     dailyTokens: integer(env, 'WRITER_DAILY_TOKENS', 1_500_000, 1),
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),
+    // BOOK-DOC-84 D4: the pause is the **idle** poll only. A chain with a waiting filing starts
+    // the next pass after `breathMs` — long enough for the applied frame, the print's first
+    // frames and the close to arrive in order, short enough to be invisible.
     pauseMs: integer(env, 'WRITER_PAUSE_MS', 900_000, 0),
+    breathMs: integer(env, 'WRITER_BREATH_MS', 3_000, 0),
     // BOOK-206: the two cadences. A filing is picked up within five seconds and prose still waits
     // its fifteen minutes; a triage call is a gate-sized answer, never a chapter.
     triagePollMs: integer(env, 'TRIAGE_POLL_MS', 5_000, 100),
     triageTokens: integer(env, 'TRIAGE_MAX_TOKENS', 8_000, 1),
+    // §10.8: the sixth attempt is the cheapest honest path — one call at 8 000 tokens.
+    desperateTokens: integer(env, 'WRITER_DESPERATE_TOKENS', 8_000, 1),
+    // §10.8: the writer works in patches; the widened attempt (and only it) rewrites.
+    mode: text(env, 'WRITER_MODE_DEFAULT', 'patch') === 'rewrite' ? 'rewrite' : 'patch',
     engineUrl,
     // The engine's own cap, and 60 s rather than the old 10: the engine is local but it is busy,
     // and on the measured pass (chapter 65) `land` outran 10 s *after* the chapter had landed and

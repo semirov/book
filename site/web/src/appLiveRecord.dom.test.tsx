@@ -19,7 +19,7 @@ import { STATE_LINES } from './lib/marginalia.ts';
 /**
  * BOOK-206 audit B1 — the live record moves without a reload.
  *
- * A reader's filing was accepted and then written; the page kept printing «в очереди на запись»
+ * A reader's filing was accepted and then written; the page kept printing «ждёт записи»
  * over text that already existed, because only `comment:added`/`comment:decision` refreshed the
  * filings. This mounts the real `App` on a stubbed socket and REST edge and drives the three
  * frames the page used to read for the change's own story only: `change:processing`,
@@ -298,7 +298,18 @@ describe('the live record (BOOK-206 B1)', () => {
       type: 'change:processing',
       seq: 13,
       ts: NOW,
-      data: { id: 'chg_1', chapter: 8, startedAt: NOW, attempt: 1, relevance: null },
+      // BOOK-DOC-84 #10 — the claim carries its place in line; the frame is no longer the
+      // three facts of BOOK-206 alone.
+      data: {
+        id: 'chg_1',
+        chapter: 8,
+        startedAt: NOW,
+        attempt: 1,
+        relevance: null,
+        queue: { ahead: 0 },
+        at: Date.parse(NOW),
+        eventSeq: 7,
+      },
     });
 
     expect(callsTo('/api/comments?limit=20')).toBe(thread + 1);

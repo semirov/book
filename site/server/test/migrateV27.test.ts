@@ -67,7 +67,7 @@ describe('migration v27 — the disposition chain', () => {
   it('creates the four columns and the counts table on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(34);
+    expect(SCHEMA_VERSION).toBe(35);
 
     const names = columns(db, 'comments').map((column) => column.name);
     for (const column of CHAIN) expect(names).toContain(column);

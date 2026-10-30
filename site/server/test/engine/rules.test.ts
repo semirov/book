@@ -97,7 +97,7 @@ describe('leases — the write lock (§6A.11)', () => {
   });
 });
 
-describe('the reaper gives up only after three attempts (§6A.11)', () => {
+describe('the reaper gives up only after the ladder (§6A.11, BOOK-DOC-84 §10.8)', () => {
   it('escalates a change whose session never lands anything', () => {
     const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
@@ -106,10 +106,15 @@ describe('the reaper gives up only after three attempts (§6A.11)', () => {
       expect(assignment.pass).toBe('change');
       // BOOK-44: the reader's goal sentence reaches the writer marked, not as bare prose.
       expect(assignment.intent).toEqual({ value: 'среда', untrusted: true });
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        if (attempt > 0) fixture.engine.next({ for: 'fwd', session: `fwd-${attempt}` });
+      // Five ordinary attempts, then the desperate sixth, then the close: six leases.
+      for (let attempt = 1; attempt <= 6; attempt += 1) {
+        if (attempt > 1) fixture.engine.next({ for: 'fwd', session: `fwd-${attempt}` });
         fixture.clock.advance(fixture.config.leaseTtlMs + 1_000);
         fixture.engine.reap();
+        const step = fixture.db.prepare('SELECT desperate FROM steps WHERE step_id = ?').get(assignment.stepId) as {
+          desperate: number;
+        };
+        if (attempt === 5) expect(step.desperate).toBe(1);
       }
       const row = fixture.db.prepare('SELECT status, outcome, attempts, reason FROM changes WHERE id = ?').get(change.id) as {
         status: string;
@@ -119,7 +124,7 @@ describe('the reaper gives up only after three attempts (§6A.11)', () => {
       };
       expect(row.status).toBe('escalated');
       expect(row.outcome).toBe('gate_timeout');
-      expect(row.attempts).toBe(3);
+      expect(row.attempts).toBe(6);
       expect(row.reason).toMatch(/^не дошло: /u);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
       expect(fixture.db.prepare('SELECT holder FROM lane WHERE id = 1').get()).toEqual({ holder: null });

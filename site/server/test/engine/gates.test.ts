@@ -180,8 +180,8 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
       const down = runStubStep(fixture, { title: 'Перед', blocks: ['Служебная строка.'], seams: [] }, 'bwd');
       expect(down?.assignment.chapter).toBe(5);
 
-      // Three revisions are allowed; the fourth blocker publishes with its finding and
-      // escalates the ripple (the text is never hidden — §6B.4 rule 3).
+      // Five revisions are allowed (§10.8's `GATE_CYCLES`); the sixth blocker publishes with
+      // its finding and escalates the ripple (the text is never hidden — §6B.4 rule 3).
       const repair = runStubStep(fixture, {
         title: 'После',
         blocks: ['Тестовый абзац номер два. Это служебный текст, он не является текстом книги.'],
@@ -189,7 +189,7 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
         editor: { verdict: 'GAP', findings: blocker('the neighbour still mentions the rug') },
       });
       expect(repair?.assignment.chapter).toBe(7);
-      expect(repair?.revisions).toBe(3);
+      expect(repair?.revisions).toBe(5);
       expect(repair?.result.outcome).toBe('published_with_finding');
 
       const trace = fixture.engine.trace(change.id);
@@ -198,7 +198,7 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
         (step) => step.step.pass === 'cascade' && step.step.chapter === 7,
       );
       expect(repairStep?.step.outcome).toBe('published_with_finding');
-      expect(repairStep?.step.cycle).toBe(3);
+      expect(repairStep?.step.cycle).toBe(5);
       expect(repairStep?.gates.find((gate) => gate.role === 'editor')?.verdict).toBe('GAP');
       expect(trace.change.cascade?.outcome).toBe('escalated:finding');
       expect(trace.change.change.status).toBe('escalated');
@@ -224,7 +224,10 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
         fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац.', `Правка ${cycle + 1}.`]);
         fixture.engine.land(assignment.leaseId);
       }
-      expect(actions).toEqual(['revise', 'revise', 'revise', 'publish_with_finding']);
+      expect(actions).toEqual([
+        ...Array<string>(fixture.config.gateCycles).fill('revise'),
+        'publish_with_finding',
+      ]);
     } finally {
       fixture.close();
     }
@@ -243,7 +246,7 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
         fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац.', `Правка ${cycle + 1}.`]);
         fixture.engine.land(assignment.leaseId);
       }
-      expect(actions).toEqual(['revise', 'revise', 'revise', 'close']);
+      expect(actions).toEqual([...Array<string>(fixture.config.gateCycles).fill('revise'), 'close']);
     } finally {
       fixture.close();
     }

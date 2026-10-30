@@ -13,12 +13,8 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 import { tapAt } from './tap.fixture.ts';
 
 /**
- * BOOK-128 #3863 / #3862 — the sentence's record.
- *
- * The jsdom claims are the contract the browser cannot make: one block, one close, one open
- * section, the sentence as the door (no `…` anywhere), the untouched record's single line, the
- * form and the receipt as states of the same body, a draft that survives, and the keyboard
- * shape (one tab stop, arrows, Enter as the toggle). The browser's facts are the CDP harness's.
+ * BOOK-128 #3863 / #3862 — the sentence's record: one block, one close, one open section, the
+ * sentence as the door, the form and the receipt as one body's states, a draft that survives.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -43,7 +39,8 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
-    id: 'cmt_01J9Z8K4Q7', number: 1,
+    id: 'cmt_01J9Z8K4Q7',
+    number: 12,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -80,7 +77,7 @@ const chain = (versions: number): string => {
       changeId: null,
       changeSeq: null,
       stepId: null,
-      actor: { kind: 'writer', label: 'машина', identityId: 'id1' },
+      actor: { kind: 'writer', label: 'печатник', identityId: 'id1' },
       replacedBy: null,
     },
     {
@@ -96,11 +93,11 @@ const chain = (versions: number): string => {
       changeId: 'chg_12',
       changeSeq: 12,
       stepId: null,
-      actor: { kind: 'writer', label: 'машина', identityId: 'id1' },
+      actor: { kind: 'writer', label: 'печатник', identityId: 'id1' },
       replacedBy: null,
     },
   ].slice(0, versions);
-  return JSON.stringify({ blockUid: 'u1', blockId: BLOCK_ID, chapter: 8, alive: true, versions: rows, line: 'машина' });
+  return JSON.stringify({ blockUid: 'u1', blockId: BLOCK_ID, chapter: 8, alive: true, versions: rows, line: 'печатник' });
 };
 
 let root: Root | null = null;
@@ -334,18 +331,17 @@ describe('the record: the sentence is the door', () => {
     expect(document.querySelectorAll('.rec-close')).toHaveLength(1);
   });
 
-  it('prints the sections in the order of the design: quote, what, head, замечания, история', async () => {
-    await mount([comment()]);
+  it('prints the sections in the order of the design: quote, hand, head, замечания, история', async () => {
+    await mount([comment(), comment({ id: 'cmt_02J9Z8K4Q7', createdAt: '2026-10-20T09:14:00Z' })]);
     await tapSentence(1);
     const sheet = document.querySelector('.rec-sheet');
     const order = [...(sheet?.children ?? [])].map((node) => node.className);
     expect(order[0]).toContain('rec-quote');
-    // BOOK-218 — the head is the reader's: `правка 12 · ваша · 29.10, 12:07`, not the hand.
-    expect(order[1], 'the head names the filing, not the hand').toContain('rec-what');
+    expect(order[1]).toContain('rec-hand');
     expect(order[2]).toContain('rec-head');
-    // An answered-empty chain has no history to print: a section with nothing is not a section.
+    // A filing is an event: its proposal is a row, before a chain ever answers.
     const sections = [...document.querySelectorAll('.rec-section-label')].map((node) => node.textContent);
-    expect(sections).toEqual(['замечания']);
+    expect(sections).toEqual(['замечания', 'история']);
     // `связи` is not rendered: the ledger has no route, and a door to an empty room is worse.
     expect(document.querySelector('.rec-section[data-label="relations"]')).toBeNull();
   });
@@ -354,6 +350,7 @@ describe('the record: the sentence is the door', () => {
     await mount([
       comment({ id: 'cmt_A7K' }),
       comment({ id: 'cmt_B2M', createdAt: '2026-10-20T09:14:00Z' }),
+      comment({ id: 'cmt_C3N', createdAt: '2026-10-19T09:14:00Z' }),
     ]);
     await tapSentence(1);
     const headers = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.rec-section')];
@@ -369,22 +366,26 @@ describe('the record: the sentence is the door', () => {
     expect(headers()[0]?.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('prints the history section, its rows and the pair’s honest absence', async () => {
+  it('prints the history section, when / who / what, and no placeholder', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(chain(2), { status: 200, headers: { 'content-type': 'application/json' } })),
     );
-    await mount([comment()]);
+    await mount([comment(), comment({ id: 'cmt_02J9Z8K4Q7', createdAt: '2026-10-20T09:14:00Z' })]);
     await tapSentence(1);
     await frames();
     const labels = [...document.querySelectorAll('.rec-section-label')].map((node) => node.textContent);
-    // `замечания` from the filing, `история` from the chain.
+    // `замечания` from the sentence's other filing, `история` from the chain.
     expect(labels).toEqual(['замечания', 'история']);
     await press('.rec-section:last-of-type');
-    const row = document.querySelector('.rec-row[data-kind="history"]');
-    expect(row?.textContent).toContain('машина');
-    expect(row?.textContent).toContain('правка 012');
-    expect(row?.textContent).toContain('пара не записана');
+    const rows = [...document.querySelectorAll('.rec-row[data-kind="history"]')].map((node) => node.textContent ?? '');
+    // The proposal and the printer's write: when, who, what — never a placeholder, never an id.
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toContain('машина внесла правку');
+    expect(rows[1]).toContain('читатель предложил эту правку');
+    expect(rows[2]).toContain('машина написала фразу');
+    expect(rows.join(' ')).not.toContain('пара');
+    expect(rows.join(' ')).not.toContain('№');
   });
 
   it('prints no `замечания` header when the sentence holds no filing', async () => {
@@ -488,8 +489,8 @@ describe('the record: the sentence is the door', () => {
 
   it('reads a filing in full in the same body, and goes back', async () => {
     await mount([comment()]);
-    await tapSentence(1);
-    await press('.rec-row');
+    // §11.3 — a filing opens its own body; `замечания` holds the sentence's *other* filings.
+    await press('.margin-note');
     expect(rec()?.getAttribute('data-body')).toBe('filing');
     expect(document.querySelector('.rec-filing-text')?.textContent).toContain('в комнате должен быть свет');
     expect(document.querySelectorAll('.rec-close')).toHaveLength(1);

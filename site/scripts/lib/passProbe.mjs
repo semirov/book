@@ -82,7 +82,7 @@ export const PROBE_SOURCE = String.raw`
   const clone = node.cloneNode(true);
   clone.querySelectorAll('button, .visually-hidden, .caret-read, .caret-write, .revising-label')
     .forEach((element) => element.remove());
-  const head = document.querySelector('.head-status-full');
+  const head = document.querySelector('.head-line');
   const strip = document.querySelector('.pass-strip');
   return {
     found: true,

@@ -16,6 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 import { TOTAL_CHAPTERS } from '@book/shared';
 
+// `parseArgs` validates a chapter against the book's range; the constant is read in `cliArgs`.
+void TOTAL_CHAPTERS;
+
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
 import { createEngineClient, type EngineClient } from './client.ts';
@@ -23,130 +26,20 @@ import { runPass, type PassResult } from './pass.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
 import { reasonOf } from './reasons.ts';
+import { USAGE, parseArgs } from './cliArgs.ts';
+
+export { USAGE, parseArgs } from './cliArgs.ts';
+export type { Cli, ParsedArgs } from './cliArgs.ts';
 import { runTriage } from './triage.ts';
 import { revertChapter } from './revert.ts';
 import { markWriterBoot } from './verify/cli.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-export const USAGE = [
-  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--audit-samples [N]]',
-  '',
-  '  --once            one triage pulse and one pass, then exit (default)',
-  '  --chapter N       open the first pass for chapter N instead of the lane’s next slot',
-  '  --dry-run         resolve config, assignment and prompt; no engine, no model, no writes',
-  '  --revert --chapter N  put the chapter back to its pre-pass state, verify the sha, reconcile',
-  '  --loop            one pass, then pause (WRITER_PAUSE_MS), until SIGTERM',
-  '  --ripple          drain the oldest ripple still owed work (BOOK-173), then exit',
-  '  --plan ID         print the reviewable table of change ID’s ripple plan; nothing is written',
-  '  --audit-samples [N]  re-read the queued local-only samples with the editor (default 3)',
-  '  --help            this text',
-].join('\n');
-
-export type Cli = {
-  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'audit';
-  once: boolean;
-  loop: boolean;
-  dryRun: boolean;
-  chapter: number | null;
-  /** `--plan <changeId>`: the change whose frozen ripple plan is printed. */
-  changeId: string | null;
-  /** `--audit-samples [N]`: how many queued samples to re-read (`null` = the default). */
-  audit: number | null;
-};
-
-export type ParsedArgs = { ok: true; cli: Cli } | { ok: false; error: string };
-
-const VALUE_FLAGS = new Set(['chapter', 'plan']);
-const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help', 'ripple']);
-/** A flag whose value is optional: `--audit-samples` alone takes the default, `=N` names a count. */
-const OPTIONAL_VALUE_FLAGS = new Set(['audit-samples']);
-
 /**
  * Arguments as data, so the one thing a CLI test can prove without a process is that an unknown
  * or incomplete flag is refused (exit 2) instead of being ignored.
  */
-export function parseArgs(argv: readonly string[]): ParsedArgs {
-  const flags = new Map<string, string | true>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index] ?? '';
-    if (!arg.startsWith('--')) return { ok: false, error: `unexpected argument: ${arg}` };
-    const [rawName, inline] = arg.slice(2).split('=', 2) as [string, string | undefined];
-    const name = rawName.trim();
-    if (!VALUE_FLAGS.has(name) && !BOOLEAN_FLAGS.has(name) && !OPTIONAL_VALUE_FLAGS.has(name)) {
-      return { ok: false, error: `unknown flag: --${name}` };
-    }
-    if (flags.has(name)) return { ok: false, error: `duplicate flag: --${name}` };
-    if (BOOLEAN_FLAGS.has(name)) {
-      if (inline !== undefined) return { ok: false, error: `flag --${name} takes no value` };
-      flags.set(name, true);
-      continue;
-    }
-    const next = argv[index + 1];
-    if (OPTIONAL_VALUE_FLAGS.has(name) && inline === undefined && (next === undefined || next.startsWith('--'))) {
-      flags.set(name, true);
-      continue;
-    }
-    const value = inline ?? next;
-    if (value === undefined || (inline === undefined && value.startsWith('--'))) {
-      return { ok: false, error: `flag --${name} needs a value` };
-    }
-    if (inline === undefined) index += 1;
-    flags.set(name, value);
-  }
-
-  if (flags.has('help')) {
-    return { ok: true, cli: { mode: 'help', once: true, loop: false, dryRun: false, chapter: null, changeId: null, audit: null } };
-  }
-
-  let chapter: number | null = null;
-  if (flags.has('chapter')) {
-    const raw = flags.get('chapter');
-    const value = typeof raw === 'string' ? Number(raw) : Number.NaN;
-    if (!Number.isInteger(value) || value < 1 || value > TOTAL_CHAPTERS) {
-      return { ok: false, error: `--chapter must be an integer between 1 and ${String(TOTAL_CHAPTERS)}` };
-    }
-    chapter = value;
-  }
-
-  const plan = flags.get('plan');
-  if (plan !== undefined && typeof plan !== 'string') return { ok: false, error: '--plan needs a change id' };
-  const changeId = typeof plan === 'string' ? plan : null;
-
-  const auditFlag = flags.has('audit-samples');
-  let audit: number | null = null;
-  if (auditFlag) {
-    const raw = flags.get('audit-samples');
-    if (raw !== true) {
-      const value = Number(raw);
-      if (!Number.isInteger(value) || value < 1) return { ok: false, error: '--audit-samples takes a positive integer' };
-      audit = value;
-    }
-  }
-
-  const revert = flags.has('revert');
-  const ripple = flags.has('ripple');
-  const loop = flags.has('loop');
-  const once = flags.has('once');
-  // The sample audit reads chapters and calls the editor: it is one command, not a pass.
-  if (auditFlag && (revert || ripple || loop || chapter !== null || changeId !== null || once)) {
-    return { ok: false, error: '--audit-samples runs alone: no chapter, no pass, no drain' };
-  }
-  if (revert && chapter === null) return { ok: false, error: '--revert needs --chapter N' };
-  if (loop && once) return { ok: false, error: '--once and --loop are two different shapes' };
-  if (loop && revert) return { ok: false, error: '--loop cannot revert' };
-  if (ripple && revert) return { ok: false, error: '--ripple and --revert are two different shapes' };
-  if (ripple && chapter !== null) return { ok: false, error: '--ripple chooses its own chapter from the plan' };
-  if (changeId !== null && (revert || ripple || loop)) {
-    return { ok: false, error: '--plan prints a table; it runs nothing' };
-  }
-
-  const mode = auditFlag ? 'audit' : changeId !== null ? 'plan' : ripple ? 'ripple' : revert ? 'revert' : 'run';
-  return {
-    ok: true,
-    cli: { mode, once: !loop, loop, dryRun: flags.has('dry-run'), chapter, changeId, audit },
-  };
-}
 
 /** The two paths the pass writes under, resolved the way the site resolves them. */
 export function pathsOf(env: NodeJS.ProcessEnv = process.env): { bookRoot: string; dataDir: string } {
@@ -211,6 +104,42 @@ async function countPass(engine: EngineClient, day: string, log: (line: string) 
     log(`[writer] проход не записан в счётчик дня: ${reasonOf(error)}`);
   }
 }
+
+/**
+ * BOOK-DOC-84 §7 IFACE — is a filing waiting? The lane's own `state()` answers it (`queue.pending`),
+ * and an engine that cannot answer is **not** a licence to spin: one line, and the idle poll.
+ * Asking the door (`next`) would open a pass, which is the thing this question is about.
+ */
+async function filingPending(engine: EngineClient, log: (line: string) => void): Promise<boolean> {
+  try {
+    const view = await engine.state();
+    // A premise filing is the writer's work (BOOK-166) and is not a queued change; a chain's
+    // next pass is taken on the breath, and only a lane with nothing at all sleeps the poll.
+    return view.queue.pending > 0 || view.queue.filings > 0;
+  } catch (error) {
+    log(`[writer] очередь не прочитана: ${reasonOf(error)} — пауза до следующего опроса`);
+    return false;
+  }
+}
+
+/**
+ * BOOK-DOC-84 §7 IFACE — how long the loop waits after one pass: the **idle** poll when nothing
+ * waits, the breath when a filing does. Pure, so the pacing is a test with no clock in it.
+ */
+export function proseDelayMs(
+  status: PassResult['status'],
+  pending: boolean,
+  config: { breathMs: number; pauseMs: number },
+): number {
+  if (pending && status !== 'idle') return config.breathMs;
+  return config.pauseMs;
+}
+
+/**
+ * §7 IFACE / §10.8 — five consecutive parks stop the lane (exit 1), the brake D4 keeps. At three
+ * the supervisor stopped a filing's ladder before its fifth attempt — the owner's ladder is five.
+ */
+export const PARK_LIMIT = 5;
 
 /** A pass that spent money counts toward the day, closed or parked. */
 function spent(result: PassResult): boolean {
@@ -405,11 +334,13 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     });
 
   log(
-    `[writer] loop: триаж каждые ${String(config.triagePollMs)} мс, пауза прозы ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`,
+    `[writer] loop: триаж каждые ${String(config.triagePollMs)} мс, вдох между проходами ${String(config.breathMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`,
   );
   // BOOK-206: two cadences. A filing is read every `triagePollMs`; prose still waits its own
   // pause, and triage never touches `writer_state` — a reader's filing does not eat a pass.
   let proseDueAt = now();
+  // §7 IFACE: three consecutive parks exit 1 — the brake D4 keeps in place of the old pause.
+  let parks = 0;
   while (!stopping) {
     // A missing prompt file (or any other triage fault) is a line and a pause, never a dead lane:
     // prose is the writer's job and a filing is not worth stopping it for.
@@ -429,12 +360,27 @@ export async function main(deps: MainDeps = {}): Promise<number> {
         log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
         proseDueAt = now() + config.pauseMs;
       } else {
-        const result = await pass();
+        let result: PassResult;
+        try {
+          result = await pass();
+        } catch (error) {
+          // §7 IFACE: a throw is exit 2 — the supervisor restarts, nothing is retried in place.
+          log(`[writer] проход упал: ${reasonOf(error)}`);
+          return 2;
+        }
         if (spent(result)) await countPass(engine, counter.day, log);
         if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
-        // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
-        // the next filing is asked for in the same cycle, without the pacing pause.
-        proseDueAt = now() + (result.status === 'gone' || result.filingRefused === true ? 0 : config.pauseMs);
+        parks = result.status === 'parked' ? parks + 1 : 0;
+        if (parks >= PARK_LIMIT) {
+          log(`[writer] писатель остановлен после ${String(PARK_LIMIT)} отказов`);
+          return 1;
+        }
+        // BOOK-DOC-84 D4: no artificial silence while work waits. A closed pass is followed by
+        // the next pending filing after the breath; a refused or gone pass takes the next one on
+        // the same breath; only an idle pass (nothing to write, a paused day, the day's cap)
+        // sleeps the idle poll.
+        const pending = result.status === 'idle' ? false : await filingPending(engine, log);
+        proseDueAt = now() + proseDelayMs(result.status, pending, config);
       }
     }
     // The fast cadence sleeps too: the lane is supervised, not a busy loop.

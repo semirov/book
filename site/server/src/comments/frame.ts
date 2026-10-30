@@ -21,5 +21,7 @@ export function commentAddedPayload(dto: CommentDto): CommentAddedPayload {
     status: dto.status,
     reason: dto.reason,
     createdAt: dto.createdAt,
+    // BOOK-DOC-84 #18: the thread inserts this row instead of refetching the feed.
+    comment: dto,
   };
 }

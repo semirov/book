@@ -347,6 +347,31 @@ describe('the age gate (BOOK-225)', () => {
     expect(scrolled.length).toBeGreaterThan(0);
   });
 
+  it('starts no ink behind the gate: the print has no node until the answer', async () => {
+    // BOOK-220 §11.2 + BOOK-225 — the print is mounted by the chapter flow, and the flow is
+    // what the gate stands in front of: no prose, no mark, no caret and no print node exist
+    // while the question stands. `lib/appliedPrint.test.ts` pins what happens at the answer's
+    // edge: a write still inside its 6 s window joins at the current frame (`startAt` is
+    // `appliedAt`, and a negative elapsed clamps to zero), and one whose window has passed
+    // plans nothing — the text is there, settled, and nothing replays.
+    await mount();
+
+    expect(gate()).not.toBeNull();
+    for (const selector of ['#ch-1', '.p-pass', '.caret-ink', '.print-follow', '.filing-mark', '.margin-note']) {
+      expect(document.querySelector(selector), selector).toBeNull();
+    }
+    expect(document.body.textContent).not.toContain(PROSE);
+
+    await act(async () => {
+      button(AGE_WORDS.forward)?.click();
+    });
+    await settle();
+
+    // Past the gate the prose is the page again — and the print path is mounted with it.
+    expect(document.querySelector('.p')).not.toBeNull();
+    expect(document.body.textContent).toContain(PROSE);
+  });
+
   it('gives a gated reader no record page, even on a deep link to one', async () => {
     // The trail replaces the book page only for a reader past the gate: its past chapters are
     // prose, and the history's chapter route refuses them anyway. The predicate itself is

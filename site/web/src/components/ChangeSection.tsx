@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react';
 import { track } from '../lib/analytics.ts';
 import { changeNumber } from '../lib/changeStatus.ts';
 import { changeView } from '../lib/changeView.ts';
+import { STAGE_WORDS, changeLineOf, closedPassOf, liveLineOf, passLineOf, useLiveChange } from '../lib/liveChange.ts';
+import { usePassStages } from '../lib/passStages.ts';
 
 import { FollowWord } from './FollowWord.tsx';
 import { SectionHeader } from './RecordParts.tsx';
@@ -19,6 +21,11 @@ import { SectionHeader } from './RecordParts.tsx';
  *
  * With no sentence (a premise, an author's own change) the rows that would quote one are
  * absent; the change's own words stand in their place, and the chapter's row carries it.
+ *
+ * BOOK-220 B2/M3 — the section is also where the change's live facts land: the last change frame
+ * (`queued`/`processing`/`adapted`/`stale`) prints its own line in place, a closed pass prints
+ * its own sentence and price, and the stages of that one pass are read back from the store — a
+ * reader who was not connected when it ran still reads what it did.
  */
 export function ChangeSection({
   change,
@@ -39,6 +46,13 @@ export function ChangeSection({
     announced.current = change.id;
     track('record_open', {});
   }, [change.id]);
+  const facts = useLiveChange();
+  const line = changeLineOf(facts, change.id);
+  const live = line === null ? null : liveLineOf(line);
+  const pass = closedPassOf(facts, change.id);
+  const passLine = pass === null ? null : passLineOf(pass);
+  const chapter = pass === null || typeof pass.chapter !== 'number' ? null : pass.chapter;
+  const stages = usePassStages(chapter, pass === null ? null : pass.stepId);
   return (
     <div className="rec-change ym-hide-content" data-change={view.id}>
       {view.before === null ? null : (
@@ -58,6 +72,25 @@ export function ChangeSection({
       ) : null}
       <p className="rec-change-facts">{`${view.state} · ${view.stamp}`}</p>
       <p className="rec-change-facts">{view.verdict}</p>
+      {/* B2 — the frame's own line, where the change lives: the queue place, the narrowed
+          intent, the moved basis. It stands on the record until the change's verdict answers. */}
+      {live === null ? null : (
+        <p className="rec-change-live" data-line={line?.kind}>
+          {live}
+        </p>
+      )}
+      {passLine === null ? null : <p className="rec-change-pass">{passLine}</p>}
+      {stages.failed ? (
+        <p className="rec-line rec-quiet">ход правки не прочитался</p>
+      ) : stages.stages.length === 0 ? null : (
+        <ol className="rec-change-stages" aria-label="ход правки">
+          {stages.stages.map((event) => (
+            <li className="rec-change-stage" key={`${event.passId}:${String(event.stageSeq)}`} data-stage={event.stage}>
+              {STAGE_WORDS[event.stage]}
+            </li>
+          ))}
+        </ol>
+      )}
       {view.steps.length === 0 ? null : (
         <ol className="rec-change-steps">
           {view.steps.map((step) => (

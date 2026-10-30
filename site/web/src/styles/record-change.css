@@ -54,6 +54,40 @@
   color: var(--ink-2);
 }
 
+/* BOOK-220 B2/M3 — the change's live line (a frame's own words) and the pass it closed: the
+   writer's sentence, then the stages read back for a reader who was not connected when it ran.
+   The live line is mono like the change's other facts; the pass's sentence is the record's
+   prose, because it is a sentence and not a state. */
+.rec-change-live {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.rec-change-pass {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.rec-change-stages {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rec-change-stage {
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
 /* The steps: one line each, the same hairline between them as the other registers. */
 .rec-change-steps {
   display: grid;

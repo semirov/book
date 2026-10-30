@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(import.meta.dirname, '../..');
 const WEB_SRC = join(ROOT, 'web', 'src');
 const SOURCE = /\.(ts|tsx)$/u;
-const IS_TEST = /\.test\.(ts|tsx)$/u;
+/** Fixtures are data, not readers: `lib/framesFixtures.ts` spells the DTO's `readerChanges`. */
+const IS_TEST = /(?:\.test|Fixtures)\.(ts|tsx)$/u;
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -134,7 +135,9 @@ describe('the history fact has one reader in the SPA (BOOK-56)', () => {
     expect(app).toContain('recordModeOf({ acknowledged: age.acknowledged, trail, view, chronicle })');
     // The chronicle's own fact still reaches the page's view switch, through the opening.
     expect(app.match(/chronicle=\{chronicle\}/gu)).toHaveLength(1);
-    // The chapter list still receives the fact the page read, through the flow's own props.
-    expect(app).toContain('composer, viewer, history,');
+    // The chapter list still receives the facts the page read, through its own props.
+    expect(app).toContain('composer={composer}');
+    expect(app).toContain('viewer={page.viewer}');
+    expect(app).toContain('history={history}');
   });
 });

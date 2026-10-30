@@ -202,7 +202,7 @@ describe('comment thread copy (§11.6)', () => {
 
 describe('one applied, one pending, one refused filing (BOOK-189)', () => {
   // The owner's prod page: the writer said «пока нечего писать: заявок нет» while two filings
-  // read «идёт · правка в очереди на запись · входит в книгу». One fixture, three rows, the
+  // read «идёт · правка ждёт записи · входит в книгу». One fixture, three rows, the
   // words the page owes: «внесено», «принято», «отклонено».
   const applied = comment({
     id: 'cmt_applied',

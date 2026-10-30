@@ -1,31 +1,44 @@
 /**
- * BOOK-121 — the block's own box, read once.
+ * BOOK-220 §11.2 — the printing block's own box, read once.
  *
- * `planPass` validates the layout it is handed and refuses anything that is not the block's
- * final one; this module produces that layout from the DOM in a single read, before the first
- * frame. Nothing here runs per frame: after `measureRun`/`layoutOf` the renderer positions
- * carets from the numbers it already has, so an ink never forces a layout (`getBoundingClientRect`
- * after mount is a defect, not a cost).
+ * The contract the renderer is built on: the paragraph is laid out **once** in its final text
+ * and the not-yet-written part is **invisible, not absent**. So nothing here measures nodes
+ * that stand for characters — the whole run is one text node and the geometry is read from it
+ * with `Range`s, which is also why the DOM's node count does not grow with the text.
  *
- * The line box comes from the block's computed `line-height`, because that is the number the
- * engine's `linePx` means. When it cannot be proven (`normal`, or no cascade at all — jsdom), the
- * gap between two distinct line tops is the same number: a line box is exactly as tall as the
- * distance between consecutive baselines of one run.
+ * Two readers, both used once per print and never per frame:
+ *
+ *   • `linePxOf` — the line box, from the computed `line-height` when the cascade gives a
+ *     length, else from the smallest gap between two distinct line tops (jsdom proves nothing,
+ *     a strut makes the tops unequal);
+ *   • `measureGraphemes` — each run grapheme's box relative to the copy it is painted in, in one
+ *     read, plus the copy's own box: the clip's reference box and the caret's ceiling.
+ *
+ * `geometryOf` is the pure half: numbers in, the validated geometry out (a run whose tops go
+ * back up the page is refused, never guessed at). The browser proves the boxes themselves.
  */
 
-import type { PassKind, PassLayout } from './passMotion.ts';
-
-/** The raw read: every run grapheme's box relative to the block, plus the block's own box. */
 export type RunMeasure = {
   tops: number[];
   lefts: number[];
   widths: number[];
+  copyWidth: number;
+  copyHeight: number;
   blockHeight: number;
   linePx: number;
 };
 
-/** The layout `planPass` validates, plus the run's left edges for the two carets. */
-export type RunGeometry = PassLayout & { lefts: number[]; widths: number[] };
+export type PrintGeometry = {
+  linePx: number;
+  /** The copy's own box: the clip's reference box (the caret is painted in the same coordinates). */
+  copyWidth: number;
+  copyHeight: number;
+  blockLines: number;
+  /** The run's line, left and width per grapheme — the caret is placed from these, never re-read. */
+  runLines: number[];
+  lefts: number[];
+  widths: number[];
+};
 
 /**
  * The line box: the declared `line-height` when it is a length, else the smallest positive gap
@@ -51,60 +64,72 @@ export function linePxOf(declared: string, tops: readonly number[]): number {
 }
 
 /**
- * The measured run as the engine's layout. `null` when the numbers cannot describe a block the
- * engine would accept (no boxes, a height or a line box that is not a positive length, a run
- * whose tops go back up the page).
+ * The measured run as the renderer's geometry. `null` when the numbers cannot describe a block
+ * that could be printed: no boxes, a line box that is not a positive length, a copy with no
+ * width, or a run whose tops go back up the page.
  */
-export function layoutOf(measure: RunMeasure, kind: PassKind): RunGeometry | null {
-  const { tops, lefts, widths, blockHeight, linePx } = measure;
+export function geometryOf(measure: RunMeasure): PrintGeometry | null {
+  const { tops, lefts, widths, copyWidth, copyHeight, blockHeight, linePx } = measure;
   const count = tops.length;
   if (count === 0 || lefts.length !== count || widths.length !== count) return null;
   if (!Number.isFinite(linePx) || linePx <= 0) return null;
+  if (!Number.isFinite(copyWidth) || copyWidth <= 0) return null;
+  if (!Number.isFinite(copyHeight) || copyHeight <= 0) return null;
   if (!Number.isFinite(blockHeight) || blockHeight <= 0) return null;
 
-  // Line 0 is the block's first line: `.p` carries no block padding, so a grapheme's top
-  // relative to the block *is* its line box's offset.
-  const lines = tops.map((top) => Math.max(0, Math.round(top / linePx)));
+  // The run's line numbers are relative to the copy's own top: the clip and the caret stand in
+  // the same coordinates, so the first run line is line 0 of the run, not of the page.
+  const runLines = tops.map((top) => Math.max(0, Math.round(top / linePx)));
   for (let index = 1; index < count; index += 1) {
-    if ((lines[index] ?? 0) < (lines[index - 1] ?? 0)) return null;
+    if ((runLines[index] ?? 0) < (runLines[index - 1] ?? 0)) return null;
   }
-  const first = lines[0] ?? 0;
-  const last = lines[count - 1] ?? first;
-  const spanLines = last - first + 1;
-  // The block is at least as tall as its own height and as its last inked line; rounding a
-  // fractional height must never hand the engine a line the block does not have.
-  const blockLines = Math.max(1, Math.round(blockHeight / linePx), last + 1);
+  // The copy is at least as tall as its own height: rounding a fractional height must never
+  // hand the clip a line the copy does not have.
+  const blockLines = Math.max(1, Math.round(Math.max(copyHeight, blockHeight) / linePx), (runLines[count - 1] ?? 0) + 1);
 
-  return {
-    linePx,
-    blockLines,
-    // A deletion has no new run: its graphemes are the text that is leaving, and the engine
-    // refuses a map for them.
-    runLines: kind === 'deletion' ? [] : lines,
-    spanStartLine: first,
-    spanLines,
-    lefts: [...lefts],
-    widths: [...widths],
-  };
+  return { linePx, copyWidth, copyHeight, blockLines, runLines, lefts: [...lefts], widths: [...widths] };
 }
 
 /**
- * One read of the block and its run. The block's box is taken first, so every grapheme's top and
- * left can be expressed relative to it — the numbers the carets are placed from.
+ * One read of the run's graphemes out of the copy's single text node, and of the two boxes the
+ * numbers are expressed in. `startOffset` is the run's first character within `node.data`;
+ * `clusters` are the run's grapheme clusters (their `length` sums to the run's code units).
  */
-export function measureRun(block: HTMLElement, nodes: readonly HTMLElement[]): RunMeasure | null {
-  if (typeof window === 'undefined' || nodes.length === 0) return null;
-  const box = block.getBoundingClientRect();
+export function measureGraphemes(
+  block: HTMLElement,
+  copy: HTMLElement,
+  node: Text,
+  clusters: readonly string[],
+  startOffset: number,
+): RunMeasure | null {
+  if (typeof window === 'undefined' || clusters.length === 0) return null;
+  const blockBox = block.getBoundingClientRect();
+  const copyBox = copy.getBoundingClientRect();
+  const range = document.createRange();
   const tops: number[] = [];
   const lefts: number[] = [];
   const widths: number[] = [];
-  for (const node of nodes) {
-    const rect = node.getBoundingClientRect();
-    tops.push(rect.top - box.top);
-    lefts.push(rect.left - box.left);
+  let offset = startOffset;
+  for (const cluster of clusters) {
+    const end = offset + cluster.length;
+    range.setStart(node, offset);
+    range.setEnd(node, end);
+    const rects = range.getClientRects();
+    const rect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+    if (rect === undefined || rect === null) return null;
+    tops.push(rect.top - copyBox.top);
+    lefts.push(rect.left - copyBox.left);
     widths.push(rect.width);
+    offset = end;
   }
   const linePx = linePxOf(window.getComputedStyle(block).lineHeight, tops);
-  if (!Number.isFinite(linePx) || linePx <= 0) return null;
-  return { tops, lefts, widths, blockHeight: box.height, linePx };
+  return {
+    tops,
+    lefts,
+    widths,
+    copyWidth: copyBox.width,
+    copyHeight: copyBox.height,
+    blockHeight: blockBox.height,
+    linePx,
+  };
 }

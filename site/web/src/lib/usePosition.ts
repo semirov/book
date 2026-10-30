@@ -40,6 +40,7 @@ import { settleFrontSequence } from '../useFrontSequence.ts';
 import { beginLanding, landChapter, landOn, landingLine } from './landing.ts';
 import { nextFrame, waitForBlock, PLACE_RETRY_FRAMES } from './place.ts';
 import { isPlace, newerPlace, readPlace, writePlace } from './placeStore.ts';
+import { followingInk } from './printFollow.ts';
 import {
   parseSentenceId,
   paragraphElement,
@@ -368,7 +369,10 @@ export function usePosition(ready: boolean, signedIn: boolean): void {
     if (typeof window === 'undefined') return undefined;
     const onPop = (event: PopStateEvent): void => {
       const place = placeOfState(event.state);
-      if (place !== null) restorePlace(place);
+      // BOOK-220 — a followed print owns the page: the restore would be undone by the control's
+      // own scroll in the next frame, so the entry's place is not landed while the ink follows.
+      if (place === null || followingInk()) return;
+      restorePlace(place);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -394,6 +398,13 @@ export function usePosition(ready: boolean, signedIn: boolean): void {
   // ── resume ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!ready || typeof window === 'undefined' || resumed.current) return;
+    // BOOK-220 — a follow that is on with a print in flight is the page's answer to "where am I":
+    // the ink's line. The one resume is spent unused, so nothing lands under the control later.
+    if (followingInk()) {
+      resumed.current = true;
+      consumed = true;
+      return;
+    }
     void (async () => {
       const { place, fromServer } = await pendingPlace(signed.current);
       if (taken.current || resumed.current || place === null) return;

@@ -15,26 +15,24 @@
 import {
   parseSeams,
   readerReason,
+  type ChangeAdaptedPayload,
+  type EngineStatePayload,
   type ServerEventType,
   type StateSnapshot,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { filingCloseFrame, filingFailureFrame } from './filingFrame.ts';
-import {
-  chaptersOfChange,
-  decisionOutcome,
-  publicIntent,
-  readAuthor,
-  readCascadeRow,
-  readChange,
-  readChangeRow,
-  readRelevance,
-  readStepRow,
-} from './changes.ts';
+import { aheadOf, decidedPayload, queuedPayload, type ChangeEventRow } from './bridgePayloads.ts';
+import { ChapterNarrator } from './chapterFrames.ts';
+import { filingCloseFrame } from './filingFrame.ts';
+import { READING_EVENTS, filingReadingPayload } from '../feedback/readingFrame.ts';
+import { PassNarrator } from './passFrames.ts';
+
+import { publicIntent, readCascadeRow, readChangeRow, readRelevance, readStepRow } from './changes.ts';
+import { utcDayEnd } from '../comments/attempts.ts';
 import { toHistoryFrame } from '../history/events.ts';
-import { readEngineHealth, readQueue, stepsOfCascade } from './reader.ts';
-import { boundaryOf, chapterOfStep, countRows, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
+import { readEngineHealth, readLaneDay, readQueue, stepsOfCascade } from './reader.ts';
+import { boundaryOf, chapterOfStep, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
 import { wingsOf, wingSteps } from './wings.ts';
 
 export type BridgeEmit = (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => void;
@@ -50,14 +48,14 @@ export type EngineBridgeOptions = {
   replay?: boolean;
   /** Per-cascade coalescing, 1 000 ms in production (§10.3a). */
   progressThrottleMs?: number;
-};
-
-type ChangeEventRow = {
-  id: number;
-  change_id: string;
-  at: string;
-  type: string;
-  meta: string | null;
+  /**
+   * The data dir the revision snapshots live under (BOOK-DOC-84 #6): `chapter:applied` derives
+   * its patch and span from them. Absent (a test that only narrates rows) means no snapshot can
+   * be read, and the frame is honestly `patchTruncated`.
+   */
+  dataDir?: string;
+  /** The lane's day bound, announced by `engine:state` (§5); the writer's own default is 4. */
+  maxPasses?: number;
 };
 
 type CommentEventRow = {
@@ -68,8 +66,6 @@ type CommentEventRow = {
   meta: string | null;
 };
 
-/** The filing events that owe the open page a frame (BOOK-206 B5): a read that never happened. */
-const FILING_FAILURE_EVENTS = new Set(['triage.failed', 'triage.abandoned']);
 
 type HistoryRow = {
   hseq: number;
@@ -93,6 +89,9 @@ export class EngineBridge {
   private readonly now: () => number;
   private readonly replay: boolean;
   private readonly progressThrottleMs: number;
+  private readonly maxPasses: number;
+  private readonly chapters: ChapterNarrator;
+  private readonly passes: PassNarrator;
   private readonly pendingProgress = new Map<string, { payload: unknown; at: number }>();
   private readonly lastProgressAt = new Map<string, number>();
 
@@ -113,6 +112,10 @@ export class EngineBridge {
     this.now = options.now ?? (() => Date.now());
     this.replay = options.replay === true;
     this.progressThrottleMs = options.progressThrottleMs ?? 1_000;
+    this.maxPasses = options.maxPasses ?? 4;
+    const emit: BridgeEmit = (type, data) => this.emit(type, data);
+    this.chapters = new ChapterNarrator({ db: this.db, dataDir: options.dataDir ?? '', emit });
+    this.passes = new PassNarrator({ db: this.db, emit });
   }
 
   start(): void {
@@ -140,11 +143,15 @@ export class EngineBridge {
       this.eventCursor = 0;
       this.commentCursor = 0;
       this.historyCursor = 0;
+      this.chapters.prime(true);
+      this.passes.prime(true);
     } else {
       const change = this.db.prepare('SELECT MAX(id) AS id FROM change_events').get() as { id: number | null };
       const event = this.db.prepare('SELECT MAX(hseq) AS hseq FROM events').get() as { hseq: number | null };
       // BOOK-206 B5: a restart must not replay yesterday's cap failures as today's news.
       const comment = this.db.prepare('SELECT MAX(id) AS id FROM comment_events').get() as { id: number | null };
+      this.chapters.prime(false);
+      this.passes.prime(false);
       this.changeCursor = change.id ?? 0;
       this.eventCursor = event.hseq ?? 0;
       this.commentCursor = comment.id ?? 0;
@@ -159,11 +166,15 @@ export class EngineBridge {
     let changed = false;
 
     const engine = this.narrateEngine(nowMs);
+    // The write first: a print is clocked from it, and the pass's own frames follow it.
+    const revisions = this.chapters.tick();
+    const passes = this.passes.tick();
     const cascades = this.drainCascade(nowMs) + this.flushProgress(nowMs);
     const changes = this.drainChanges(nowMs);
-    const filing = this.drainFilingEvents(nowMs);
+    const filing = this.drainFilingEvents();
     const history = this.drainHistory();
-    changed = engine || cascades > 0 || changes > 0 || filing > 0 || history > 0;
+    changed =
+      engine || revisions > 0 || passes > 0 || cascades > 0 || changes > 0 || filing > 0 || history > 0;
 
     if (changed && this.snapshot !== null) {
       this.emit('state:updated', { ...this.snapshot(), reason: 'engine' });
@@ -177,12 +188,20 @@ export class EngineBridge {
     const health = readEngineHealth(this.db, nowMs);
     if (health.status === this.status) return false;
     this.status = health.status;
-    this.emit('engine:state', {
+    const lane = readLaneDay(this.db, nowMs, this.maxPasses);
+    const payload: EngineStatePayload = {
       status: health.status,
       since: health.heartbeatAt,
       reason: engineReason(health.status),
       queue: { depth: readQueue(this.db, nowMs).depth },
-    });
+      // BOOK-DOC-84 §5: the day's bound, announced as a fact — «на сегодня всё · 4 из 4».
+      passesToday: lane.passesToday,
+      maxPasses: lane.maxPasses,
+      writerAt: lane.writerAt,
+      // §10.1: a throttled day is a wait with a resume time — the next 00:00 UTC, never silence.
+      resumeAt: health.status === 'throttled' ? new Date(utcDayEnd(nowMs)).toISOString() : null,
+    };
+    this.emit('engine:state', payload);
     return true;
   }
 
@@ -203,7 +222,7 @@ export class EngineBridge {
         continue;
       }
       if (row.type === 'queued') {
-        this.emit('change:queued', this.queuedPayload(change, nowMs));
+        this.emit('change:queued', queuedPayload(this.db, change, row, nowMs));
         emitted += 1;
       } else if (row.type === 'processing') {
         this.emit('change:processing', {
@@ -212,6 +231,10 @@ export class EngineBridge {
           startedAt: change.started_at ?? row.at,
           attempt: change.attempts + 1,
           relevance: readRelevance(change.relevance),
+          // BOOK-DOC-84 #10: the place in line at the claim, so the page does not refetch.
+          queue: { ahead: aheadOf(this.db, change) },
+          at: Date.parse(row.at),
+          eventSeq: row.id,
         });
         emitted += 1;
       } else if (row.type === 'stale') {
@@ -223,10 +246,25 @@ export class EngineBridge {
           evidence: relevance?.evidence ?? [],
           options: ['adapt', 'drop'],
           survivesAs: relevance?.reason ?? null,
+          at: Date.parse(row.at),
+          eventSeq: row.id,
         });
         emitted += 1;
+      } else if (row.type === 'adapted') {
+        const meta = safeJson<{ intent?: string; reason?: string }>(row.meta);
+        const payload: ChangeAdaptedPayload = {
+          id: change.id,
+          chapter: change.chapter,
+          // The narrowed intent is the change's own public text (BOOK-DOC-84 #11).
+          intent: publicIntent(meta?.intent ?? change.intent),
+          reason: meta?.reason ?? readerReason(change.reason) ?? '',
+          at: Date.parse(row.at),
+          eventSeq: row.id,
+        };
+        this.emit('change:adapted', payload);
+        emitted += 1;
       } else if (row.type === 'decided' || row.type === 'escalated' || row.type === 'cancelled') {
-        this.emit('change:decided', this.decidedPayload(change, row.at, nowMs));
+        this.emit('change:decided', decidedPayload(this.db, change, row, nowMs));
         emitted += 1;
         // BOOK-219/BOOK-206 B2 — the change's own word is not the filing's: the open page moves a
         // filing row only on `comment:decision`, so a close that decided the filing speaks here
@@ -243,56 +281,6 @@ export class EngineBridge {
     return emitted;
   }
 
-  private queuedPayload(change: ChangeRow, nowMs: number) {
-    const ahead = countRows(
-      this.db,
-      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
-      change.seq,
-    );
-    return {
-      id: change.id,
-      seq: change.seq,
-      kind: change.kind,
-      chapter: change.chapter,
-      intent: publicIntent(change.intent),
-      source: { commentId: change.source_comment, author: readAuthor(this.db, change.source_comment) },
-      queue: { depth: readQueue(this.db, nowMs).depth, ahead },
-      base: { rev: change.base_rev },
-      scopeHint: change.scope_hint,
-    };
-  }
-
-  private decidedPayload(change: ChangeRow, at: string, nowMs: number) {
-    const dto = readChange(this.db, change.id, nowMs);
-    const cascade = dto?.cascade ?? null;
-    return {
-      id: change.id,
-      commentId: change.source_comment,
-      outcome: decisionOutcome(change),
-      // The frame is a public surface — a reason is a sentence, never a code.
-      reason: readerReason(change.reason),
-      chapters: chaptersOfChange(this.db, change),
-      cascade:
-        cascade === null
-          ? null
-          : {
-              id: cascade.id,
-              outcome: cascade.outcome,
-              waves: cascade.wave,
-              touched: [...new Set([...cascade.chaptersRewritten, ...cascade.chaptersChecked])].sort(
-                (left, right) => left - right,
-              ),
-              rewritten: cascade.chaptersRewritten,
-              wings: cascade.wings,
-              seams: cascade.seams.map((seam) => ({ boundary: seam.boundary, resolved: seam.resolved })),
-              finding: cascade.gates.findingSurvived,
-            },
-      relevance: dto?.relevance === null || dto?.relevance === undefined ? null : { grade: dto.relevance.grade },
-      tokens: { total: change.tokens_in + change.tokens_out },
-      decidedAt: change.finished_at ?? at,
-    };
-  }
-
   // ── comment:decision from the filing's own audit log ────────────────────
 
   /**
@@ -301,28 +289,22 @@ export class EngineBridge {
    * table, so a reader connected to the socket never saw the cap: the page kept «ждёт» while
    * `dueTriage` had already excluded the row.
    *
-   * Only the two failure kinds owe a frame (`triage.failed`, `triage.abandoned`), and the
-   * attempt's own `retryAt` rides along so the page can name the hour the next read is bought.
+   * §10.1: every reading row owes exactly one `filing:reading` — the claim, the answer, the
+   * failure and the widening — and the frame is built from that row's own id (`readingSeq`).
    * Every other row still moves the cursor — a restart primes it, so a replay of yesterday's
    * failures is never narrated as today's.
    */
-  private drainFilingEvents(nowMs: number): number {
+  private drainFilingEvents(): number {
     const rows = this.db
       .prepare('SELECT id, comment_id, at, type, meta FROM comment_events WHERE id > ? ORDER BY id')
       .all(this.commentCursor) as CommentEventRow[];
     let emitted = 0;
     for (const row of rows) {
       this.commentCursor = row.id;
-      if (!FILING_FAILURE_EVENTS.has(row.type)) continue;
-      const frame = filingFailureFrame(
-        this.db,
-        row.comment_id,
-        row.at,
-        nowMs,
-        safeJson<{ retryAt?: string }>(row.meta),
-      );
+      if (!READING_EVENTS.has(row.type)) continue;
+      const frame = filingReadingPayload(this.db, row);
       if (frame === null) continue;
-      this.emit('comment:decision', frame);
+      this.emit('filing:reading', frame);
       emitted += 1;
     }
     return emitted;

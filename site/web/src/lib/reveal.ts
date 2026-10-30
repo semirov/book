@@ -1,28 +1,29 @@
 /**
- * The printing reveal (ARCHITECTURE.md §11.5, ADR-006): a client-side performance over a
- * finished file. The server ships complete blocks; the client animates only what is new
- * to this reader, in the viewport, at a human pace.
+ * The printing reveal (ARCHITECTURE.md §11.5, ADR-006; BOOK-220 §11.2): a client-side
+ * performance over a finished file. The server ships complete blocks; the client animates only
+ * what is new to this reader, in the viewport, at the book's own pace.
  *
- * Everything here is pure so the pacing rules can be tested without a browser:
- * `planReveal` decides what prints, `tickReveal` advances the queue by grapheme clusters.
+ * **One clock.** This module decides *which* blocks print and *in what order*; the schedule is
+ * the print engine's (`lib/printPlan.ts`) — the same 30 cps desk / 26 cps phone base, the same
+ * seeded ±25 % jitter, the same word-end ×1.4 and punctuation pauses, the same hesitations, the
+ * same runaway guard and **no duration cap**. A block reveals exactly its graphemes whose ink
+ * time has come; `startAt` is absolute, so a page that mounts inside a chapter's print joins the
+ * current frame instead of replaying it from zero (the owner's rule: «новая глава так же
+ * пишется»).
+ *
+ * Everything here is pure so the pacing rules can be tested without a browser.
  */
 
 import type { BlockDto, ChapterDto } from '@book/shared';
 
+import { PRINT, countUntil, deviceCps, planPrint } from './printPlan.ts';
+
 export const REVEAL = {
-  /** Characters per second ≈ 180 wpm of printed prose. */
-  cps: 18,
-  minBlockMs: 260,
-  maxBlockMs: 2_600,
   /** Animate only within [scrollTop − 1.5vh, scrollTop + 2.5vh]. */
   animateWithinPx: 1.5,
-  /** Drain the queue at 8× when the reader scrolls away. */
-  offscreenSpeedUp: 8,
   /** A chapter younger than this on join prints only its tail. */
   tailOnlyOnJoinMs: 5 * 60_000,
   tailBlocks: 8,
-  /** A 25 000-character chapter is ~200 blocks; print the first 12, the rest instantly. */
-  maxQueueBlocks: 12,
 } as const;
 
 const segmenter =
@@ -38,17 +39,6 @@ export function graphemes(text: string): string[] {
 
 export function graphemeCount(text: string): number {
   return segmenter === null ? Array.from(text).length : Array.from(segmenter.segment(text)).length;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/** `clamp(len / cps, min, max)` in milliseconds, divided by the current speed. */
-export function blockDurationMs(text: string, speed = 1): number {
-  const speedFactor = Number.isFinite(speed) && speed > 0 ? speed : 1;
-  const raw = (graphemeCount(text) / REVEAL.cps) * 1_000;
-  return clamp(raw, REVEAL.minBlockMs, REVEAL.maxBlockMs) / speedFactor;
 }
 
 export type RevealBlockLike = { id: string; text: string };
@@ -70,7 +60,6 @@ export type RevealPlanInput = {
   /** Blocks intersecting the viewport; default is every block. */
   visibleIds?: ReadonlySet<string>;
   reducedMotion?: boolean;
-  maxQueueBlocks?: number;
   tailBlocks?: number;
   tailOnlyOnJoinMs?: number;
 };
@@ -93,11 +82,11 @@ export function planReveal(input: RevealPlanInput): RevealPlan {
   if (input.mode === 'change') {
     // A change writes only where it wrote: the rest of the chapter is already final.
     const changed = input.changedIds ?? new Set<string>();
-    candidates = input.blocks
-      .filter((block) => changed.has(block.id))
-      .slice(0, input.maxQueueBlocks ?? REVEAL.maxQueueBlocks);
+    // Every block the change touched prints, in document order: a print is not a sample.
+    candidates = input.blocks.filter((block) => changed.has(block.id));
   } else if (input.mode === 'live') {
-    candidates = input.blocks.slice(0, input.maxQueueBlocks ?? REVEAL.maxQueueBlocks);
+    // A chapter being written prints from its first character, block after block, no cap.
+    candidates = input.blocks;
   } else if (input.chapterAgeMs <= (input.tailOnlyOnJoinMs ?? REVEAL.tailOnlyOnJoinMs)) {
     const tail = input.tailBlocks ?? REVEAL.tailBlocks;
     candidates = input.blocks.slice(Math.max(0, input.blocks.length - tail));
@@ -125,141 +114,163 @@ export function printsChange(revision: {
   return revision.kind === 'edit' || revision.kind === 'polish' || revision.kind === 'create';
 }
 
-/**
- * The reveal a chapter's arrival deserves, decided in one place (`startReveal` in the
- * article): `changed` means a change (`BOOK-117 §1`), otherwise a chapter the reader watched
- * arrive prints (`live`) and an older one prints only its tail on join. Reduced motion sets
- * everything at once, and an unreadable `writtenAt` counts as just written (the tail prints).
- */
-export function chapterReveal(
-  loaded: Pick<ChapterDto, 'blocks' | 'writtenAt'>,
-  options: { fresh: boolean; changed?: ReadonlySet<string> | null; reducedMotion?: boolean; now?: number },
-): RevealState {
-  const reduced = options.reducedMotion === true;
-  const now = options.now ?? Date.now();
-  // A basis slot served before its chapter exists has no written moment (`null`, BOOK-187 AC3);
-  // it counts as just written, the way an unreadable `writtenAt` always has.
-  const writtenAt = loaded.writtenAt === null ? Number.NaN : Date.parse(loaded.writtenAt);
-  const ageMs = Number.isNaN(writtenAt) ? 0 : now - writtenAt;
-  const plan = planReveal({
-    blocks: loaded.blocks,
-    mode: options.changed == null ? (options.fresh ? 'live' : 'join') : 'change',
-    changedIds: options.changed ?? undefined,
-    chapterAgeMs: Math.max(0, ageMs),
-    reducedMotion: reduced,
-  });
-  const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
-  return createReveal(queued, { reducedMotion: reduced });
-}
-
 export type RevealBlockState = {
   id: string;
   text: string;
   clusters: string[];
+  /** The print engine's schedule for this block, ms from its own first grapheme. */
+  inkTimes: readonly number[];
+  /** Where the block starts inside the queue (the blocks print one after another). */
+  offsetMs: number;
   revealed: number;
   done: boolean;
+  /** The block was outside the print's window: it is set at once and never prints. */
+  skipped: boolean;
+  /** The block's own end (`inkTimes`' last step), or the cover's sheet budget. No cap of prose. */
   durationMs: number;
 };
 
 export type RevealState = {
   blocks: RevealBlockState[];
-  /** Index of the printing block; `-1` when the queue is empty. */
+  /** Index of the printing block; `-1` when the queue is empty or complete. */
   active: number;
-  /** Elapsed time inside the active block. */
+  /** Time since the queue's own zero — the number `at()` is written in. */
   elapsedMs: number;
   reducedMotion: boolean;
+  /**
+   * A chapter being written (`startAt` was given): it prints whole, in document order, and the
+   * page-load economy of skipping what the reader cannot see does not apply to it.
+   */
+  print: boolean;
 };
 
-export function createReveal(
-  queued: readonly RevealBlockLike[],
-  options: { reducedMotion?: boolean; speed?: number; capBlockMs?: number } = {},
-): RevealState {
-  const reducedMotion = options.reducedMotion === true;
+export type RevealOptions = {
+  reducedMotion?: boolean;
+  /** The device's rate: 30 cps on a desk, 26 in the hand (default 30); the front title: 18. */
+  cps?: number;
+  /** The jitter share (default the print's ±25 %); 0 for a sheet whose timing is a table. */
+  jitter?: number;
+  /** The beat before the block's first grapheme (default the engine's; 0 or one interval). */
+  holdMs?: number;
   /**
-   * A block may carry a ceiling of its own on top of the engine's: the cover's typed title
-   * lands whole at 400 ms whatever it says (BOOK-DOC-49 §3), because the sequence's budget is
-   * a constant of the sheet and not a per-word measurement.
+   * The queue's own clock, absolute epoch ms (`chapter:applied.appliedAt` for a chapter being
+   * written). A mount inside the print joins at `now − startAt`, never at zero.
    */
-  const durationOf = (text: string): number => {
-    const natural = blockDurationMs(text, options.speed ?? 1);
-    return options.capBlockMs === undefined ? natural : Math.min(natural, options.capBlockMs);
-  };
+  startAt?: number;
+  now?: number;
+  /**
+   * The cover title sheet's own budget (BOOK-DOC-49 §3): a constant of that sequence, not a
+   * print and not prose. When the natural schedule is longer, its ink times are scaled to fit.
+   */
+  capBlockMs?: number;
+  /** A seed mixed into every block's own: the same block prints the same way on a reload. */
+  seed?: string;
+};
+
+/** Recompute the queue at one instant: `revealed` is the engine's count for that block. */
+function at(state: RevealState, elapsedMs: number): RevealState {
+  // Reduced motion has no clock: every block is the final text from the first paint.
+  if (state.reducedMotion) return state;
+  const elapsed = Math.max(0, elapsedMs);
+  const blocks = state.blocks.map((block) => {
+    if (block.skipped || block.clusters.length === 0) {
+      return block.skipped && block.done ? block : { ...block, revealed: block.clusters.length, done: true };
+    }
+    const local = elapsed - block.offsetMs;
+    const revealed = local <= 0 ? 0 : countUntil(block.inkTimes, local);
+    return {
+      ...block,
+      revealed,
+      done: local >= block.durationMs || revealed >= block.clusters.length,
+    };
+  });
+  const active = blocks.findIndex((block) => !block.done);
+  return { ...state, blocks, elapsedMs: elapsed, active: active === -1 ? -1 : active };
+}
+
+/**
+ * The queue, each block on the print engine's clock. Sequential: block n starts where block n−1
+ * ends, so the chapter is written in reading order.
+ */
+export function createReveal(queued: readonly RevealBlockLike[], options: RevealOptions = {}): RevealState {
+  const reducedMotion = options.reducedMotion === true;
+  const cps = options.cps ?? PRINT.cps.desktop;
+  let offset = 0;
   const blocks = queued.map((block) => {
     const clusters = graphemes(block.text);
-    return {
+    const empty = clusters.length === 0;
+    const schedule = planPrint({
+      kind: 'insertion',
+      before: '',
+      after: block.text,
+      cps,
+      jitter: options.jitter,
+      holdMs: options.holdMs,
+      seed: `${options.seed ?? ''}${block.id}`,
+      reducedMotion,
+    });
+    let inkTimes = empty ? [] : schedule.inkTimes;
+    // The block is written when its last grapheme lands: the caret's rest is the caller's beat
+    // (the cover's 220 ms), not the trailing word-end interval of the schedule.
+    let durationMs = empty ? 0 : (inkTimes[inkTimes.length - 1] ?? 0);
+    if (!empty && options.capBlockMs !== undefined && durationMs > options.capBlockMs) {
+      // The sheet's own budget: the ink times are scaled, never a second engine.
+      const scale = options.capBlockMs / durationMs;
+      inkTimes = inkTimes.map((time) => time * scale);
+      durationMs = options.capBlockMs;
+    }
+    const state: RevealBlockState = {
       id: block.id,
       text: block.text,
       clusters,
+      inkTimes,
+      offsetMs: offset,
       revealed: reducedMotion ? clusters.length : 0,
-      done: reducedMotion,
-      durationMs: durationOf(block.text),
+      done: reducedMotion || empty,
+      skipped: false,
+      durationMs,
     };
+    offset += durationMs;
+    return state;
   });
-  const active = reducedMotion || blocks.length === 0 ? -1 : 0;
-  return { blocks, active, elapsedMs: 0, reducedMotion };
+  const start: RevealState = {
+    blocks,
+    active: reducedMotion || blocks.length === 0 ? -1 : 0,
+    elapsedMs: 0,
+    reducedMotion,
+    print: options.startAt !== undefined,
+  };
+  if (reducedMotion || options.startAt === undefined) return start;
+  // Joining a print that is already running: the queue is fast-forwarded to its own clock.
+  return at(start, (options.now ?? Date.now()) - options.startAt);
 }
 
-/** Advance the queue by `deltaMs`; `speed` 8 drains a queue the reader scrolled away from. */
-export function tickReveal(state: RevealState, deltaMs: number, speed = 1): RevealState {
+/** Advance the queue by `deltaMs` of the book's clock (one rAF step, one write). */
+export function tickReveal(state: RevealState, deltaMs: number): RevealState {
   if (state.active < 0 || deltaMs <= 0) return state;
-  const speedFactor = Number.isFinite(speed) && speed > 0 ? speed : 1;
-  let remaining = deltaMs * speedFactor;
-  let active = state.active;
-  let elapsed = state.elapsedMs;
-  const blocks = [...state.blocks];
-
-  while (remaining > 0 && active >= 0 && active < blocks.length) {
-    const block = blocks[active];
-    if (block === undefined) break;
-    if (block.done) {
-      active += 1;
-      elapsed = 0;
-      continue;
-    }
-    const total = block.clusters.length;
-    const nextElapsed = Math.min(block.durationMs, elapsed + remaining);
-    const consumed = nextElapsed - elapsed;
-    remaining -= consumed;
-    elapsed = nextElapsed;
-
-    const revealed =
-      nextElapsed >= block.durationMs || total === 0
-        ? total
-        : Math.min(total, Math.floor((total * nextElapsed) / block.durationMs));
-    blocks[active] = { ...block, revealed, done: revealed >= total };
-    if (nextElapsed >= block.durationMs) {
-      active += 1;
-      elapsed = 0;
-    } else {
-      break;
-    }
-  }
-
-  return {
-    blocks,
-    active: active >= blocks.length ? -1 : active,
-    elapsedMs: elapsed,
-    reducedMotion: state.reducedMotion,
-  };
+  return at(state, state.elapsedMs + deltaMs);
 }
 
 /** Blocks outside the viewport appear at once: printing is only for what the reader sees. */
 export function skipBlocks(state: RevealState, ids: ReadonlySet<string>): RevealState {
   if (ids.size === 0 || state.active < 0) return state;
+  const targets = state.blocks.filter((block) => ids.has(block.id) && !block.skipped && !block.done);
+  if (targets.length === 0) return state;
   const blocks = state.blocks.map((block) =>
-    ids.has(block.id) ? { ...block, revealed: block.clusters.length, done: true } : block,
+    ids.has(block.id) ? { ...block, skipped: true, revealed: block.clusters.length, done: true } : { ...block },
   );
-  let active = state.active;
-  let elapsedMs = state.elapsedMs;
-  if (ids.has(blocks[active]?.id ?? '')) {
-    active = blocks.findIndex((block, index) => index >= state.active && !block.done);
-    elapsedMs = 0;
+  // A skipped block takes no time: the blocks after it move up to where it began.
+  let offset = 0;
+  for (const block of blocks) {
+    block.offsetMs = offset;
+    offset += block.durationMs;
   }
-  return { ...state, blocks, active, elapsedMs };
+  return at({ ...state, blocks }, state.elapsedMs);
 }
 
 /** «Показать сразу»: every queued block is complete, the caret disappears. */
-export function finishReveal(state: RevealState): RevealState {  if (state.active < 0 && state.blocks.every((block) => block.done)) return state;
+export function finishReveal(state: RevealState): RevealState {
+  if (state.active < 0 && state.blocks.every((block) => block.done)) return state;
   return {
     ...state,
     blocks: state.blocks.map((block) => ({ ...block, revealed: block.clusters.length, done: true })),
@@ -286,3 +297,49 @@ export function activeBlockId(reveal: RevealState): string | null {
 
 /** `BlockDto` is what the reveal consumes; kept here so components do not restate it. */
 export type ChapterBlock = Pick<BlockDto, 'id' | 'text'>;
+
+/** The device's rate for the reveal at one width (the same function the clip renderer reads). */
+export function revealCps(width: number): number {
+  return deviceCps(width);
+}
+
+/**
+ * The reveal a chapter's arrival deserves, decided in one place (`startReveal` in the
+ * article): `changed` means a change (`BOOK-117 §1`), `live` a chapter being written now, and
+ * otherwise a join — which is a page load, not a print: only a young chapter's tail is typed.
+ * `startAt` is the print's clock (`chapter:applied.appliedAt`); reduced motion sets everything
+ * at once.
+ */
+export function chapterReveal(
+  loaded: Pick<ChapterDto, 'blocks' | 'writtenAt'>,
+  options: {
+    fresh: boolean;
+    live?: boolean;
+    changed?: ReadonlySet<string> | null;
+    reducedMotion?: boolean;
+    now?: number;
+    startAt?: number;
+    cps?: number;
+  },
+): RevealState {
+  const reduced = options.reducedMotion === true;
+  const now = options.now ?? Date.now();
+  // A basis slot served before its chapter exists has no written moment (`null`, BOOK-187 AC3);
+  // it counts as just written, the way an unreadable `writtenAt` always has.
+  const writtenAt = loaded.writtenAt === null ? Number.NaN : Date.parse(loaded.writtenAt);
+  const ageMs = Number.isNaN(writtenAt) ? 0 : now - writtenAt;
+  const plan = planReveal({
+    blocks: loaded.blocks,
+    mode: options.changed == null ? (options.fresh || options.live === true ? 'live' : 'join') : 'change',
+    changedIds: options.changed ?? undefined,
+    chapterAgeMs: Math.max(0, ageMs),
+    reducedMotion: reduced,
+  });
+  const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
+  return createReveal(queued, {
+    reducedMotion: reduced,
+    cps: options.cps,
+    startAt: options.startAt,
+    now,
+  });
+}

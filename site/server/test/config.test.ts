@@ -21,8 +21,8 @@ describe('loadConfig', () => {
     expect(config.tz).toBe('Europe/Moscow');
     expect(config.maxWs).toBe(100);
     expect(config.leaseTtlMs).toBe(120_000);
-    // BOOK-34: the step wall is the only bound on a step's growth; 45 min, well above the TTL.
-    expect(config.stepWallMs).toBe(2_700_000);
+    // BOOK-DOC-84 §10.8: five attempts must fit one wall — 225 min, not the old 45.
+    expect(config.stepWallMs).toBe(13_500_000);
     // audit m1: the proxy is one host, not a /24 that lets the LAN forge its address.
     expect(config.trustedProxies).toBe('127.0.0.1,::1,192.168.1.44/32');
     expect(config.readPerMinute).toBe(60);

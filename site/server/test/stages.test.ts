@@ -119,6 +119,18 @@ describe('the stage store (§3)', () => {
       span: null,
       tokens: null,
       costUsd: null,
+      // §10.8 — the ladder travels with every stage: the store's lease count, the ceiling,
+      // the widening, the gate's own name and round, the iteration and the deadline.
+      attempt: 1,
+      maxAttempts: 5,
+      widened: null,
+      desperate: false,
+      gate: null,
+      round: null,
+      iteration: 0,
+      maxIterations: 4,
+      verdict: null,
+      deadlineAt: T0 + 480_000,
     });
     expect(listStages(ctx!.db, 8)).toEqual([event]);
     expect(maxStageSeq(ctx!.db)).toBe(1);
@@ -213,6 +225,27 @@ describe('POST /internal/stage (§3)', () => {
       payload,
     });
   }
+
+  it('passes the ladder’s fields through the route’s own body check (§10.8)', async () => {
+    seedPass(ctx!.db, 'stp_http_ladder', 8);
+    const response = await post({
+      passId: 'stp_http_ladder',
+      stage: 'widening',
+      at: T0,
+      actor: { process: 'writer', model: null },
+      summary: 'расширение: попытка 4 из 5',
+      attempt: 4,
+      maxAttempts: 5,
+      widened: 'wider-edit',
+      desperate: false,
+      iteration: 1,
+    });
+    expect(response.statusCode).toBe(200);
+    const row = ctx!.db.prepare('SELECT attempt, max_attempts, widened, iteration FROM pass_stages WHERE pass_id = ?').get(
+      'stp_http_ladder',
+    );
+    expect(row).toEqual({ attempt: 4, max_attempts: 5, widened: 'wider-edit', iteration: 1 });
+  });
 
   it('requires the bearer token', async () => {
     const response = await post({ ...stageInput() }, 'nope');

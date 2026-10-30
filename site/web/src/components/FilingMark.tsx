@@ -1,29 +1,33 @@
 import type { CommentDto } from '@book/shared';
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { filingInk, filingNum, filingNumber, isAlive, isLanded, sortFilings, type SentenceFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
-import { scheduleMarginPass } from '../lib/marginPass.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /**
- * BOOK-90 / BOOK-218 — the mark at the sentence.
+ * BOOK-90 — the mark at the sentence, and BOOK-220 §11.3 — **one mark per filing group**.
  *
- * Two forms, one box: the **alive** filing prints its numeral (`28.8 × 13.2`), the **landed**
- * change prints a 1 × 16 px tick. Both sit in a 40 × 44 px target that starts on the prose's
- * own right edge (`left: 100%` of the paragraph), and both are placed by the margin's own
- * ledger (`lib/marginPass.ts`), like every note of the channel: the mark is an item of the
- * channel, so `max(anchorTop, cursor)` keeps it off the object before it and the prose never
- * carries it. An alive filing wins the slot over a landed one: alive is louder, and the object
- * opened from the numeral lists the applied change too.
+ * The mark is the only element in the margin that prints a filing's number. It used to cut a
+ * token out of the filing's id (`№4НТ`) while the note beside it printed the same token again:
+ * one filing, two numbers on one line, and the same number a third time in the record. The
+ * number is now the change's own `seq` — a number the book can back (`012`) — the note prints
+ * no number, and a group that really holds several filings carries their count (`ещё 2`) in the
+ * mark's accessible name and in the note's head, never the same number twice.
+ *
+ * Two forms, one box: an **alive** filing prints its number (`28.8 × 13.2`), a **landed**
+ * change prints a 1 × 16 px tick, and a filing no change number was ever given prints the tick
+ * too — an ordinal cut out of an id is a claim no row makes. Both sit in a 40 × 44 px target
+ * that starts exactly at the prose's right edge, centred on the anchored line, and both are
+ * written through CSSOM — no `style` attribute reaches the markup. An alive filing wins the
+ * slot over a landed one: alive is louder.
  *
  * Below 1024 the numeral leaves the text (the phone gutter cannot hold it): the mark is the
  * 1 px tick only, in a 24 × 44 target, and the numeral lives in the strip. The state is never
- * colour alone — the numeral is underlined while the filing is live and struck through when it
- * is stopped, the tick is a different *shape*, and the word travels in the accessible name and
- * with the strip row.
+ * colour alone — the tick is a different *shape* from the numeral, and the word travels with
+ * the strip row and the note.
  */
 export function FilingMark({
   filings,
@@ -38,44 +42,80 @@ export function FilingMark({
   const landed = ordered.find(isLanded);
   const newest = alive ?? landed;
   const aliveCount = ordered.filter(isAlive).length;
+  const slot = useRef<HTMLSpanElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
-  // The mark is a margin item: its mount is a change of the page's channel, so the pass runs
-  // before paint — the same one pass the notes ask for.
+  // Placed in the margin at the **anchored line's** top: the sentence span's first layout box
+  // (not the mark's own inline box, which sits at the sentence's last character). The 44 px
+  // target is centred on the line: offsetTop + lineHeight / 2 − 22.
   useMeasuredLayout(() => {
-    scheduleMarginPass();
-  }, [newest?.id, newest?.status, filings.number]);
+    const anchor = slot.current;
+    const target = button.current;
+    if (anchor === null || target === null) return;
+    const parent = anchor.offsetParent as HTMLElement | null;
+    if (parent === null) return;
+    const sentence = anchor.parentElement;
+    const line = sentence === null ? anchor.offsetTop : sentence.offsetTop;
+    const lineHeight = Number.parseFloat(getComputedStyle(parent).lineHeight);
+    const half = Number.isFinite(lineHeight) ? lineHeight / 2 : 0;
+    target.style.top = `${line + half - 22}px`;
+  }, [newest?.id, filings.number]);
 
   if (alive !== undefined) {
     const ink = filingInk(alive);
     const extra = aliveCount - 1;
+    // BOOK-218 — the filing's own public number (`comments.number`), what the reader reads.
+    const number = filingNumber(alive);
+    if (!Number.isFinite(alive.number)) {
+      return (
+        <span className="filing-mark-slot" ref={slot}>
+          <button
+            ref={button}
+            type="button"
+            className={`filing-mark filing-alive filing-bare ink-${ink.tone}`}
+            data-number={number}
+            data-state="alive"
+            aria-label={`${number} · ${filingMarginalia(alive).word}${extra > 0 ? ` · ещё ${String(extra)}` : ''}`}
+            onClick={(event) => onOpen(alive, event.currentTarget)}
+          >
+            <span className="filing-tick-bar" aria-hidden="true" />
+          </button>
+        </span>
+      );
+    }
     return (
-      <button
-        type="button"
-        className={`filing-mark filing-alive ink-${ink.tone}`}
-        data-margin-item="mark"
-        data-number={filingNum(alive)}
-        data-state="alive"
-        aria-label={`${filingNumber(alive)} · ${filingMarginalia(alive).word}${extra > 0 ? ` · ещё ${extra}` : ''}`}
-        onClick={(event) => onOpen(alive, event.currentTarget)}
-      >
-        <span className="filing-mark-num">{filingNum(alive)}</span>
-      </button>
+      <span className="filing-mark-slot" ref={slot}>
+        <button
+          ref={button}
+          type="button"
+          className={`filing-mark filing-alive ink-${ink.tone}`}
+          data-number={number}
+          data-state="alive"
+          {...(extra > 0 ? { 'data-extra': String(extra) } : {})}
+          aria-label={`${number} · ${filingMarginalia(alive).word}${extra > 0 ? ` · ещё ${String(extra)}` : ''}`}
+          onClick={(event) => onOpen(alive, event.currentTarget)}
+        >
+          <span className="filing-mark-num">{filingNum(alive)}</span>
+        </button>
+      </span>
     );
   }
 
   if (landed !== undefined) {
     return (
-      <button
-        type="button"
-        className="filing-mark filing-tick"
-        data-margin-item="mark"
-        data-number={filingNum(landed)}
-        data-state="accepted"
-        aria-label={`${filingNumber(landed)} · ${filingMarginalia(landed).word}`}
-        onClick={(event) => onOpen(landed, event.currentTarget)}
-      >
-        <span className="filing-tick-bar" aria-hidden="true" />
-      </button>
+      <span className="filing-mark-slot" ref={slot}>
+        <button
+          ref={button}
+          type="button"
+          className="filing-mark filing-tick"
+          data-number={filingNumber(landed)}
+          data-state="accepted"
+          aria-label={`${filingNumber(landed)} · ${filingMarginalia(landed).word}`}
+          onClick={(event) => onOpen(landed, event.currentTarget)}
+        >
+          <span className="filing-tick-bar" aria-hidden="true" />
+        </button>
+      </span>
     );
   }
   return null;

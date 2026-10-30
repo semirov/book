@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { EngineRefusalError, type EngineClient } from '../../src/writer/client.ts';
-import { main, parseArgs } from '../../src/writer/main.ts';
+import { main, PARK_LIMIT, parseArgs, proseDelayMs } from '../../src/writer/main.ts';
 import { chapterAnswer, createHarness, type Harness } from './harness.ts';
 
 /** The row `writer_state` holds, as the test reads it — the counter that was `state.json`. */
@@ -347,6 +347,74 @@ describe('main — --revert and --dry-run', () => {
       });
       expect(bareCode).toBe(0);
       expect(bare.join('\n')).toContain('без --chapter проход не строится');
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+/**
+ * BOOK-DOC-84 §7 IFACE / D4 — the loop's pacing and its brake, as a process test.
+ *
+ * The old shape slept `WRITER_PAUSE_MS` (15 min) after **every** pass, so a chain of filings
+ * read as a stalled book. Now a waiting filing is taken on `WRITER_BREATH_MS`, and the lane stops
+ * itself (exit 1) after three consecutive parks instead of spinning.
+ */
+describe('main — the loop’s breath and its brake', () => {
+  it('takes the next filing on the breath, never the 15-minute pause, and exits 1 after five parks', async () => {
+    // A one-millisecond breath and the shipped pause: if the loop ever waits the pause, this
+    // test times out instead of passing slowly. The engine's poll stays the shipped 100 ms floor.
+    const harness = await createHarness({
+      // §10.8: the brake is five parks, and a parked pass counts toward the day — so the day's
+      // own bound is lifted here, or the day (4 passes) would stop the lane before five parks.
+      env: { WRITER_BREATH_MS: '1', WRITER_PAUSE_MS: '900000', TRIAGE_POLL_MS: '100', WRITER_MAX_PASSES_PER_DAY: '10' },
+    });
+    try {
+      for (const chapter of [40, 41, 42, 43, 44]) harness.premised(chapter, `в главе ${String(chapter)} появляется документ о допуске`);
+      // Five refused answers, one per filing (§10.8's brake): each park closes its step and
+      // leaves the next filing waiting, so the loop must walk all five on the breath and stop.
+      for (let index = 0; index < 5; index += 1) harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
+
+      const lines: string[] = [];
+      const started = Date.now();
+      const code = await main({
+        argv: ['--loop'],
+        env: harness.env,
+        provider: harness.provider,
+        engine: harness.client,
+        // The loop's own clock: a frozen one would never reach `proseDueAt` (the pacing is time).
+        now: () => Date.now(),
+        log: (line) => lines.push(line),
+      });
+      const elapsed = Date.now() - started;
+
+      expect(code).toBe(1);
+      expect(lines.join('\n')).toContain('писатель остановлен после 5 отказов');
+      // Three passes, not one pass and a 15-minute sleep: the whole run is a few seconds.
+      expect(elapsed).toBeLessThan(15_000);
+      const steps = harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get() as { n: number };
+      expect(steps.n).toBe(5);
+    } finally {
+      await harness.close();
+    }
+  }, 30_000);
+
+  it('sleeps the idle poll when nothing waits, and the breath when a filing does', () => {
+    const config = { breathMs: 3_000, pauseMs: 900_000 };
+    expect(proseDelayMs('closed', true, config)).toBe(3_000);
+    expect(proseDelayMs('closed', false, config)).toBe(900_000);
+    expect(proseDelayMs('refused', true, config)).toBe(3_000);
+    expect(proseDelayMs('gone', true, config)).toBe(3_000);
+    expect(proseDelayMs('parked', true, config)).toBe(3_000);
+    expect(proseDelayMs('idle', true, config)).toBe(900_000);
+    expect(PARK_LIMIT).toBe(5);
+  });
+
+  it('keeps the shipped breath at three seconds and the pause as the idle poll', async () => {
+    const harness = await createHarness();
+    try {
+      expect(harness.config.breathMs).toBe(3_000);
+      expect(harness.config.pauseMs).toBe(900_000);
     } finally {
       await harness.close();
     }

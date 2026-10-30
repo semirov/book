@@ -1,0 +1,213 @@
+{
+  "page": "/harness/reconnect.html",
+  "width": 390,
+  "refused": 5,
+  "accepted": 2,
+  "live": {
+    "word": "машина пишет главу 3 · правка 002 · попытка 1 из 5 · 17:04",
+    "hello": 1,
+    "shot": "shots/live/reconnect/00-live.png"
+  },
+  "outage": {
+    "attempts": 6,
+    "timeline": [
+      {
+        "status": "connecting",
+        "attempts": 0,
+        "at": 20,
+        "sinceRowMs": 20,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "open",
+        "attempts": 0,
+        "at": 22,
+        "sinceRowMs": 2,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "open",
+        "attempts": 0,
+        "at": 23,
+        "sinceRowMs": 1,
+        "word": "машина пишет главу 3 · правка 002 · попытка 1 из 5 · 17:04",
+        "helloAfterMs": 1
+      },
+      {
+        "status": "closed",
+        "attempts": 1,
+        "at": 97,
+        "sinceRowMs": 74,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "connecting",
+        "attempts": 1,
+        "at": 715,
+        "sinceRowMs": 618,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "closed",
+        "attempts": 2,
+        "at": 717,
+        "sinceRowMs": 2,
+        "word": "связи нет",
+        "helloAfterMs": null
+      },
+      {
+        "status": "connecting",
+        "attempts": 2,
+        "at": 1625,
+        "sinceRowMs": 908,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "closed",
+        "attempts": 3,
+        "at": 1626,
+        "sinceRowMs": 1,
+        "word": "связи нет",
+        "helloAfterMs": null
+      },
+      {
+        "status": "connecting",
+        "attempts": 3,
+        "at": 3829,
+        "sinceRowMs": 2203,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "closed",
+        "attempts": 4,
+        "at": 3833,
+        "sinceRowMs": 4,
+        "word": "связи нет · пробуем снова",
+        "helloAfterMs": null
+      },
+      {
+        "status": "connecting",
+        "attempts": 4,
+        "at": 7785,
+        "sinceRowMs": 3952,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "closed",
+        "attempts": 5,
+        "at": 7790,
+        "sinceRowMs": 5,
+        "word": "связи нет · пробуем снова",
+        "helloAfterMs": null
+      },
+      {
+        "status": "connecting",
+        "attempts": 5,
+        "at": 16309,
+        "sinceRowMs": 8519,
+        "word": "",
+        "helloAfterMs": null
+      },
+      {
+        "status": "closed",
+        "attempts": 6,
+        "at": 16311,
+        "sinceRowMs": 2,
+        "word": "связи нет · пробуем снова",
+        "helloAfterMs": null
+      }
+    ],
+    "matrix": [
+      {
+        "attempt": 1,
+        "word": ""
+      },
+      {
+        "attempt": 2,
+        "word": "связи нет"
+      },
+      {
+        "attempt": 3,
+        "word": "связи нет"
+      },
+      {
+        "attempt": 4,
+        "word": "связи нет · пробуем снова"
+      },
+      {
+        "attempt": 5,
+        "word": "связи нет · пробуем снова"
+      },
+      {
+        "attempt": 6,
+        "word": "связи нет · пробуем снова"
+      }
+    ],
+    "cadence": [
+      {
+        "attempt": 2,
+        "gapMs": 620,
+        "baseMs": 500
+      },
+      {
+        "attempt": 3,
+        "gapMs": 909,
+        "baseMs": 1000
+      },
+      {
+        "attempt": 4,
+        "gapMs": 2207,
+        "baseMs": 2000
+      },
+      {
+        "attempt": 5,
+        "gapMs": 3957,
+        "baseMs": 4000
+      },
+      {
+        "attempt": 6,
+        "gapMs": 8521,
+        "baseMs": 8000
+      }
+    ]
+  },
+  "recovery": {
+    "row": {
+      "status": "open",
+      "attempts": 0,
+      "at": 32475,
+      "sinceRowMs": 1,
+      "word": "машина проверяет главу 3 · правка 002 · редактор, раунд 1 · 17:08",
+      "helloAfterMs": 1
+    },
+    "state": {
+      "stage": "verdict",
+      "stageSeq": 4,
+      "appliedRev": 13,
+      "filingState": "applied",
+      "queue": 0,
+      "hellos": 2,
+      "status": "open",
+      "attempts": 0
+    },
+    "shot": "shots/live/reconnect/07-recovered.png",
+    "shotAfterMs": 1
+  },
+  "shots": [
+    "shots/live/reconnect/00-live.png",
+    "shots/live/reconnect/02-second.png",
+    "shots/live/reconnect/04-fourth.png",
+    "shots/live/reconnect/06-sixth.png",
+    "shots/live/reconnect/07-recovered.png"
+  ],
+  "pass": true,
+  "violations": [],
+  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+}

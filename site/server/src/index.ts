@@ -14,7 +14,6 @@
 
 import { readFileSync } from 'node:fs';
 
-import type { ViewerDto } from '@book/shared';
 
 import { buildApp } from './app.ts';
 import { createAuthorsCount } from './authors/count.ts';
@@ -23,7 +22,7 @@ import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
 import { bootDatabase, bootFailureLine } from './db/boot.ts';
 import { SCHEMA_VERSION } from './db/schema.ts';
 import { listCatalog } from './db/repo/chapters.ts';
-import { EngineBridge } from './engineState/bridge.ts';
+import { createEngineBridge } from './engineState/wiring.ts';
 import { startErosionJob } from './history/erosion.ts';
 import { DecisionsTailer } from './feedback/decisions.ts';
 import { poll as pollTriage } from './feedback/triageApplier.ts';
@@ -39,7 +38,7 @@ import { sendPassEvent } from './push/passEvent.ts';
 import { drainPush } from './push/sender.ts';
 import { createWebPushTransport } from './push/transport.ts';
 import { readVapid } from './push/vapid.ts';
-import { WsHub } from './ws/hub.ts';
+import { WsHub, type ViewerContext } from './ws/hub.ts';
 
 /** BOOK-189: how long the site waits between drains, measured from the end of the previous one. */
 const PUSH_TICK_MS = 2_000;
@@ -80,7 +79,10 @@ async function main(): Promise<void> {
   });
   const limiter = new RateLimiter(db, () => now().getTime());
 
-  const state = new StateService(db, undefined, budgetCapsOf(config));
+  const state = new StateService(db, undefined, budgetCapsOf(config), {
+    queueSoftCap: config.queueSoftCap,
+    maxPasses: config.writerMaxPasses,
+  });
   const imprint = loadImprint(config.imprintPath);
   // One byline reader for the socket and the HTTP app, so page 1, a live `authors:update` and a
   // reconnect all carry comparable markers (BOOK-DOC-4).
@@ -91,16 +93,30 @@ async function main(): Promise<void> {
     config,
     imprint,
     authorsCount,
-    resolveViewer: (request): ViewerDto => {
+    // BOOK-DOC-84 §2.2: the internal identity rides beside the public DTO, for `live.filings`.
+    liveOptions: { queueSoftCap: config.queueSoftCap, maxPasses: config.writerMaxPasses },
+    resolveViewer: (request): ViewerContext => {
       const session = sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
       return session === null
-        ? { signedIn: false, displayName: null }
-        : { signedIn: true, displayName: session.identity.display_name };
+        ? { viewer: { signedIn: false, displayName: null, isAuthor: false }, identityId: null }
+        : {
+            // BOOK-DOC-84 §10.4: the author marker is the identity's own column, read here and
+            // never fetched again — `hello.viewer.isAuthor` is the only carrier.
+            viewer: {
+              signedIn: true,
+              displayName: session.identity.display_name,
+              isAuthor: session.identity.is_author === 1,
+            },
+            identityId: session.identity.id,
+          };
     },
   });
 
   // The engine writes facts into the same database; the bridge narrates them to readers.
-  const bridge = new EngineBridge({
+  // BOOK-220: built from `config`, so the revision snapshots' root and the lane's day bound ride
+  // with it — without the data dir every `chapter:applied` is `patchTruncated` and prints nothing.
+  const bridge = createEngineBridge({
+    config,
     db,
     emit: (type, data) => hub.publish(type, data),
     snapshot: () => state.snapshot(),

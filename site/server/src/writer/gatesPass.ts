@@ -17,8 +17,12 @@ import type { GateRoleName, GateFinding } from './gates.ts';
 import type { GateRun, Lane } from './passLane.ts';
 import { failureOf, isTransportFailure, readerFallbacks, type Failure } from './reasons.ts';
 
-/** One gate's revision in a pass, whatever the engine's cycle cap allows. */
-const MAX_REVISIONS = 1;
+/**
+ * One gate's revision in a pass, whatever the engine's cycle cap allows. §10.8: four revisions
+ * inside the engine's five gate cycles — the old ceiling of one made a widened ladder a lie at
+ * the second attempt.
+ */
+const MAX_REVISIONS = 4;
 
 export type GatesOutcome =
   /**

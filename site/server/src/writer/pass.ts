@@ -48,17 +48,11 @@ import type { Tier0Result } from './verify/tier0.ts';
 import { closePass } from './closePass.ts';
 import { backSentence } from './putBack.ts';
 import { createRecovery } from './recovery.ts';
+import { goneAfterBack, type GoneHelpers } from './gone.ts';
 import { resumeBase, startWriting } from './relevance.ts';
 import type { WriterConfig } from './config.ts';
 
 export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
-
-/**
- * BOOK-145: a step the engine already took away is not a failure of this pass — a step wall, a
- * released lease, a step closed by the engine. The lane says so in one line, asks `next` again at
- * once and never closes the dead step; a run that landed puts its own text back first (BOOK-219).
- */
-const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
 export type PassDeps = {
   config: WriterConfig;
@@ -192,31 +186,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     state: { rev: () => preRev, sha: () => preSha, landed: published, text: () => text },
     log: deps.log,
   });
-
-  function goneOf(code: string | null, detail: string): PassResult | null {
-    if (code === null || !GONE_CODES.has(code)) return null;
-    deps.log(`lease released by the engine — taking the next filing (${code}: ${detail.slice(0, 120)})`);
-    return {
-      status: 'gone',
-      stepId: job.stepId,
-      changeId: job.changeId,
-      reason: 'lease released by the engine — taking the next filing',
-    };
-  }
-
-  /**
-   * BOOK-145 + BOOK-219: the wall that took the step away is why `gone` is right, but a run that
-   * landed has already published, so the text goes back first — `gone` on its own is the answer
-   * only when the way back finds nothing of ours (`none`), exactly as the rights path tells it.
-   */
-  async function goneAfterBack(code: string | null, detail: string): Promise<PassResult | null> {
-    const answer = goneOf(code, detail);
-    if (answer === null) return null;
-    if (!published()) return answer;
-    const back = await recovery.takeBack('шаг снят движком');
-    if (back.kind === 'unverified') deps.log(`[writer] откат не подтверждён: ${back.detail}`);
-    return answer;
-  }
+  /** BOOK-145: the engine taking the step away is not this pass's failure (see `gone.ts`). */
+  const helpers: GoneHelpers = { log: deps.log, job, recovery, published };
 
   try {
     // 3. `queued`: the engine opened the step — the writer is the one that says so.
@@ -238,7 +209,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       //    engine says has moved is answered by the writer here (`relevance.ts`), never parked.
       const opened = await startWriting({ engine, lane, job, chapter, log: deps.log });
       if (!opened.ok) {
-        return (await goneAfterBack(opened.failure.code, opened.failure.detail)) ?? (await lane.park(opened.failure));
+        return (await goneAfterBack(helpers, opened.failure.code, opened.failure.detail)) ?? (await lane.park(opened.failure));
       }
       const started = opened.started;
       if (typeof started.sha !== 'string') return await lane.park({ detail: PASS_STOPS.startMissing });
@@ -254,10 +225,14 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         await lane.loadText([chapter - 1, chapter, chapter + 1]);
         // The same bytes a landing writes (one trailing newline), so a no-op compares equal.
         beforeText = finalize(chapterQuote(lane.textOf(chapter)));
+        // BOOK-173 §4 chooses the ordinary mode; BOOK-DOC-84 §10.8's widening overrides it once
+        // the third failure has forced the whole chapter — a widened attempt is never a patch.
         choice =
-          deps.ripple === undefined
-            ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
-            : RIPPLE_MODE;
+          job.widened !== null
+            ? { mode: 'rewrite', reason: 'widened' }
+            : deps.ripple === undefined
+              ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
+              : RIPPLE_MODE;
       } catch (error) {
         return await lane.park(failureOf(error));
       }
@@ -366,7 +341,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         landing = await lane.land(text);
         landedHere = true;
       } catch (error) {
-        return (await goneAfterBack(codeOf(error), reasonOf(error))) ?? (await lane.park(failureOf(error)));
+        return (await goneAfterBack(helpers, codeOf(error), reasonOf(error))) ?? (await lane.park(failureOf(error)));
       }
       // BOOK-173 §5: the silent no-op, said out loud — a pass that moved no byte must not read
       // in the log like a landing.
@@ -414,13 +389,30 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       beforeText = text;
     }
 
+    // §10.8: a widened attempt announces the widening as its own stage, once, on attempt 4.
+    if (job.attempt === 4 && job.widened !== null && !job.desperate) {
+      await lane.emit({
+        stage: 'widening',
+        chapter,
+        passId: job.stepId,
+        changeId: job.changeId,
+        summary: stageSummary.widening({
+          attempt: job.attempt,
+          max: job.maxAttempts,
+          sentence: job.widened.sentence,
+        }),
+        model: null,
+        widened: job.widened.code,
+        at: now(),
+      });
+    }
     // 9. The gates (`gatesPass.ts`, BOOK-DOC-80): the full pair only on a trigger, Gate B always.
     //    A `local only` change closes on the local judge's word; a resumed step has no verification
     //    record, so it takes the pair exactly as it always did.
     const gateOutcome = await runGates({
       lane,
       log: deps.log,
-      full: gates === null || gates.gatesMode !== 'local only',
+      full: !job.desperate && (gates === null || gates.gatesMode !== 'local only'),
       answered,
     });
     if (gateOutcome.kind === 'rights') {
@@ -441,7 +433,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     // A revision this pass landed is part of its own text: the way back and the close read *it*.
     if (gateOutcome.revised !== undefined) text = gateOutcome.revised;
     if (gateOutcome.kind === 'park') {
-      const stepped = await goneAfterBack(gateOutcome.failure.code ?? null, gateOutcome.failure.detail);
+      const stepped = await goneAfterBack(helpers, gateOutcome.failure.code ?? null, gateOutcome.failure.detail);
       if (stepped !== null) return stepped;
       // A rights failure (or an unreadable gate answer, or a revision that never validated) is not
       // auxiliary: the text it landed has no verdict, so it goes back before the pass parks.
@@ -485,7 +477,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       now,
     });
   } catch (error) {
-    const stepped = await goneAfterBack(codeOf(error), reasonOf(error));
+    const stepped = await goneAfterBack(helpers, codeOf(error), reasonOf(error));
     if (stepped !== null) return stepped;
     // BOOK-219's invariant covers a thrown failure too: after our own landing the text goes back
     // before the pass parks, or a reader keeps a revision a broken pass published.

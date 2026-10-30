@@ -1,15 +1,13 @@
 /**
  * The WebSocket hub (ARCHITECTURE.md §10): a read-only fan-out for readers.
  *
- * - 100 connections hard, 20 per network (§10.1): over **either** cap the newcomer is
- *   refused with `1013 CAPACITY` and shown the plate; an open seat is never taken from a
- *   reader — a CGNAT household shares one address (BOOK-DOC-33 M-major, BOOK-75);
- * - one envelope, a per-connection `seq`;
- * - a chapter body is never framed (ADR-004), so the hub only forwards metadata/deltas;
- * - a slow client is skipped for `state:updated` and healed with `state:snapshot`.
+ * 100 connections hard, 20 per network (§10.1): over either cap the newcomer is refused with
+ * `1013 CAPACITY` and shown the plate; an open seat is never taken from a reader. One envelope,
+ * a per-connection `seq`; a chapter body is never framed (ADR-004). A slow client loses only a
+ * snapshot, and a transition over the bound closes it `1011 SLOW` (BOOK-DOC-84 §3.4).
  *
- * The hub owns no transport setup: `app.ts` registers `@fastify/websocket` and calls
- * `attach` for `/ws`, which keeps the protocol testable with `app.injectWS`.
+ * The hub owns no transport setup: `app.ts` registers `@fastify/websocket` and calls `attach`
+ * for `/ws`, which keeps the protocol testable with `app.injectWS`.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -30,10 +28,12 @@ import {
   type ServerEventType,
   type StateChangeReason,
   type StateSnapshotPayload,
+  type LivePayload,
   type ViewerDto,
 } from '@book/shared';
 
 import { createAuthorsCount } from '../authors/count.ts';
+import { liveSnapshot, type LiveDeps } from './live.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/db.ts';
 import { listCatalog } from '../db/repo/chapters.ts';
@@ -56,11 +56,21 @@ export type WsHubOptions = {
   /** `state:updated` is coalesced per connection; 1 000 ms in production (§10.3). */
   stateThrottleMs?: number;
   trustedProxies?: string[];
-  /** §9: the session cookie resolved at upgrade; anonymous readers stay `false`. */
-  resolveViewer?: (request: FastifyRequest) => ViewerDto;
+  /**
+   * §9: the session cookie resolved at upgrade; anonymous readers stay `false`. BOOK-DOC-84
+   * §2.2 — the internal `identityId` rides beside the public DTO so `live.filings` can name the
+   * viewer's own rows; it never appears on the wire.
+   */
+  resolveViewer?: (request: FastifyRequest) => ViewerContext;
   /** The byline count, shared with the HTTP app in production (BOOK-DOC-4). */
   authorsCount?: () => AuthorsCountDto;
+  /** BOOK-DOC-84 §2.2: what the `live` block announces about the lane and the queue. */
+  liveOptions?: { queueSoftCap?: number; maxPasses?: number };
 };
+
+/** The viewer as the hub keeps it: the public DTO plus the internal identity (never sent). */
+export type ViewerContext = { viewer: ViewerDto; identityId: string | null };
+
 
 type Connection = {
   id: string;
@@ -77,11 +87,16 @@ type Connection = {
   /** No frame may precede `hello`; broadcasts during the upgrade tick are dropped. */
   helloPending: boolean;
   viewer: ViewerDto;
+  /** The viewer's own row id, for `live.filings`; `null` for an anonymous reader. */
+  identityId: string | null;
 };
 
 const INBOUND_MAX_BYTES = 4_096;
 const INBOUND_MAX_PER_MINUTE = 5;
 const DEFAULT_BACKPRESSURE_BYTES = 256 * 1024;
+/** BOOK-DOC-84 §3.4 — what a slow client may lose; every other frame is a transition. */
+
+const COALESCIBLE_FRAMES = new Set<ServerEventType>(['state:updated', 'cascade:progress']);
 
 /** 100 seats hard, 20 per network: over either cap the newcomer is refused (§10.1, BOOK-75). */
 export class WsHub {
@@ -98,7 +113,8 @@ export class WsHub {
   private readonly backpressureBytes: number;
   private readonly stateThrottleMs: number;
   private readonly trustedProxies: string[];
-  private readonly resolveViewer: ((request: FastifyRequest) => ViewerDto) | null;
+  private readonly resolveViewer: ((request: FastifyRequest) => ViewerContext) | null;
+  private readonly liveOptions: { queueSoftCap?: number; maxPasses?: number };
   private readonly authorsCount: () => AuthorsCountDto;
   private timer: NodeJS.Timeout | null = null;
 
@@ -116,6 +132,7 @@ export class WsHub {
     this.stateThrottleMs = options.stateThrottleMs ?? 1_000;
     this.trustedProxies = options.trustedProxies ?? options.config.trustedProxies.split(',').map((part) => part.trim());
     this.resolveViewer = options.resolveViewer ?? null;
+    this.liveOptions = options.liveOptions ?? {};
     this.authorsCount = options.authorsCount ?? createAuthorsCount(options.db, this.now);
   }
 
@@ -146,6 +163,7 @@ export class WsHub {
       return;
     }
 
+    const resolved = this.resolveViewer?.(request) ?? { viewer: { signedIn: false, displayName: null, isAuthor: false }, identityId: null };
     const conn: Connection = {
       id: this.idFactory(),
       socket,
@@ -159,7 +177,8 @@ export class WsHub {
       stateTimer: null,
       lastStateAt: 0,
       helloPending: true,
-      viewer: this.resolveViewer?.(request) ?? { signedIn: false, displayName: null },
+      viewer: resolved.viewer,
+      identityId: resolved.identityId,
     };
     this.conns.set(conn.id, conn);
 
@@ -182,23 +201,45 @@ export class WsHub {
     this.ensureTimer();
   }
 
-  /** Fan-out. `state:updated`/`presence` may be skipped for a slow client (§10.1). */
+  /**
+   * Fan-out. `state:updated`/`cascade:progress` may be skipped for a slow client (§3.4); every
+   * other frame is a transition and is never skipped — a client too slow for it is closed.
+   */
   publish(type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown): void {
     for (const conn of this.conns.values()) this.send(conn, type, data, false);
   }
 
-  /** A full snapshot, for reconnects and for healing a skipped client. */
-  publishSnapshot(reason: StateChangeReason = 'manual'): void {
-    const payload: StateSnapshotPayload = { state: this.state.snapshot(), reason };
-    for (const conn of this.conns.values()) {
-      if (conn.stateTimer !== null) {
-        clearTimeout(conn.stateTimer);
-        conn.stateTimer = null;
-      }
-      conn.pendingState = null;
-      conn.stale = false;
-      this.send(conn, 'state:snapshot', payload, true);
+  /**
+   * A full snapshot: the heal path with real callers now (BOOK-DOC-84 #2) — a `resync{since}`
+   * and the slow-client drain. `since` echoes the request, so a client can name its own gap.
+   */
+  publishSnapshot(reason: StateChangeReason = 'manual', since?: number): void {
+    for (const conn of this.conns.values()) this.sendSnapshot(conn, reason, since);
+  }
+
+  /** One connection's snapshot: the one carrier of `live` besides `hello`. */
+  private sendSnapshot(conn: Connection, reason: StateChangeReason, since?: number): void {
+    if (conn.stateTimer !== null) {
+      clearTimeout(conn.stateTimer);
+      conn.stateTimer = null;
     }
+    conn.pendingState = null;
+    conn.stale = false;
+    const payload: StateSnapshotPayload = {
+      state: this.state.snapshot(),
+      live: this.live(conn),
+      reason,
+      ...(since === undefined ? {} : { since }),
+    };
+    this.send(conn, 'state:snapshot', payload, true);
+  }
+
+  /** BOOK-DOC-84 §2.2 — the one live builder, called by both carriers. */
+  private live(conn: Connection): LivePayload {
+    const deps: LiveDeps = { db: this.db, dataDir: this.config.dataDir, now: () => this.now().getTime(),
+      queueSoftCap: this.liveOptions.queueSoftCap ?? this.config.queueSoftCap,
+      maxPasses: this.liveOptions.maxPasses ?? this.config.writerMaxPasses };
+    return liveSnapshot(deps, conn.identityId);
   }
 
   close(): void {
@@ -286,6 +327,7 @@ export class WsHub {
       },
       catalog,
       state,
+      live: this.live(conn),
       currentChapter,
       comments: { open: this.openComments() },
     };
@@ -310,9 +352,18 @@ export class WsHub {
       this.queueState(conn, data);
       return;
     }
-    if (!force && (type === 'state:updated' || type === 'presence')) {
-      if (conn.stale || conn.socket.bufferedAmount > this.backpressureBytes) {
-        conn.stale = true;
+    if (!force) {
+      const overBound = conn.socket.bufferedAmount > this.backpressureBytes;
+      if (COALESCIBLE_FRAMES.has(type)) {
+        // A snapshot or a projection: skipped, and healed by `state:snapshot` on the drain.
+        if (conn.stale || overBound) {
+          conn.stale = true;
+          return;
+        }
+      } else if (overBound) {
+        // A transition is never skipped (§3.4): the reader loses the socket, not the fact, and
+        // the reconnect's `hello.live` is the snapshot that heals everything it missed.
+        this.closeSlow(conn);
         return;
       }
     }
@@ -345,6 +396,16 @@ export class WsHub {
     conn.stateTimer.unref?.();
   }
 
+  /** `1011 SLOW`: a normal reconnect for the client (`lib/ws.ts` treats it that way). */
+  private closeSlow(conn: Connection): void {
+    try {
+      conn.socket.close(1011, 'SLOW');
+    } catch {
+      /* already gone */
+    }
+    this.drop(conn);
+  }
+
   private drop(conn: Connection): void {
     if (conn.stateTimer !== null) {
       clearTimeout(conn.stateTimer);
@@ -364,7 +425,7 @@ export class WsHub {
       conn.stateTimer = null;
     }
     conn.pendingState = null;
-    this.send(conn, 'state:snapshot', { state: this.state.snapshot(), reason: 'manual' } satisfies StateSnapshotPayload, true);
+    this.sendSnapshot(conn, 'manual');
   }
 
   private onMessage(conn: Connection, raw: RawData): void {
@@ -405,7 +466,9 @@ export class WsHub {
       return;
     }
     if (message.type === 'resync') {
-      this.send(conn, 'state:snapshot', { state: this.state.snapshot(), reason: 'manual' } satisfies StateSnapshotPayload, true);
+      // §3.3: the snapshot is complete for everything a surface shows; the hub keeps no buffer.
+      const since = typeof message.data?.since === 'number' ? message.data.since : undefined;
+      this.sendSnapshot(conn, 'manual', since);
       return;
     }
     this.send(conn, 'error', { code: 'INVALID', message: 'readers may send ping or resync only' }, true);

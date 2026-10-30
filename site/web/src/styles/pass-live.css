@@ -1,130 +1,68 @@
 /* ============================================================================
-   PASS — BOOK-121: one paragraph's live pass, painted where it was written.
-   The engine (`lib/passMotion.ts`) owns the clock; this sheet owns the shape —
-   the selection box, the two carets, the ink gate — and no timing: every
-   moving value (the wash, two transforms, two opacities) is a CSSOM write from
-   `components/LivePass.tsx`, because `style-src 'self'` drops a literal
-   `style="…"` and the values are the DOM's own.
+   PRINT — BOOK-220 §11.2 (BOOK-DOC-84, page 488): one paragraph printing in place.
+   The engine (`lib/printPlan.ts`) owns the clock, `lib/passMeasure.ts` the one read,
+   and `components/PrintPass.tsx` writes exactly three moving values through CSSOM —
+   one clip polygon, one caret transform, one ghost opacity. This sheet owns the
+   shape: the copy that is clipped, the ghost that leaves, the one caret.
    ============================================================================ */
 
-/* The block a pass rewrites: the prose of any `.p`, plus the frame its carets stand in.
-   `position: relative` sets no box, so the paragraph breaks its lines exactly as it did. */
+/* The block a print paints: the prose of any `.p`, plus the box its absolute
+   children stand in. `position: relative` sets no box, so the paragraph breaks its
+   lines exactly as it did — the print never moves the page it prints in. */
 .p-pass {
   position: relative;
 }
 
-/* ---------- the selection box: a wash, a rule and two ticks — never a border ---------- */
-/* Three gradient layers, each the whole box: a 1 px tick at either end, the 2 px rule along
-   the bottom edge, and the wash underneath both. No `background-position` (the guard reads it
-   as a hand-built shimmer) and no border (a border adds a box to an inline and re-breaks the
-   paragraph's lines); `box-decoration-break: clone` paints each line fragment on its own.
-   `--pass-wash` is the engine's `selectionOpacity`, written through CSSOM: the box paints in
-   over 160 ms and fades with its words, while the prose ink — the graphemes' own colour —
-   never fades with it. */
-.pass-span {
-  --pass-wash: 100%;
-  background-image:
-    linear-gradient(
-      90deg,
-      var(--rule-2) 0 1px,
-      transparent 1px calc(100% - 1px),
-      var(--rule-2) calc(100% - 1px)
-    ),
-    linear-gradient(to top, var(--revise) 0 2px, transparent 2px),
-    linear-gradient(
-      color-mix(in srgb, var(--revise-bg) var(--pass-wash), transparent),
-      color-mix(in srgb, var(--revise-bg) var(--pass-wash), transparent)
-    );
-  background-repeat: no-repeat;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+/* The copy: the whole final text, laid out once. The clip is a CSSOM write on this
+   one box; nothing in it is a node per character, and `clip-path` is the only thing
+   the reveal changes. */
+.pass-copy {
+  display: block;
+  clip-path: none;
 }
 
-/* The deletion's ghost: the text that is leaving, still in the flow until the swap. */
-.pass-span-gone .pg {
-  color: var(--ink-2);
+/* The visual layer is out of the accessibility tree as a whole: the sentence after it
+   is the one a screen reader reads. */
+.pass-visual {
+  display: block;
 }
 
-/* ---------- the ink gate: an un-inked grapheme holds its box and hides its ink ---------- */
-/* The run is laid out once with the final text; `color: transparent` keeps every box where the
-   settled paragraph has it, so inking a grapheme never moves a line. */
-.pg.is-pending {
-  color: transparent;
-}
-
-/* ---------- the two carets ---------- */
-/* Shape carries the reading, not colour alone: the read caret is a hollow bar with a foot
-   below, the write caret a solid bar with a hood above. Geometry only — the place and the
-   opacity are the engine's, written as `translate3d(…)` and `opacity` by the renderer. */
-.caret-read,
-.caret-write {
+/* ---------- the ghost: text that is leaving, still at its own geometry ---------- */
+/* One node, absolutely positioned: it has no effect on flow and never adds a line — so the
+   ghost's fade and its removal are never a reflow, at the swap or at any other moment.
+   The renderer writes its top (the run's first line), its width (the copy's) and its
+   `text-indent` (the run's x), so its first line starts where the removed text stood
+   and its wrap is the copy's wrap. The strike is the rule's colour, 1 px: the mark of
+   a deletion, not a second text. */
+.pass-ghost {
   position: absolute;
   top: 0;
   left: 0;
   display: block;
-  width: 0;
+  margin: 0;
+  color: var(--ink-2);
+  text-decoration: line-through;
+  text-decoration-color: var(--rule-2);
+  text-decoration-thickness: 1px;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow: hidden;
+  will-change: opacity;
+}
+
+/* ---------- the one caret: the ink's leading edge and nothing else ---------- */
+/* Exactly one element at any moment. Its place and its opacity are the engine's,
+   written as `translate3d(…)` and `opacity` by the renderer; the shape is a 2 px bar
+   in the live ink, born invisible so no frame shows it standing nowhere. */
+.caret-ink {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 2px;
   height: 1.06em;
-  /* A caret exists from the mount but stands nowhere until the engine gives it a line: the
-     default is invisible, and the renderer writes the frame's own opacity over it. */
   opacity: 0;
+  background: var(--live);
   pointer-events: none;
   will-change: transform, opacity;
-}
-
-.caret-read::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  box-sizing: border-box;
-  width: 4px;
-  height: 100%;
-  border: 1px solid var(--live);
-}
-
-.caret-read::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 0;
-  width: 6px;
-  height: 2px;
-  background: var(--live);
-}
-
-.caret-write::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: var(--write);
-}
-
-.caret-write::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: 0;
-  width: 6px;
-  height: 2px;
-  background: var(--write);
-}
-
-/* 390: the read caret steps out of the text into the left gutter as a 1 × 12 tick, so the
-   paragraph's own line keeps every pixel of the measure. The write caret stays in the text. */
-@media (max-width: 599px) {
-  .caret-read::before {
-    top: 4px;
-    left: -12px;
-    width: 1px;
-    height: 12px;
-    border: 0;
-    background: var(--live);
-  }
-
-  .caret-read::after {
-    content: none;
-  }
 }

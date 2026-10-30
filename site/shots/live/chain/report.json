@@ -1,0 +1,2763 @@
+{
+  "capturedAt": "2026-10-29T13:40:33.381Z",
+  "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum",
+  "browser": "ws://127.0.0.1:9334/devtools/browser/a54aad11-3c0f-460f-b1d3-d4afdb04ebeb",
+  "contract": {
+    "sampleMs": 50,
+    "writeGapMs": 1200,
+    "maxChainGapMs": 1500,
+    "printWindowMs": 6000,
+    "arrivals": [
+      0.3,
+      0.7,
+      0.95
+    ],
+    "arrivalNote": "shares are of the measured print duration (write → settle), so 95 % is mid-print rather than past every print"
+  },
+  "replay": {
+    "siteCwd": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site",
+    "diagnosticCwd": false,
+    "note": "the revisions rows, their snapshots and the block rows went into a temp copy of the store; no model call ran, no money moved, prod was never written",
+    "tempBook": "removed after the run",
+    "writes": [
+      {
+        "rev": 2,
+        "phrase": "Она походила на мою"
+      },
+      {
+        "rev": 3,
+        "phrase": "как тень на человека"
+      },
+      {
+        "rev": 5,
+        "phrase": "В два ноль четыре окно открылось."
+      },
+      {
+        "rev": 6,
+        "phrase": "окно открылось, и я поднялся."
+      }
+    ]
+  },
+  "runs": [
+    {
+      "width": 1440,
+      "height": 900,
+      "chapter": 12,
+      "anchor": "Я сел на стул",
+      "blockHeight": 423,
+      "writes": [
+        {
+          "rev": 2,
+          "at": "2026-10-29T13:39:57.512Z",
+          "phrase": "Она походила на мою",
+          "replacement": "Она походила на мою подпись, как тень на человека"
+        },
+        {
+          "rev": 3,
+          "at": "2026-10-29T13:39:58.712Z",
+          "phrase": "как тень на человека",
+          "replacement": "как тень на человека, брошенная на снег"
+        }
+      ],
+      "chain": {
+        "writeGapMs": 1200,
+        "insertGapMs": 2942,
+        "firstSettleAt": 1793281200453,
+        "secondFirstInkAt": 1793281200748,
+        "firstSettleToSecondInkMs": 295,
+        "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
+      },
+      "printed": true,
+      "frame": null,
+      "frameShape": "patchTruncated false, span 1, patch 1",
+      "serverProbe": null,
+      "caretWindow": {
+        "onsetFromApplied": {
+          "read": 233,
+          "write": 233
+        },
+        "onsetFromFrame": {
+          "read": 34,
+          "write": 34
+        },
+        "firstGlyphLeft": 957.7,
+        "read": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": -99.4,
+          "pairs": 43,
+          "leftFirst": 957.7,
+          "leftLast": 957.7,
+          "leftMedian": 957.7,
+          "topFirst": 549.53,
+          "topLast": 247.14,
+          "travelPx": -302.4
+        },
+        "write": {
+          "advancePx": 29.3,
+          "wraps": 1,
+          "medianPxPerSec": 70.5,
+          "pairs": 37,
+          "leftFirst": 965.2,
+          "leftLast": 583.3,
+          "leftMedian": 583.3,
+          "topFirst": 549.54,
+          "topLast": 670.5,
+          "travelPx": 121
+        },
+        "bothVisibleSamples": 50,
+        "goneAtSettle": true,
+        "settledAt": 1793281200453
+      },
+      "secondWindow": {
+        "onsetFromApplied": {
+          "read": 2036,
+          "write": 2036
+        },
+        "onsetFromFrame": {
+          "read": 32,
+          "write": 32
+        },
+        "firstGlyphLeft": 584.8,
+        "read": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": -23.9,
+          "pairs": 16,
+          "leftFirst": 584.8,
+          "leftLast": 584.8,
+          "leftMedian": 584.8,
+          "topFirst": 274.8,
+          "topLast": 247.14,
+          "travelPx": -27.7
+        },
+        "write": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": null,
+          "pairs": 0,
+          "leftFirst": 753.6,
+          "leftLast": 753.6,
+          "leftMedian": 753.6,
+          "topFirst": 670.5,
+          "topLast": 670.5,
+          "travelPx": 0
+        },
+        "bothVisibleSamples": 20,
+        "goneAtSettle": true,
+        "settledAt": 1793281201895
+      },
+      "samples": [
+        {
+          "t": 1793281197745,
+          "pass": true,
+          "beat": "type",
+          "pending": 29,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.089,
+            "left": 957.66,
+            "top": 549.53,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 965.19,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281197798,
+          "pass": true,
+          "beat": "type",
+          "pending": 27,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.494,
+            "left": 957.66,
+            "top": 549.17,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 985.72,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281197851,
+          "pass": true,
+          "beat": "type",
+          "pending": 25,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.938,
+            "left": 957.66,
+            "top": 548.14,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 1007.05,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281197904,
+          "pass": true,
+          "beat": "type",
+          "pending": 23,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 546.35,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 1026.47,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281197957,
+          "pass": true,
+          "beat": "type",
+          "pending": 21,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 543.7,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 1040,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198013,
+          "pass": true,
+          "beat": "type",
+          "pending": 21,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 540.01,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 1040,
+            "top": 549.54,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198068,
+          "pass": true,
+          "beat": "type",
+          "pending": 19,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 535.15,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 409.75,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198123,
+          "pass": true,
+          "beat": "type",
+          "pending": 17,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 528.99,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 428.59,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198178,
+          "pass": true,
+          "beat": "type",
+          "pending": 15,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 521.28,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 444.34,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198234,
+          "pass": true,
+          "beat": "type",
+          "pending": 12,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 509.12,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 473.59,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198289,
+          "pass": true,
+          "beat": "type",
+          "pending": 10,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 497.53,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 491.45,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198343,
+          "pass": true,
+          "beat": "type",
+          "pending": 8,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 483.47,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 507.38,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198396,
+          "pass": true,
+          "beat": "type",
+          "pending": 6,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 467.86,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 526.16,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198451,
+          "pass": true,
+          "beat": "type",
+          "pending": 3,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 450.65,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 555.42,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198506,
+          "pass": true,
+          "beat": "type",
+          "pending": 1,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 433.05,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 574.23,
+            "top": 579.78,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198561,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 416.01,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 582.21,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198613,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 398.92,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 586.17,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198666,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 383.39,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 590.03,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198718,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 369.08,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 593.91,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198770,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 356.13,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 597.77,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198823,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 344.35,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 601.65,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198877,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 333.81,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 605.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198930,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 324.37,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 609.32,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281198985,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 315.53,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 613.28,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199039,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 307.75,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 617.15,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199093,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 300.69,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 621.03,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199148,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 294.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 624.9,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199203,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 288.78,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 628.64,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199257,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 283.41,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 632.63,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199311,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 278.71,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 636.51,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199367,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 273.54,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 641.28,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199422,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 269.74,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 645.23,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199475,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 266.4,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 649.1,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199530,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 263.4,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 652.97,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199585,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 260.79,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 656.74,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199641,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 258.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 660.71,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199696,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 256.24,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 664.59,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199748,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 254.4,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 583.33,
+            "top": 668.45,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199801,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 252.8,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.821,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199855,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 251.46,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.451,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199911,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 250.26,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281199967,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 249.12,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200023,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 248.36,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200078,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 247.82,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200132,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 247.44,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200188,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 247.22,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200242,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 957.66,
+            "top": 247.14,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200295,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.712,
+            "left": 957.66,
+            "top": 247.14,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200348,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.406,
+            "left": 957.66,
+            "top": 247.14,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200401,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 30,
+          "read": {
+            "count": 1,
+            "opacity": 0.109,
+            "left": 957.66,
+            "top": 247.14,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.058,
+            "left": 583.33,
+            "top": 670.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 957.66
+        },
+        {
+          "t": 1793281200453,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        }
+      ],
+      "secondSamples": 21,
+      "stored": [
+        {
+          "rev": 3,
+          "at": "2026-10-29T13:39:58.712Z",
+          "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
+          "snapshot": "versions/ch12/05a04ae842060882a106a174e787e072f9b8b9830bebf3350c09eb1d8407cabd.md"
+        },
+        {
+          "rev": 2,
+          "at": "2026-10-29T13:39:57.512Z",
+          "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
+          "snapshot": "versions/ch12/728e7115435f81489bca685e0faffb2eb6790bc57810cdb51c1cdb37bbbaf5d0.md"
+        },
+        {
+          "rev": 1,
+          "at": "2026-10-28T10:33:37Z",
+          "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
+          "snapshot": "versions/ch12/be4ebdc76d486606af0e8c8ea2d807944c4627c3afb74fdd3523ab9f7f31845f.md"
+        }
+      ],
+      "snapshot": {
+        "rev": 1,
+        "snapshot": "versions/ch12/be4ebdc76d486606af0e8c8ea2d807944c4627c3afb74fdd3523ab9f7f31845f.md",
+        "restored": true,
+        "blocks": 77,
+        "rebuiltMatchesServedRows": true,
+        "rebuiltDiff": null
+      },
+      "shots": {
+        "carets": "site/shots/live/chain/1440-carets.png",
+        "after": "site/shots/live/chain/1440-after.png"
+      },
+      "console": [],
+      "reduced": {
+        "rev": 4,
+        "frameAt": 1793281202219,
+        "samples": 34,
+        "staticSamples": 33,
+        "passSpan": true,
+        "ticks": 2,
+        "caretElements": 0,
+        "beats": [
+          "static",
+          null
+        ],
+        "shot": "site/shots/live/chain/1440-reduced.png"
+      },
+      "arrivals": {
+        "rev": 5,
+        "frameAt": 1793281204222,
+        "printMs": 3741,
+        "samples": 68,
+        "rows": [
+          {
+            "share": 0.3,
+            "backdateMs": 1122,
+            "effectiveShare": 0.3,
+            "rev": 6,
+            "appliedAt": 1793281206761,
+            "frameAt": 1793281208244,
+            "elapsedAtFirstSightMs": 1513,
+            "heardAtMs": 1483,
+            "revealedAtFirstSight": 48,
+            "slowestClockFloor": 13,
+            "observedShare": 0.374,
+            "joined": true,
+            "settledAt": 1793281210803,
+            "shot": "site/shots/live/chain/1440-arrival-30.png"
+          },
+          {
+            "share": 0.7,
+            "backdateMs": 2619,
+            "effectiveShare": 0.7,
+            "rev": 7,
+            "appliedAt": 1793281208187,
+            "frameAt": 1793281211254,
+            "elapsedAtFirstSightMs": 3112,
+            "heardAtMs": 3067,
+            "revealedAtFirstSight": 109,
+            "slowestClockFloor": 40,
+            "observedShare": 0.779,
+            "joined": true,
+            "settledAt": 1793281212183,
+            "shot": "site/shots/live/chain/1440-arrival-70.png"
+          },
+          {
+            "share": 0.95,
+            "backdateMs": 3491,
+            "effectiveShare": 0.933,
+            "rev": 8,
+            "appliedAt": 1793281208693,
+            "frameAt": 1793281212256,
+            "elapsedAtFirstSightMs": 3582,
+            "heardAtMs": 3563,
+            "revealedAtFirstSight": 122,
+            "slowestClockFloor": 48,
+            "observedShare": 0.947,
+            "joined": true,
+            "settledAt": 1793281212475,
+            "shot": "site/shots/live/chain/1440-arrival-95.png"
+          }
+        ]
+      },
+      "late": {
+        "rev": 9,
+        "appliedAt": 1793281205977,
+        "frameAt": 1793281212760,
+        "samples": 38,
+        "passSeen": false,
+        "dataPassSeen": false,
+        "shot": "site/shots/live/chain/1440-late.png"
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "chapter": 5,
+      "anchor": "Потом понадобились копии",
+      "blockHeight": 314,
+      "writes": [
+        {
+          "rev": 5,
+          "at": "2026-10-29T13:40:15.833Z",
+          "phrase": "В два ноль четыре окно открылось.",
+          "replacement": "В два ноль четыре окно открылось, и я поднялся."
+        },
+        {
+          "rev": 6,
+          "at": "2026-10-29T13:40:17.033Z",
+          "phrase": "окно открылось, и я поднялся.",
+          "replacement": "окно открылось, и я поднялся к самому стеклу."
+        }
+      ],
+      "chain": {
+        "writeGapMs": 1200,
+        "insertGapMs": 2499,
+        "firstSettleAt": 1793281218331,
+        "secondFirstInkAt": 1793281218814,
+        "firstSettleToSecondInkMs": 483,
+        "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
+      },
+      "printed": true,
+      "frame": null,
+      "frameShape": "patchTruncated false, span 1, patch 1",
+      "serverProbe": null,
+      "caretWindow": {
+        "onsetFromApplied": {
+          "read": 474,
+          "write": 474
+        },
+        "onsetFromFrame": {
+          "read": 31,
+          "write": 31
+        },
+        "firstGlyphLeft": 253.6,
+        "read": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": -94.1,
+          "pairs": 18,
+          "leftFirst": 253.6,
+          "leftLast": 253.6,
+          "leftMedian": 253.6,
+          "topFirst": 394.23,
+          "topLast": 271.34,
+          "travelPx": -122.9
+        },
+        "write": {
+          "advancePx": 18.8,
+          "wraps": 0,
+          "medianPxPerSec": 67.3,
+          "pairs": 34,
+          "leftFirst": 34.4,
+          "leftLast": 98.8,
+          "leftMedian": 98.8,
+          "topFirst": 442.7,
+          "topLast": 556.94,
+          "travelPx": 114.2
+        },
+        "bothVisibleSamples": 22,
+        "goneAtSettle": true,
+        "settledAt": 1793281218331
+      },
+      "secondWindow": {
+        "onsetFromApplied": {
+          "read": 1781,
+          "write": 1781
+        },
+        "onsetFromFrame": {
+          "read": 32,
+          "write": 32
+        },
+        "firstGlyphLeft": 40.9,
+        "read": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": null,
+          "pairs": 0,
+          "leftFirst": 40.9,
+          "leftLast": 40.9,
+          "leftMedian": 40.9,
+          "topFirst": 271.34,
+          "topLast": 271.34,
+          "travelPx": 0
+        },
+        "write": {
+          "advancePx": 0,
+          "wraps": 0,
+          "medianPxPerSec": 66.5,
+          "pairs": 16,
+          "leftFirst": 173.8,
+          "leftLast": 173.8,
+          "leftMedian": 173.8,
+          "topFirst": 519.39,
+          "topLast": 585.5,
+          "travelPx": 66.1
+        },
+        "bothVisibleSamples": 20,
+        "goneAtSettle": true,
+        "settledAt": 1793281219971
+      },
+      "samples": [
+        {
+          "t": 1793281216307,
+          "pass": true,
+          "beat": "type",
+          "pending": 7,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 394.23,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 34.39,
+            "top": 442.7,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216359,
+          "pass": true,
+          "beat": "type",
+          "pending": 5,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 382.11,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 53.14,
+            "top": 442.7,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216412,
+          "pass": true,
+          "beat": "type",
+          "pending": 4,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 370.65,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 63.55,
+            "top": 442.7,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216467,
+          "pass": true,
+          "beat": "type",
+          "pending": 2,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 350.22,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 81.8,
+            "top": 442.7,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216521,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 335.32,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 444.22,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216576,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 322.21,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 447.97,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216631,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 311.65,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 451.67,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216686,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 303.19,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 455.32,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216741,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 296.43,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 458.88,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216796,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 290.61,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 462.64,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216852,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 286,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 466.28,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216908,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 281.45,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 470.82,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281216963,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 278.53,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 474.52,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217020,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 276.28,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 478.13,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217075,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 274.53,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 481.69,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217130,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 273.15,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 485.5,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217183,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 272.24,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 489,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217239,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 271.63,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 492.87,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217297,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 1,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 497.37,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217350,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.762,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 501,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217403,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.464,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 504.67,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217457,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.166,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": true
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 508.35,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217511,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 512,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217565,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 515.64,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217621,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 519.17,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217675,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 522.97,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217729,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 526.62,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217784,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 530.28,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217841,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 533.82,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217896,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 538.46,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281217950,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 542.16,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218003,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 545.82,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218057,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 549.48,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218113,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 553.13,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218168,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 1,
+            "left": 98.75,
+            "top": 556.75,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218223,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.644,
+            "left": 98.75,
+            "top": 556.94,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218278,
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 14,
+          "read": {
+            "count": 1,
+            "opacity": 0.018,
+            "left": 253.63,
+            "top": 271.34,
+            "visible": false
+          },
+          "write": {
+            "count": 1,
+            "opacity": 0.267,
+            "left": 98.75,
+            "top": 556.94,
+            "visible": true
+          },
+          "firstGlyphLeft": 253.63
+        },
+        {
+          "t": 1793281218331,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        }
+      ],
+      "secondSamples": 21,
+      "stored": [
+        {
+          "rev": 6,
+          "at": "2026-10-29T13:40:17.033Z",
+          "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
+          "snapshot": "versions/ch05/d09125b0660a5dffe53bede7301dec2e10de92ff1704847796334121980303fc.md"
+        },
+        {
+          "rev": 5,
+          "at": "2026-10-29T13:40:15.833Z",
+          "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
+          "snapshot": "versions/ch05/6f4696e8939f643854ff2bb4e040b3b81853953eb142c2d577b6856596541228.md"
+        },
+        {
+          "rev": 4,
+          "at": "2026-10-28T08:18:00Z",
+          "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
+          "snapshot": "versions/ch05/89c9a5c876ef78aceeb9d15b755f4aa67bd9f5c1515988d3af8fbc6492937ce6.md"
+        },
+        {
+          "rev": 3,
+          "at": "2026-10-28T08:06:06Z",
+          "stepId": "stp_01M60RPY1MMKPAVWSS9JBRHT3G",
+          "snapshot": "versions/ch05/74232e925559cce6ba70800341443567a4b3c2912dfd9a5aed2ebc2266ee37d3.md"
+        },
+        {
+          "rev": 2,
+          "at": "2026-10-28T00:59:24Z",
+          "stepId": "stp_01M5ZZRCSANNPADR7NE2AS0A6Z",
+          "snapshot": "versions/ch05/2983fa2c9dc4eb92b7e231f5b76bd30b1f100cda61754c8142ebac2933e77bb0.md"
+        },
+        {
+          "rev": 1,
+          "at": "2026-10-28T00:55:48Z",
+          "stepId": "stp_01M5ZZRCSANNPADR7NE2AS0A6Z",
+          "snapshot": "versions/ch05/11e4b3d797f6272938fa02cc0376abe9cb5bfc0d0da93bec1e894baeef5b6a9a.md"
+        }
+      ],
+      "snapshot": {
+        "rev": 4,
+        "snapshot": "versions/ch05/89c9a5c876ef78aceeb9d15b755f4aa67bd9f5c1515988d3af8fbc6492937ce6.md",
+        "restored": true,
+        "blocks": 235,
+        "rebuiltMatchesServedRows": true,
+        "rebuiltDiff": null
+      },
+      "shots": {
+        "carets": "site/shots/live/chain/390-carets.png",
+        "after": "site/shots/live/chain/390-after.png"
+      },
+      "console": [],
+      "reduced": {
+        "rev": 7,
+        "frameAt": 1793281220280,
+        "samples": 34,
+        "staticSamples": 33,
+        "passSpan": true,
+        "ticks": 2,
+        "caretElements": 0,
+        "beats": [
+          "static",
+          null
+        ],
+        "shot": "site/shots/live/chain/390-reduced.png"
+      },
+      "arrivals": {
+        "rev": 8,
+        "frameAt": 1793281222287,
+        "printMs": 3415,
+        "samples": 61,
+        "rows": [
+          {
+            "share": 0.3,
+            "backdateMs": 1025,
+            "effectiveShare": 0.3,
+            "rev": 9,
+            "appliedAt": 1793281224575,
+            "frameAt": 1793281225806,
+            "elapsedAtFirstSightMs": 1262,
+            "heardAtMs": 1231,
+            "revealedAtFirstSight": 32,
+            "slowestClockFloor": 9,
+            "observedShare": 0.341,
+            "joined": true,
+            "settledAt": 1793281228271,
+            "shot": "site/shots/live/chain/390-arrival-30.png"
+          },
+          {
+            "share": 0.7,
+            "backdateMs": 2391,
+            "effectiveShare": 0.7,
+            "rev": 10,
+            "appliedAt": 1793281225880,
+            "frameAt": 1793281228307,
+            "elapsedAtFirstSightMs": 2452,
+            "heardAtMs": 2427,
+            "revealedAtFirstSight": 73,
+            "slowestClockFloor": 29,
+            "observedShare": 0.724,
+            "joined": true,
+            "settledAt": 1793281229269,
+            "shot": "site/shots/live/chain/390-arrival-70.png"
+          },
+          {
+            "share": 0.95,
+            "backdateMs": 3165,
+            "effectiveShare": 0.927,
+            "rev": 11,
+            "appliedAt": 1793281226105,
+            "frameAt": 1793281229311,
+            "elapsedAtFirstSightMs": 3236,
+            "heardAtMs": 3206,
+            "revealedAtFirstSight": 84,
+            "slowestClockFloor": 42,
+            "observedShare": 0.941,
+            "joined": true,
+            "settledAt": 1793281229544,
+            "shot": "site/shots/live/chain/390-arrival-95.png"
+          }
+        ]
+      },
+      "late": {
+        "rev": 12,
+        "appliedAt": 1793281223045,
+        "frameAt": 1793281229824,
+        "samples": 37,
+        "passSeen": false,
+        "dataPassSeen": false,
+        "shot": "site/shots/live/chain/390-late.png"
+      }
+    }
+  ],
+  "folio": [
+    {
+      "width": 1440,
+      "text": "сейчас тихо",
+      "folioText": "69",
+      "frameAt": 1793281232347,
+      "word": {
+        "left": 944.8,
+        "right": 1024,
+        "top": 14,
+        "bottom": 30.2
+      },
+      "folio": {
+        "left": 1045.6,
+        "right": 1060,
+        "top": 15.6,
+        "bottom": 31.8
+      },
+      "gapPx": 21.6,
+      "overlap": false,
+      "fourDigitLeftPx": 1031.2,
+      "fourDigitGapPx": 7.2
+    },
+    {
+      "width": 768,
+      "text": "сейчас тихо",
+      "folioText": "70",
+      "frameAt": 1793281232848,
+      "word": {
+        "left": 599.8,
+        "right": 679,
+        "top": 11,
+        "bottom": 27.2
+      },
+      "folio": {
+        "left": 700.6,
+        "right": 715,
+        "top": 12.6,
+        "bottom": 28.8
+      },
+      "gapPx": 21.6,
+      "overlap": false,
+      "fourDigitLeftPx": 686.2,
+      "fourDigitGapPx": 7.2
+    },
+    {
+      "width": 390,
+      "text": "сейчас тихо",
+      "folioText": "64",
+      "frameAt": 1793281233348,
+      "word": {
+        "left": 72,
+        "right": 151.2,
+        "top": 11,
+        "bottom": 27.2
+      },
+      "folio": {
+        "left": 339.6,
+        "right": 366,
+        "top": 11,
+        "bottom": 27.2
+      },
+      "gapPx": 188.4,
+      "overlap": false,
+      "fourDigitLeftPx": 313.2,
+      "fourDigitGapPx": 162
+    }
+  ],
+  "assertions": [
+    {
+      "name": "store/1440 the pre-image snapshot is readable and is the served text",
+      "ok": true,
+      "detail": "rev 1 rebuilt from the block rows, 77 blocks"
+    },
+    {
+      "name": "chain/1440 the write prints",
+      "ok": true,
+      "detail": "`.p-pass` mounted"
+    },
+    {
+      "name": "chain/1440 the first print mounts and settles",
+      "ok": true,
+      "detail": "50 pass samples, settle 2941 ms after the write"
+    },
+    {
+      "name": "chain/1440 both carets in one frame",
+      "ok": true,
+      "detail": "50 of 51 samples"
+    },
+    {
+      "name": "chain/1440 the second write prints",
+      "ok": true,
+      "detail": "20 pass samples"
+    },
+    {
+      "name": "chain/1440 gap first settle → second first ink ≤ 1500 ms",
+      "ok": true,
+      "detail": "295 ms"
+    },
+    {
+      "name": "carets/1440 both lit within 300 ms of the frame",
+      "ok": true,
+      "detail": "read 34 ms, write 34 ms after the frame (after the write: 233 / 233 ms, the poll included)"
+    },
+    {
+      "name": "blue/1440 top median ≤ −60 px/s",
+      "ok": true,
+      "detail": "-99.4 px/s over 43 pairs, travel -302.4 px"
+    },
+    {
+      "name": "blue/1440 left == the run's first glyph left ±1 px",
+      "ok": true,
+      "detail": "caret 957.7 px, glyph 957.7 px, delta 0 px"
+    },
+    {
+      "name": "red/1440 top median ≥ +40 px/s",
+      "ok": true,
+      "detail": "70.5 px/s over 37 pairs, travel 121 px"
+    },
+    {
+      "name": "red/1440 left advances",
+      "ok": true,
+      "detail": "largest same-line step 29.3 px (965.2 → 583.3 px, 1 line wrap(s))"
+    },
+    {
+      "name": "carets/1440 both gone at settle",
+      "ok": true,
+      "detail": "the settled paragraph carries neither caret"
+    },
+    {
+      "name": "reduced/1440 data-pass=\"static\", .pass-span, two ticks, no caret",
+      "ok": true,
+      "detail": "33 static samples, span true, ticks 2, caret elements 0"
+    },
+    {
+      "name": "arrival/1440 a print to arrive into",
+      "ok": true,
+      "detail": "3741 ms from the write to the settle"
+    },
+    {
+      "name": "arrival/1440 at 30 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "1513 ms of ink already painted (0.3 of the print): 48 graphemes, the slowest legal clock needs 13"
+    },
+    {
+      "name": "arrival/1440 at 70 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "3112 ms of ink already painted (0.7 of the print): 109 graphemes, the slowest legal clock needs 40"
+    },
+    {
+      "name": "arrival/1440 at 95 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "3582 ms of ink already painted (0.933 of the print): 122 graphemes, the slowest legal clock needs 48"
+    },
+    {
+      "name": "late/1440 after 6 s no .p-pass, no data-pass",
+      "ok": true,
+      "detail": "38 samples over 2 s: pass false, data-pass false"
+    },
+    {
+      "name": "store/390 the pre-image snapshot is readable and is the served text",
+      "ok": true,
+      "detail": "rev 4 rebuilt from the block rows, 235 blocks"
+    },
+    {
+      "name": "chain/390 the write prints",
+      "ok": true,
+      "detail": "`.p-pass` mounted"
+    },
+    {
+      "name": "chain/390 the first print mounts and settles",
+      "ok": true,
+      "detail": "37 pass samples, settle 2498 ms after the write"
+    },
+    {
+      "name": "chain/390 both carets in one frame",
+      "ok": true,
+      "detail": "22 of 38 samples"
+    },
+    {
+      "name": "chain/390 the second write prints",
+      "ok": true,
+      "detail": "20 pass samples"
+    },
+    {
+      "name": "chain/390 gap first settle → second first ink ≤ 1500 ms",
+      "ok": true,
+      "detail": "483 ms"
+    },
+    {
+      "name": "carets/390 both lit within 300 ms of the frame",
+      "ok": true,
+      "detail": "read 31 ms, write 31 ms after the frame (after the write: 474 / 474 ms, the poll included)"
+    },
+    {
+      "name": "blue/390 top median ≤ −60 px/s",
+      "ok": true,
+      "detail": "-94.1 px/s over 18 pairs, travel -122.9 px"
+    },
+    {
+      "name": "blue/390 left == the run's first glyph left ±1 px",
+      "ok": true,
+      "detail": "caret 253.6 px, glyph 253.6 px, delta 0 px"
+    },
+    {
+      "name": "red/390 top median ≥ +40 px/s",
+      "ok": true,
+      "detail": "67.3 px/s over 34 pairs, travel 114.2 px"
+    },
+    {
+      "name": "red/390 left advances",
+      "ok": true,
+      "detail": "largest same-line step 18.8 px (34.4 → 98.8 px, 0 line wrap(s))"
+    },
+    {
+      "name": "carets/390 both gone at settle",
+      "ok": true,
+      "detail": "the settled paragraph carries neither caret"
+    },
+    {
+      "name": "reduced/390 data-pass=\"static\", .pass-span, two ticks, no caret",
+      "ok": true,
+      "detail": "33 static samples, span true, ticks 2, caret elements 0"
+    },
+    {
+      "name": "arrival/390 a print to arrive into",
+      "ok": true,
+      "detail": "3415 ms from the write to the settle"
+    },
+    {
+      "name": "arrival/390 at 30 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "1262 ms of ink already painted (0.3 of the print): 32 graphemes, the slowest legal clock needs 9"
+    },
+    {
+      "name": "arrival/390 at 70 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "2452 ms of ink already painted (0.7 of the print): 73 graphemes, the slowest legal clock needs 29"
+    },
+    {
+      "name": "arrival/390 at 95 % joins the current frame — or settles past its print, never restarts",
+      "ok": true,
+      "detail": "3236 ms of ink already painted (0.927 of the print): 84 graphemes, the slowest legal clock needs 42"
+    },
+    {
+      "name": "late/390 after 6 s no .p-pass, no data-pass",
+      "ok": true,
+      "detail": "37 samples over 2 s: pass false, data-pass false"
+    },
+    {
+      "name": "folio/1440 the head's word and the folio do not touch",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 1024 px, folio starts 1045.6 px — gap 21.6 px"
+    },
+    {
+      "name": "folio/1440 the reserve clears a four-digit folio",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 1024 px, folio starts 1031.2 px — gap 7.2 px"
+    },
+    {
+      "name": "folio/768 the head's word and the folio do not touch",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 679 px, folio starts 700.6 px — gap 21.6 px"
+    },
+    {
+      "name": "folio/768 the reserve clears a four-digit folio",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 679 px, folio starts 686.2 px — gap 7.2 px"
+    },
+    {
+      "name": "folio/390 the head's word and the folio do not touch",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 151.2 px, folio starts 339.6 px — gap 188.4 px"
+    },
+    {
+      "name": "folio/390 the reserve clears a four-digit folio",
+      "ok": true,
+      "detail": "word «сейчас тихо» ends 151.2 px, folio starts 313.2 px — gap 162 px"
+    },
+    {
+      "name": "console has no errors",
+      "ok": true,
+      "detail": "0 entries"
+    }
+  ],
+  "console": {
+    "errors": [],
+    "entries": []
+  },
+  "network": {
+    "failures": []
+  },
+  "verdict": {
+    "ok": true,
+    "failed": []
+  }
+}

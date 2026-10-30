@@ -1,0 +1,3634 @@
+{
+  "capturedAt": "2026-10-29T12:28:22.848Z",
+  "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum",
+  "browser": "ws://127.0.0.1:9334/devtools/browser/0aa51615-4ac5-422c-84f9-ac3faf98c33e",
+  "contract": {
+    "sampleMs": 50,
+    "writeGapMs": 1200,
+    "maxChainGapMs": 1500,
+    "printWindowMs": 6000,
+    "arrivals": [
+      0.3,
+      0.7,
+      0.95
+    ],
+    "arrivalNote": "shares are of the measured print duration (write → settle), so 95 % is mid-print rather than past every print"
+  },
+  "replay": {
+    "siteCwd": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site",
+    "diagnosticCwd": false,
+    "note": "the revisions rows, their snapshots and the block rows went into a temp copy of the store; no model call ran, no money moved, prod was never written",
+    "tempBook": "removed after the run",
+    "writes": [
+      {
+        "rev": 2,
+        "phrase": "Она походила на мою"
+      },
+      {
+        "rev": 5,
+        "phrase": "как бывает скучно человеку"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "width": 1440,
+      "height": 900,
+      "chapter": 12,
+      "anchor": "Я сел на стул",
+      "blockHeight": 423,
+      "writes": [
+        {
+          "rev": 2,
+          "at": "2026-10-29T12:28:12.866Z",
+          "phrase": "Она походила на мою",
+          "replacement": "Она походила на мою подпись"
+        }
+      ],
+      "chain": {
+        "writeGapMs": null,
+        "insertGapMs": null,
+        "firstSettleAt": null,
+        "secondFirstInkAt": null,
+        "firstSettleToSecondInkMs": null,
+        "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
+      },
+      "printed": false,
+      "frame": {
+        "type": "chapter:applied",
+        "seq": 2,
+        "t": 1793276893241,
+        "n": 12,
+        "rev": 2,
+        "appliedAt": 1793276892866,
+        "patchTruncated": true,
+        "spanLength": null,
+        "patchLength": 0
+      },
+      "frameShape": "patchTruncated true, span null, patch 0",
+      "serverProbe": {
+        "rev": 2,
+        "appliedAt": 1793276892866,
+        "patchTruncated": false,
+        "patch": 1,
+        "span": 1
+      },
+      "caretWindow": null,
+      "secondWindow": null,
+      "samples": [
+        {
+          "t": 1793276893272,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893325,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893378,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893435,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893488,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893540,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893593,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893647,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893706,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893758,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893811,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893866,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893931,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276893986,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894038,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894092,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894145,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894198,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894253,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894309,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894365,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894418,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894472,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894527,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894582,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894634,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894686,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894740,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894794,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894846,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894899,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276894952,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895004,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895058,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895111,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895163,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895216,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895269,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895320,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895372,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895425,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895476,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895527,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895580,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895631,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895684,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895737,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895790,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895843,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895896,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276895949,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896001,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896052,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896103,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896154,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896207,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896260,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896313,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896366,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896418,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896469,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896522,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896575,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896629,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896682,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896735,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896786,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896839,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896891,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896942,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276896995,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897048,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897101,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897153,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897206,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897259,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276897312,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        }
+      ],
+      "secondSamples": 0,
+      "stored": [
+        {
+          "rev": 2,
+          "at": "2026-10-29T12:28:12.866Z",
+          "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
+          "snapshot": "versions/ch12/e0fbf83ca628b3fb450bc7f3b0783aacb48e175825534c2c219a552c1d5723ad.md"
+        },
+        {
+          "rev": 1,
+          "at": "2026-10-28T10:33:37Z",
+          "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
+          "snapshot": "versions/ch12/be4ebdc76d486606af0e8c8ea2d807944c4627c3afb74fdd3523ab9f7f31845f.md"
+        }
+      ],
+      "snapshot": {
+        "rev": 1,
+        "snapshot": "versions/ch12/be4ebdc76d486606af0e8c8ea2d807944c4627c3afb74fdd3523ab9f7f31845f.md",
+        "restored": true,
+        "blocks": 77,
+        "rebuiltMatchesServedRows": true,
+        "rebuiltDiff": null
+      },
+      "shots": {
+        "carets": null,
+        "after": "site/shots/live/chain/production/1440-after.png"
+      },
+      "console": [],
+      "skipped": "the write never printed, so the caret window, the arrivals and the reduced-motion mark cannot be measured"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "chapter": 5,
+      "anchor": "К вечеру я снова сел",
+      "blockHeight": 171,
+      "writes": [
+        {
+          "rev": 5,
+          "at": "2026-10-29T12:28:18.355Z",
+          "phrase": "как бывает скучно человеку",
+          "replacement": "как бывает скучно человеку, который ждёт"
+        }
+      ],
+      "chain": {
+        "writeGapMs": null,
+        "insertGapMs": null,
+        "firstSettleAt": null,
+        "secondFirstInkAt": null,
+        "firstSettleToSecondInkMs": null,
+        "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
+      },
+      "printed": false,
+      "frame": {
+        "type": "chapter:applied",
+        "seq": 2,
+        "t": 1793276898759,
+        "n": 5,
+        "rev": 5,
+        "appliedAt": 1793276898355,
+        "patchTruncated": true,
+        "spanLength": null,
+        "patchLength": 0
+      },
+      "frameShape": "patchTruncated true, span null, patch 0",
+      "serverProbe": {
+        "rev": 5,
+        "appliedAt": 1793276898355,
+        "patchTruncated": false,
+        "patch": 1,
+        "span": 1
+      },
+      "caretWindow": null,
+      "secondWindow": null,
+      "samples": [
+        {
+          "t": 1793276898791,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276898844,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276898897,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276898950,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899003,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899054,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899106,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899159,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899211,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899265,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899316,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899368,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899421,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899473,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899526,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899579,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899632,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899684,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899737,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899790,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899844,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899895,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276899948,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900001,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900053,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900107,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900160,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900212,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900264,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900316,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900369,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900421,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900474,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900528,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900581,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900633,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900686,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900740,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900792,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900845,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900899,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276900950,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901004,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901057,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901110,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901163,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901217,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901270,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901323,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901374,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901427,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901480,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901533,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901586,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901639,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901692,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901745,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901798,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901850,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901903,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276901954,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902006,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902057,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902108,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902161,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902214,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902268,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902321,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902374,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902425,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902479,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902531,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902583,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902636,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902687,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902739,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        },
+        {
+          "t": 1793276902791,
+          "pass": false,
+          "beat": null,
+          "pending": 0,
+          "clusters": 0,
+          "read": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "write": {
+            "count": 0,
+            "opacity": null,
+            "left": null,
+            "top": null,
+            "visible": false
+          },
+          "firstGlyphLeft": null
+        }
+      ],
+      "secondSamples": 0,
+      "stored": [
+        {
+          "rev": 5,
+          "at": "2026-10-29T12:28:18.355Z",
+          "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
+          "snapshot": "versions/ch05/9c9df20ee76d60284ccec8c66afb8bfcebe41c7d0f57f45082ec2969c1a07669.md"
+        },
+        {
+          "rev": 4,
+          "at": "2026-10-28T08:18:00Z",
+          "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
+          "snapshot": "versions/ch05/89c9a5c876ef78aceeb9d15b755f4aa67bd9f5c1515988d3af8fbc6492937ce6.md"
+        },
+        {
+          "rev": 3,
+          "at": "2026-10-28T08:06:06Z",
+          "stepId": "stp_01M60RPY1MMKPAVWSS9JBRHT3G",
+          "snapshot": "versions/ch05/74232e925559cce6ba70800341443567a4b3c2912dfd9a5aed2ebc2266ee37d3.md"
+        },
+        {
+          "rev": 2,
+          "at": "2026-10-28T00:59:24Z",
+          "stepId": "stp_01M5ZZRCSANNPADR7NE2AS0A6Z",
+          "snapshot": "versions/ch05/2983fa2c9dc4eb92b7e231f5b76bd30b1f100cda61754c8142ebac2933e77bb0.md"
+        },
+        {
+          "rev": 1,
+          "at": "2026-10-28T00:55:48Z",
+          "stepId": "stp_01M5ZZRCSANNPADR7NE2AS0A6Z",
+          "snapshot": "versions/ch05/11e4b3d797f6272938fa02cc0376abe9cb5bfc0d0da93bec1e894baeef5b6a9a.md"
+        }
+      ],
+      "snapshot": {
+        "rev": 4,
+        "snapshot": "versions/ch05/89c9a5c876ef78aceeb9d15b755f4aa67bd9f5c1515988d3af8fbc6492937ce6.md",
+        "restored": true,
+        "blocks": 235,
+        "rebuiltMatchesServedRows": true,
+        "rebuiltDiff": null
+      },
+      "shots": {
+        "carets": null,
+        "after": "site/shots/live/chain/production/390-after.png"
+      },
+      "console": [],
+      "skipped": "the write never printed, so the caret window, the arrivals and the reduced-motion mark cannot be measured"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "store/1440 the pre-image snapshot is readable and is the served text",
+      "ok": true,
+      "detail": "rev 1 rebuilt from the block rows, 77 blocks"
+    },
+    {
+      "name": "chain/1440 the write prints",
+      "ok": false,
+      "detail": "no .p-pass within 4000 ms of the frame (patchTruncated true, span null, patch 0)"
+    },
+    {
+      "name": "store/390 the pre-image snapshot is readable and is the served text",
+      "ok": true,
+      "detail": "rev 4 rebuilt from the block rows, 235 blocks"
+    },
+    {
+      "name": "chain/390 the write prints",
+      "ok": false,
+      "detail": "no .p-pass within 4000 ms of the frame (patchTruncated true, span null, patch 0)"
+    },
+    {
+      "name": "console has no errors",
+      "ok": true,
+      "detail": "0 entries"
+    }
+  ],
+  "console": {
+    "errors": [],
+    "entries": []
+  },
+  "network": {
+    "failures": []
+  },
+  "verdict": {
+    "ok": false,
+    "failed": [
+      "chain/1440 the write prints",
+      "chain/390 the write prints"
+    ]
+  }
+}

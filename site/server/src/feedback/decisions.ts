@@ -14,18 +14,21 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  holdsInternalCode,
   normalizeRetroMode,
-  readerReason,
   validateIntent,
   validateInterventionKind,
   type CommentDecisionPayload,
+  type FilingState,
   type RetroMode,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { countRows, safeJson } from '../engineState/rows.ts';
+import { filingStateOf } from '../comments/filingState.ts';
+import { attemptCounts } from '../comments/attemptToday.ts';
+import { publicDecisionReason } from './decisionText.ts';
+import { emitFilingUpdate } from './filingFrame.ts';
 import { readQueue } from '../engineState/reader.ts';
 import { readAuthor, publicIntent } from '../engineState/changes.ts';
 import type { ChangeRow } from '../engineState/rows.ts';
@@ -34,7 +37,12 @@ import { parseDispositionProposal, type DispositionProposal } from './dispositio
 import { lineOfDecision, disposeRejection, storedDecision } from './dispositionStore.ts';
 import { chapterVocabulary } from './vocabulary.ts';
 
-export type DecisionEmit = (type: 'comment:decision' | 'change:queued' | 'feedback:batch', data: unknown) => void;
+export { DECISION_FALLBACK, publicDecisionReason } from './decisionText.ts';
+
+export type DecisionEmit = (
+  type: 'comment:decision' | 'change:queued' | 'feedback:batch' | 'filing:update',
+  data: unknown,
+) => void;
 
 export type DecisionLine = {
   id: string;
@@ -148,6 +156,7 @@ export class DecisionsTailer {
         appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'first decision wins' });
         return 0;
       }
+      const counts = attemptCounts(this.db, comment.id, this.now().getTime());
       this.emit('comment:decision', {
         id: comment.id,
         chapter: comment.chapter,
@@ -162,7 +171,12 @@ export class DecisionsTailer {
         // BOOK-206 B2 — a triage decision moved no chapter's text: the receipt is null, never
         // absent, so the consumer can tell «nothing landed» from «this frame forgot to say».
         applied: null,
+        // BOOK-DOC-84 #19: the tries left travel with the decision, so the record line prints
+        // the count without a second GET.
+        attemptsLeft: counts.attemptsLeft,
+        at: Date.parse(comment.decided_at),
       } satisfies CommentDecisionPayload);
+      this.emitFiling(comment, decision.status === 'accepted' ? 'accepted' : 'refused', comment.decided_at);
       if (comment.change_id !== null) this.announceQueued(comment.change_id);
       // BOOK-189: this is the **normal** path for a refusal, not an edge — `feedback.mjs decide`
       // writes the row before it appends the line, so the re-announce branch above is where a
@@ -237,6 +251,7 @@ export class DecisionsTailer {
         : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`, change.seq);
     // The chain the accept wrote: the reading the page shows at once, never a second opinion.
     const chain = storedDecision(readCommentRow(this.db, comment.id) ?? comment);
+    const counts = attemptCounts(this.db, comment.id, this.now().getTime());
     const payload: CommentDecisionPayload = {
       id: comment.id,
       chapter: comment.chapter,
@@ -252,10 +267,24 @@ export class DecisionsTailer {
       carrierKind: chain?.carrierKind ?? null,
       // A triage accept moved no chapter's text: the receipt is present and null (BOOK-206 B2).
       applied: null,
+      attemptsLeft: counts.attemptsLeft,
+      at: Date.parse(at),
     };
     this.emit('comment:decision', payload);
+    this.emitFiling(readCommentRow(this.db, comment.id) ?? comment, 'accepted', at, accepted.changeId);
     this.announceQueued(accepted.changeId);
     return 1;
+  }
+
+  /** BOOK-DOC-84 #17 — the filing's own row, from the transition this decision just wrote. */
+  private emitFiling(comment: CommentRow, state: FilingState, at: string, changeId?: string | null): void {
+    emitFilingUpdate(this.db, (type, data) => this.emit(type, data), {
+      commentId: comment.id,
+      chapter: comment.chapter,
+      state,
+      changeId: changeId ?? comment.change_id,
+      at: Date.parse(at),
+    });
   }
 
   /** The `change:queued` frame for a change that already exists (new or applied by the CLI). */
@@ -270,6 +299,11 @@ export class DecisionsTailer {
       `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
       change.seq,
     );
+    // BOOK-DOC-84 #9: the row's own moment and the change domain's apply cursor. The queued
+    // event is the accept path's own line; a change announced later reads its latest event.
+    const event = this.db
+      .prepare(`SELECT MAX(id) AS id, MAX(at) AS at FROM change_events WHERE change_id = ?`)
+      .get(change.id) as { id: number | null; at: string | null };
     this.emit('change:queued', {
       id: change.id,
       seq: change.seq,
@@ -280,6 +314,8 @@ export class DecisionsTailer {
       queue: { depth, ahead },
       base: { rev: change.base_rev },
       scopeHint: change.scope_hint,
+      at: event.at === null ? this.now().getTime() : Date.parse(event.at),
+      eventSeq: event.id ?? 0,
     });
   }
 
@@ -301,6 +337,7 @@ export class DecisionsTailer {
       appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'a refusal needs a lock' });
       return false;
     }
+    const counts = attemptCounts(this.db, comment.id, this.now().getTime());
     this.emit('comment:decision', {
       id: comment.id,
       chapter: comment.chapter,
@@ -314,7 +351,10 @@ export class DecisionsTailer {
 
       // A lock refusal never became a change: no text moved, and the receipt says so.
       applied: null,
+      attemptsLeft: counts.attemptsLeft,
+      at: Date.parse(at),
     } satisfies CommentDecisionPayload);
+    this.emitFiling(comment, filingStateOf(result.status), at);
     // BOOK-189: the row is decided and the socket has spoken; the push goes out once, after both.
     // A filing with no change never gets a close to announce it, so this is its only answer — and
     // BOOK-174 makes the answer the reading, not a word about a refusal.
@@ -341,6 +381,7 @@ export class DecisionsTailer {
       )
       .run(at, publicReason, batch, comment.id);
     appendCommentEvent(this.db, comment.id, 'decided', at, { status: 'rejected' });
+    const counts = attemptCounts(this.db, comment.id, this.now().getTime());
     this.emit('comment:decision', {
       id: comment.id,
       chapter: comment.chapter,
@@ -353,7 +394,10 @@ export class DecisionsTailer {
       source: 'llm',
       // A gate's refusal is not a landing: the receipt is present and null (BOOK-206 B2).
       applied: null,
+      attemptsLeft: counts.attemptsLeft,
+      at: Date.parse(at),
     } satisfies CommentDecisionPayload);
+    this.emitFiling(comment, 'refused', at);
     // BOOK-189: the row is decided and the reader has been told on the socket; the push goes out
     // once, after both. A refused filing has no change to be decided later, so this is the only
     // moment its author can hear the answer. A gate's refusal stores no chain: the push speaks
@@ -430,19 +474,6 @@ export class DecisionsTailer {
       .get() as { id: string; created_at: string } | undefined;
     return row === undefined ? null : `${row.created_at}|${row.id}`;
   }
-}
-
-/** The sentence a reader is owed when a decision line carries a handle instead of words. */
-export const DECISION_FALLBACK = 'вне рамок: замечание не про текст этой главы';
-
-/**
- * BOOK-158: the refusal the reader reads is a sentence, never an engine's handle. A line whose
- * reason is `PROVIDER_SHAPE`/`INTENT_SHAPE`, or nothing readable at all, is refused with the
- * book's own line — the code stays in the log, where an operator can look it up.
- */
-export function publicDecisionReason(reason: string): string {
-  if (holdsInternalCode(reason)) return DECISION_FALLBACK;
-  return readerReason(reason)?.slice(0, 200) ?? DECISION_FALLBACK;
 }
 
 /** A line is a decision only when it names a comment, a status and a reason. */
