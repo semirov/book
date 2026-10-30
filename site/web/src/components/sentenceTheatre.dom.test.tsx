@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CommentDto } from '@book/shared';
+import type { PassStageEvent } from '@book/shared';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

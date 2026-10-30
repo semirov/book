@@ -1,14 +1,12 @@
-import { STATE_LINES, type CommentDto, type PassStageEvent } from '@book/shared';
+import type { CommentDto, PassStageEvent } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import type { AppliedWrite } from './clientState.ts';
 import type { SentenceFilings } from './filings.ts';
-import { STATE_WORDS } from './marginalia.ts';
 import {
   decisionOf,
   failureOf,
   performedFiling,
-  QUEUE_BEAT_MS,
   theatreOf,
   writtenBlocks,
   writtenRunOf,
@@ -29,7 +27,7 @@ const T0 = Date.UTC(2026, 9, 29, 12, 0, 0);
 const QUOTE = 'Комната 1-04 стояла в конце коридора, и дверь была приоткрыта.';
 const BLOCK = 'ch01#0594465f';
 
-function comment(overrides: Partial<CommentDto> & { status: CommentDto['status'] }): CommentDto {
+function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_A7K',
     number: 12,

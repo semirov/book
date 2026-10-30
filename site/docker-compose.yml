@@ -1,4 +1,4 @@
-# book.semirov.dev on the Mac mini (192.168.1.76) — one image, three services (BOOK-172).
+# blankbook.ru on the Mac mini (192.168.1.76) — one image, three services (BOOK-172).
 #
 # This file is driven by `site/deploy/compose-release.sh` / `flip.sh`, NOT by a hand-typed
 # `docker compose up`: the release script always passes `--env-file /dev/null`, so the host's
@@ -116,7 +116,11 @@ services:
       IMPRINT_PATH: /app/config/imprint.json
       PORT: "8080"
       HOST: 0.0.0.0
-      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://book.semirov.dev}
+      # The canonical origin moved to the product name on 2026-10-30 (BOOK-234): it fixes the
+      # mutation/WS origin guard, the session cookie, the CSP `connect-src`, the OAuth
+      # `redirect_uri` and every absolute link the page emits. `book.semirov.dev` is now a Caddy
+      # 308 to this name, so there is still exactly one origin to accept (origin.ts).
+      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://blankbook.ru}
       # A proxy is a host, not a subnet (audit m1). OrbStack *may* rewrite the peer address of a LAN
       # client (then every reader looks like the bridge gateway and the per-IP caps collapse); that
       # can only be measured from a second LAN host AFTER the flip — the check and the one-line fix
@@ -179,7 +183,7 @@ services:
       # day would still hand out triage (ADR-045 risk 5).
       BOOK_BUDGET_DAY_USD: ${BOOK_BUDGET_DAY_USD:-10}
       BOOK_BUDGET_BOOK_USD: ${BOOK_BUDGET_BOOK_USD:-1000}
-      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://book.semirov.dev}
+      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://blankbook.ru}
       LOG_LEVEL: ${BOOK_LOG_LEVEL:-info}
       BOOK_TZ: ${BOOK_TZ:-Europe/Moscow}
       SESSION_SECRET_FILE: /run/secrets/session_secret

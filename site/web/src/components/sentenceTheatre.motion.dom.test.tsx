@@ -8,7 +8,6 @@ import {
   comment,
   draw,
   installFrames,
-  step,
   surface,
   T0,
 } from './sentenceTheatreHarness.tsx';

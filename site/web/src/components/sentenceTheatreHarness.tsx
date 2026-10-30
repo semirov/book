@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CommentDto, PassStageEvent } from '@book/shared';
+import type { CommentDto } from '@book/shared';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { vi } from 'vitest';
