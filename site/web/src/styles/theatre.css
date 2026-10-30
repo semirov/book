@@ -1,0 +1,339 @@
+/* ============================================================================
+   THEATRE — BOOK-227 / BOOK-DOC-86: one sentence is being read, written and
+   checked, and its margin records what happened to it.
+
+   This sheet owns the *shapes* of the seven acts and the births — a one-shot
+   transition each, never an `animation` (no
+   `@keyframes` here, no iteration count, no loop). Places and the arrival's
+   clip are written by `components/SentenceTheatre.tsx` through CSSOM: the
+   values are the DOM's own, and a literal `style="…"` is dropped by the
+   page's `style-src 'self'`.
+
+   The three instruments: the **rule** under the sentence (the arrival's fill),
+   the **nib** (2 px press → 2 × 6 stub), and the margin's **spine · tally ·
+   foot**. Every number is a token (`--spine-x`, `--tally-x`, `--tally-pitch`,
+   `--dur-tick`, `--dur-ui`, `--dur-fade`, `--ease-out`, `--ease-in`).
+   ============================================================================ */
+
+/* The paragraph is already the overlay's coordinate space: `seam.css` sets `.p` relative for the
+   seam's rail, and it sets no box — measured in a browser, the sentence's line rects and the next
+   paragraph's top are identical with the rule and without it. This sheet adds no position. */
+
+/* ---------- the overlay: one per performed sentence, above the paper, never a layer ---------- */
+/* It paints inside the paragraph's own box, takes no space and catches no tap: nothing here is
+   above the page in the sense the canon forbids — it is ink, not a surface. */
+.theatre {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ---------- the sentence's rule: the shipped cite, shaped by the act ---------- */
+/* Arrival: a hand-off is not a reading — the rule stays **dotted and quiet** (`--ink-3`) until
+   the fill reaches a word, and only the ink the reading has covered is the accent (§2, "one
+   shipped shape changes"). The overlay paints that covered part; this is the rule underneath. */
+.cited[data-theatre='arrival'] {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--ink-3);
+}
+/* Held: the live rule fades out over the dotted cite underneath, one fade, 120 ms. */
+.cited[data-theatre='verdict'][data-outcome='held'] {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--ink-3);
+  transition: text-decoration-color var(--dur-tick) linear;
+}
+/* Refused: the rule cools to `--ink-2`, still solid — a colour change and nothing else. */
+.cited[data-theatre='verdict'][data-outcome='refused'] {
+  text-decoration-color: var(--ink-2);
+  transition: text-decoration-color var(--dur-ui) var(--ease-inout);
+}
+/* Queue: the accent leaves with the stub; the rule stays solid and quiet (§2, §3). */
+.cited[data-theatre='queue'] {
+  text-decoration-color: var(--ink-2);
+  transition: text-decoration-color var(--dur-tick) var(--ease-out);
+}
+/* Our fault: the rule ends short of the last words — the overlay draws the part that was read,
+   and the cite under it is not allowed to promise the tail. */
+.cited[data-theatre='failed'][data-cause='fault'] {
+  text-decoration-line: none;
+}
+/* Transport: the accent leaves; no mark is added. */
+.cited[data-theatre='failed'][data-cause='transport'] {
+  text-decoration-color: var(--ink-2);
+  transition: text-decoration-color var(--dur-tick) linear;
+}
+
+/* ---------- the margin's numeral: the accent leaves with the act that has no now ---------- */
+/* `FilingMark` renders the sentence's mark **after** this overlay, so the sibling combinator is
+   the whole bridge: the theatre never paints a second numeral, it only says which ink the first
+   one wears. The mark is the slot's own button (`FilingMark`), the overlay is the slot's only
+   sibling, and since BOOK-218 the slot is static: the mark inside it is the ledger's. Queue and
+   our-fault are states
+   without a «now» (§3: no accent), and a dead transport takes the accent from every moving
+   mark without adding one. */
+.theatre[data-act='queue'] + .filing-mark-slot .filing-mark,
+.theatre[data-act='failed'][data-cause='fault'] + .filing-mark-slot .filing-mark,
+.theatre[data-act='failed'][data-cause='transport'] + .filing-mark-slot .filing-mark {
+  color: var(--ink-3);
+  transition: color var(--dur-tick) linear;
+}
+.theatre[data-act='queue'] + .filing-mark-slot .filing-mark-num,
+.theatre[data-act='failed'][data-cause='fault'] + .filing-mark-slot .filing-mark-num,
+.theatre[data-act='failed'][data-cause='transport'] + .filing-mark-slot .filing-mark-num {
+  text-decoration-line: none;
+}
+/* The phone's tick is the mark's `::before`, and `marginalia.css` paints it the accent by hand:
+   under an act without a «now» it takes the mark's own ink instead (§3 — no accent, no second
+   colour; the shape already says the state). */
+.theatre[data-act='queue'] + .filing-mark-slot .filing-mark::before,
+.theatre[data-act='failed'][data-cause='fault'] + .filing-mark-slot .filing-mark::before,
+.theatre[data-act='failed'][data-cause='transport'] + .filing-mark-slot .filing-mark::before {
+  background: currentColor;
+  transition: background-color var(--dur-tick) linear;
+}
+
+/* ---------- the fill's line rules: 1 px at baseline + 4, one per line ---------- */
+.theatre-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 1px;
+  background: var(--live);
+  clip-path: inset(0 100% 0 0);
+  pointer-events: none;
+}
+.theatre[data-act='failed'][data-cause='fault'] .theatre-line {
+  background: var(--ink-2);
+}
+/* The landing's rule lifts 120 ms after the sink, over 220 ms, and takes the accent with it. */
+.theatre[data-act='landing'] .theatre-line {
+  transition: opacity var(--dur-ui) var(--ease-in) var(--dur-tick);
+}
+.theatre[data-act='landing'] .theatre-line[data-lift] {
+  opacity: 0;
+}
+
+/* ---------- the nib: a 2 px press that becomes the 2 × 6 stub ---------- */
+/* The press steps (arrival), the stub is born in 120 ms — one property set per act, so the
+   sheet owns the birth and JS owns the place. */
+.theatre-nib {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 2px;
+  background: var(--live);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dur-tick) var(--ease-out),
+    width var(--dur-tick) var(--ease-out),
+    height var(--dur-tick) var(--ease-out),
+    opacity var(--dur-tick) var(--ease-out);
+}
+/* The pen's step is 0 ms: a bar that slides would claim a finer fact than the frame carries. */
+.theatre[data-act='arrival'] .theatre-nib {
+  transition: opacity var(--dur-tick) linear;
+}
+.theatre-nib[data-shape='stub'] {
+  height: 6px;
+}
+.theatre[data-act='failed'][data-cause='fault'] .theatre-nib {
+  background: var(--ink-2);
+}
+
+/* ---------- the spine: the block is held, 2 px at −10, one stroke ---------- */
+.theatre-spine {
+  position: absolute;
+  left: var(--spine-x);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--live);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform var(--dur-fade) var(--ease-out);
+  pointer-events: none;
+}
+.theatre-spine[data-open='true'] {
+  transform: scaleY(1);
+}
+/* The checking act's hand leaves upward: the same stroke, withdrawn. */
+.theatre[data-act='checking'] .theatre-spine {
+  transform: scaleY(1);
+  transition: transform var(--dur-ui) var(--ease-in);
+}
+.theatre[data-act='checking'] .theatre-spine[data-open='false'] {
+  transform: scaleY(0);
+}
+
+/* the deadline's one mark: 4 × 3 at the spine's bottom, right edge flush with it */
+.theatre-foot {
+  position: absolute;
+  left: calc(var(--spine-x) - 2px);
+  bottom: 0;
+  width: 4px;
+  height: 3px;
+  background: var(--live);
+  opacity: 0;
+  transition: opacity var(--dur-tick) var(--ease-out);
+  pointer-events: none;
+}
+.theatre-foot[data-open='true'] {
+  opacity: 1;
+}
+
+/* ---------- the tally: 1 px, y only, one line box per 120 ms ---------- */
+.theatre-tally {
+  position: absolute;
+  width: 1px;
+  background: var(--live);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition-property: transform;
+  transition-timing-function: linear;
+  pointer-events: none;
+}
+.theatre-tally[data-gate='0'] {
+  left: var(--tally-x);
+}
+.theatre-tally[data-gate='1'] {
+  left: calc(var(--tally-x) - var(--tally-pitch));
+}
+.theatre-tally[data-gate='2'] {
+  left: calc(var(--tally-x) - 2 * var(--tally-pitch));
+}
+.theatre-tally[data-ink] {
+  transform: scaleY(1);
+}
+
+/* ---------- the failure's foot under the rule's end: 2 × 4, the stub's family ---------- */
+.theatre-rule-end {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 4px;
+  background: var(--ink-2);
+  opacity: 0;
+  transition: opacity var(--dur-tick) var(--ease-out) var(--dur-tick);
+  pointer-events: none;
+}
+.theatre[data-act='failed'][data-cause='fault'] .theatre-rule-end {
+  opacity: 1;
+}
+
+/* ---------- the reduced-motion span mark: two 1 × 5 end ticks ---------- */
+.theatre-end {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 5px;
+  background: var(--live);
+  pointer-events: none;
+}
+
+/* ---------- reduced motion: no motion at all, the end shape from the first frame ---------- */
+.theatre[data-still] .theatre-line,
+.theatre[data-still] .theatre-nib,
+.theatre[data-still] .theatre-spine,
+.theatre[data-still] .theatre-foot,
+.theatre[data-still] .theatre-tally,
+.theatre[data-still] .theatre-rule-end,
+.theatre[data-still] .theatre-end {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theatre-line,
+  .theatre-nib,
+  .theatre-spine,
+  .theatre-foot,
+  .theatre-tally,
+  .theatre-rule-end,
+  .theatre-end {
+    transition: none;
+  }
+}
+
+/* ---------- checking: the hand becomes the gate, and the spine withdraws ---------- */
+/* A pass holds the block from the draft call to the first gate — thinking opened the stroke, so
+   the hand-off is one state, not two births — and it leaves as the first tally inks
+   (`data-open` turns false in that frame), 220 ms `--ease-in`, upward. */
+.theatre[data-act='checking'] .theatre-spine {
+  transition: transform var(--dur-ui) var(--ease-in);
+}
+
+/* ---------- writing: the print inks the block, the spine is the theatre's ---------- */
+/* §9.2/§9.4 — `PrintPass` (BOOK-220 §11.2, PR #121) owns the ink, the caret and the ghost, and
+   draws no spine. The printed paragraph *is* the print, so it carries no `SentenceTheatre` of
+   its own: the 2 px hold rides the print's own state instead and stands for as long as the
+   block is not `settled`. A pseudo-element cannot be born, so this stroke is there from the
+   print's first frame (the fact is older than the paint, like a late reader's arrival); the
+   overlay's own spine — mounted when the block is handed back — keeps its 400 ms birth. */
+.p-pass:not([data-pass='settled'])::after {
+  content: '';
+  position: absolute;
+  left: var(--spine-x);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--live);
+  pointer-events: none;
+}
+
+/* ---------- landing: the numeral crossfades to the tick at the same x ---------- */
+/* Both forms stand in the mark's button; `data-state` fades one out and the other in, 120 ms
+   `linear` — a crossfade has no path to ease (§9.7). The tick keeps the numeral's own x: the
+   button's 4 px inset (2 px on the phone, where the numeral leaves the text). */
+.filing-mark-num,
+.filing-tick-bar {
+  transition: opacity var(--dur-tick) linear;
+}
+
+.filing-mark[data-state='alive'] .filing-tick-bar,
+.filing-mark[data-state='accepted'] .filing-mark-num {
+  opacity: 0;
+}
+/* A bare filing (`BOOK-218`: no change number was ever given) is the tick and nothing else:
+   its numeral form is empty, and the bar it prints is the mark itself. */
+.filing-mark.filing-bare[data-state='alive'] .filing-tick-bar {
+  opacity: 1;
+}
+
+.filing-tick-bar {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ---------- landing: the note's top hairline withdraws right → left ---------- */
+/* The note itself is `MarginNote`'s and leaves with the landing; the withdrawal is painted here,
+   out of the flow, so the note can go in the same commit and the reader still sees the 188 px
+   edge travel. 188 px in 220 ms is 855 px/s — an edge the eye follows, which is the difference
+   between a note being taken away and a line being erased (§8.6, §9.7). */
+.theatre-note-rule {
+  position: absolute;
+  left: calc(100% + var(--note-gap, 56px));
+  top: 0;
+  width: var(--note-w, 188px);
+  height: 1px;
+  background: var(--rule);
+  transform: scaleX(1);
+  transform-origin: left;
+  transition: transform var(--dur-ui) var(--ease-in);
+  pointer-events: none;
+}
+
+.theatre-note-rule[data-withdraw] {
+  transform: scaleX(0);
+}
+
+@media (max-width: 1023px) {
+  .filing-tick-bar {
+    left: 2px;
+  }
+}

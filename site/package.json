@@ -45,6 +45,7 @@
     "line:fonts": "node scripts/line-fonts-cdp.mjs",
     "head:cdp": "node scripts/head-cdp.mjs",
     "margin:check": "node scripts/margin-cdp.mjs",
+    "theatre:check": "node scripts/theatre-cdp.mjs",
     "record:tap": "node scripts/record-tap.mjs"
   },
   "devDependencies": {

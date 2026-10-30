@@ -164,6 +164,17 @@
   --note-fit: min(var(--note-w), max(var(--note-min), calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));
   --note-step: 12px;
 
+  /* BOOK-227 / BOOK-DOC-86 §9 — the theatre's margin geometry and its two paces, and no
+     other number. The spine stands 10 px outside the text at both widths (the 390 gutter is
+     24, so it is 10 from the type and 14 from the screen's edge — it belongs to the block,
+     not to the frame); a tally stands at −18 and each further gate 4 px further out; the two
+     paces are documentation of `60 000 ÷ 230` and `1 000 ÷ 30`, read by no CSS rule. */
+  --spine-x: -10px;
+  --tally-x: -18px;
+  --tally-pitch: 4px;
+  --sweep-word: 260.87ms;
+  --type-cps: 30;
+
   /* motion */
   --dur-tick: 120ms;
   --dur-ui: 220ms;
@@ -209,6 +220,10 @@
 @media (max-width: 599px) {
   :root {
     --fs-body: 17px;
+    /* BOOK-227 — the phone's gutter is 24 px: the tally stands at −14, still 4 px from the
+       spine, and the print inks at 26 cps instead of 30. */
+    --tally-x: -14px;
+    --type-cps: 26;
   }
 }
 

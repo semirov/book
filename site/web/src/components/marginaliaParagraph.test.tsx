@@ -162,7 +162,9 @@ describe('a filing in the paragraph', () => {
     });
     const html = render([landed, pending], CHANGED);
     expect(html).toContain('filing-alive');
-    expect(html).not.toContain('filing-tick');
+    // BOOK-227 §9.7 — the tick's bar stands in the mark for the crossfade, so the *state* is what
+    // says the alive filing won the slot, not the absence of the bar.
+    expect(html).toContain('data-state="alive"');
     expect(html).toContain('cited rule-dotted ink-quiet');
   });
 
