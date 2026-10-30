@@ -93,7 +93,9 @@ describe('GET /api/admin/doctor', () => {
     expect(body.frame.rows.every((row) => /^[0-9a-f]{64}$/u.test(row.sha256))).toBe(true);
     // BOOK-185 stage 3 (v29): the edge table is in this image, so a fresh volume reports the
     // graph as shipped and counts zero rows — the CLI reads `shipped` before the numbers.
-    expect(body.graph).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null });
+    // BOOK-236: ch08 is the only written chapter here (ch01/ch42 are basis slots), and that count
+    // is what lets the CLI tell a fresh book from a broken graph.
+    expect(body.graph).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null, writtenChapters: 1 });
 
     expect(response.body).not.toContain(FRAME_FIRST_SENTENCE);
     expect(response.body).not.toContain(FRAME_LAST_SENTENCE);

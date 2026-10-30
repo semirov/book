@@ -35,6 +35,7 @@ import Database from 'better-sqlite3';
 import { absoluteOf, classifyDataEntry, DENIED_PATHS, readVolumeMarker } from '../dataHome.ts';
 import type { Db } from '../db/db.ts';
 import { SCHEMA_VERSION } from '../db/schema.ts';
+import { writtenChaptersOf } from '../engine/text.ts';
 
 /** The migration the running image expects, next to the one the file carries (ahead = FUTURE). */
 export type SchemaInspection = { userVersion: number; expected: number };
@@ -86,7 +87,20 @@ export type FrameInspection = {
 
 export type GraphInspection =
   | { shipped: false }
-  | { shipped: true; facts: number; threads: number; edges: number; closureMs: number | null };
+  | {
+      shipped: true;
+      facts: number;
+      threads: number;
+      edges: number;
+      closureMs: number | null;
+      /**
+       * BOOK-236: chapters the engine calls **written** (`isWrittenChapter`: a row with blocks,
+       * not a basis slot) — the fact the CLI needs to tell a freshly reset book from a broken
+       * graph. `null` when the volume carries no `chapters` projection this can read: an unknown
+       * must not read as «nothing written yet».
+       */
+      writtenChapters: number | null;
+    };
 
 /**
  * **The allow-list is imported, never copied.** `server/src/dataHome.ts` owns the volume's shape —
@@ -333,6 +347,14 @@ function closureMs(db: Db): number | null {
 /**
  * Check 6: `shipped` only when stage 3's edge table is in this image *and* shaped as
  * `(from, to)`; then counts and the closure. No model, no network — a count and one query.
+ *
+ * BOOK-236 adds `writtenChapters`, and the contract behind it: the preflight is run **right after
+ * the launch reset**, when the book holds one written chapter and the graph is empty by design. A
+ * gate that can never be green is a gate nobody reads, so the CLI needs this count to tell "no
+ * graph yet" from "the graph broke". The answer is the engine's own set — `writtenChaptersOf`, the
+ * one `premise` and `close` walk (rows with blocks, not a basis slot) — never a second definition
+ * of «written» written here; a volume whose `chapters` table cannot be read answers `null`, and the
+ * CLI keeps its stricter rule for it.
  */
 export function inspectGraph(db: Db): GraphInspection {
   const edges = columnsOf(db, 'fact_dependency');
@@ -343,5 +365,15 @@ export function inspectGraph(db: Db): GraphInspection {
     threads: countRows(db, 'threads', columnsOf(db, 'threads')),
     edges: countRows(db, 'fact_dependency', edges),
     closureMs: closureMs(db),
+    writtenChapters: writtenCount(db),
   };
+}
+
+/** The engine's written chapters, or `null` when this volume has no `chapters` projection. */
+function writtenCount(db: Db): number | null {
+  try {
+    return writtenChaptersOf(db).size;
+  } catch {
+    return null;
+  }
 }

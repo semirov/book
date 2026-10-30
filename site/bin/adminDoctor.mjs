@@ -255,7 +255,24 @@ async function checkReset(ctx) {
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
 
-/** 6 — the graph is populated, or stage 3 is not in this image (a warning, never a failure). */
+/**
+ * 6 — the graph is populated, or the book has not been written yet, or stage 3 is not in this
+ * image (a warning, never a failure).
+ *
+ * BOOK-236: the preflight is run right after the launch reset, when the book holds one written
+ * chapter (ch01) and the graph is empty **by design** — stage 3 fills it from facts the writer
+ * files. A gate that can never be green is a gate nobody reads, so an empty graph over a book with
+ * at most one written chapter is `pass` with the count in its evidence, and the operator is not
+ * asked to distrust a table that answers correctly. Once a second chapter is written the old rule
+ * is back, and it names the count it judged by. `writtenChapters` missing or `null` is an unknown,
+ * and an unknown keeps the stricter rule: «nobody could tell me» is not «the book is fresh».
+ *
+ * The empty counts are read as **strict zeros**: `null`, `false` and `''` are a payload that did
+ * not answer, and a doctor that reads «I could not count» as «nothing there» would pass the one
+ * case the row exists to catch. The closure is judged in both branches — a fresh book has no
+ * target to walk, so «not measured» is its normal state, but a *measured* number over the limit is
+ * a defect wherever it is found.
+ */
 function checkGraph(ctx) {
   if (ctx.payload === null) return payloadMissing(ctx, 'graph');
   const graph = ctx.payload.graph ?? null;
@@ -271,16 +288,33 @@ function checkGraph(ctx) {
     const reason = 'the doctor answer does not say whether the graph shipped';
     return { verdict: 'fail', evidence: reason, failures: [reason] };
   }
+  const written = Number.isInteger(graph.writtenChapters) && graph.writtenChapters >= 0 ? graph.writtenChapters : null;
+  const fresh = written !== null && written <= 1 && graph.facts === 0 && graph.threads === 0 && graph.edges === 0;
   const failures = [];
-  for (const label of ['facts', 'threads', 'edges']) {
-    const value = Number(graph[label]);
-    if (!Number.isFinite(value) || value <= 0) failures.push(`the graph has no ${label} (${String(graph[label] ?? 0)})`);
+  const judgedBy = written === null ? '' : `, while ${String(written)} chapter${written === 1 ? ' is' : 's are'} written`;
+  if (!fresh) {
+    for (const label of ['facts', 'threads', 'edges']) {
+      const value = Number(graph[label]);
+      if (!Number.isFinite(value) || value <= 0) failures.push(`the graph has no ${label} (${String(graph[label] ?? 0)})${judgedBy}`);
+    }
   }
   const closureMs = graph.closureMs === undefined ? null : graph.closureMs;
-  if (closureMs === null || !Number.isFinite(closureMs)) failures.push('the closure was not measured');
-  else if (closureMs >= CLOSURE_LIMIT_MS) failures.push(`the closure answers in ${String(Math.round(closureMs))} ms (limit ${String(CLOSURE_LIMIT_MS)} ms)`);
+  if (closureMs === null) {
+    // A fresh graph has nothing to walk, so an absent measurement is its state, not a defect;
+    // anywhere else an unmeasured closure is a failure, as it always was.
+    if (!fresh) failures.push('the closure was not measured');
+  } else if (!Number.isFinite(closureMs)) {
+    failures.push(fresh ? 'the closure answer is not a number' : 'the closure was not measured');
+  } else if (closureMs >= CLOSURE_LIMIT_MS) {
+    failures.push(`the closure answers in ${String(Math.round(closureMs))} ms (limit ${String(CLOSURE_LIMIT_MS)} ms)`);
+  }
 
-  const evidence = `facts ${String(graph.facts)} · threads ${String(graph.threads)} · edges ${String(graph.edges)} · closure ${String(closureMs ?? '?')} ms`;
+  if (fresh) {
+    const evidence = `no graph yet (${String(written)} written chapter${written === 1 ? '' : 's'})`;
+    return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
+  }
+  const counted = `written ${written === null ? '?' : String(written)} chapter${written === 1 ? '' : 's'}`;
+  const evidence = `facts ${String(graph.facts)} · threads ${String(graph.threads)} · edges ${String(graph.edges)} · ${counted} · closure ${String(closureMs ?? '?')} ms`;
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
 

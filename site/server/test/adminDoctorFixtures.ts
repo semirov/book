@@ -123,6 +123,14 @@ export function doctorBody(overrides: Record<string, unknown> = {}): Record<stri
   };
 }
 
+/**
+ * BOOK-236 — a shipped stage-3 graph as `GET /api/admin/doctor` answers it, `writtenChapters`
+ * included. The default is the state the launch reset leaves: nothing written, nothing graphed.
+ */
+export function graphBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null, writtenChapters: 0, ...overrides };
+}
+
 /** The reset dry-run report, as `reset book` already answers it. */
 export function resetBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
