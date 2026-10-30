@@ -67,6 +67,7 @@ function cancelOpenSteps(deps: EngineDeps, cascadeId: string, now: number): void
       // BOOK-222: an interrupted step publishes nothing it held — the candidate dies with it.
       candidate_text: null,
       candidate_sha: null,
+      candidate_sentences: null,
     });
     const lease = store.liveLeaseForStep(deps.db, step.step_id);
     if (lease) releaseLease(deps.db, lease.id, 'escalated', now);
@@ -284,6 +285,7 @@ export function closeStep(
       // that never came back — serves nothing, and the reader keeps the text he already has.
       candidate_text: null,
       candidate_sha: null,
+      candidate_sentences: null,
     });
     if (input.expiredLeaseId) {
       releaseForExpiredClose(db, live, input.expiredLeaseId, now);

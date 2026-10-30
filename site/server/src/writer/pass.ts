@@ -168,6 +168,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   /** BOOK-219: the revision this run started from (or resumed at), and its sha. */
   let preRev: number | null = null;
   let preSha = '';
+  /** BOOK-222: whether **this run** published — a candidate is not a publication. */
   let landedHere = false;
   /** The text as it now stands: the last revision this pass landed (or the resumed one). */
   let text = '';
@@ -175,7 +176,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   /** BOOK-DOC-80: Tier 0's verdict (before the write, for a patch) and the gates record. */
   let tier0: Tier0Result = { ok: true, findings: [], notes: [] };
   let gates: GatesRecord | null = null;
-  const published = (): boolean => landedHere || lane.landedAt() !== null;
+  const published = (): boolean => landedHere;
 
   /** BOOK-219: every exit without `done` takes this pass's own landing back first. */
   const recovery = createRecovery({
@@ -336,10 +337,13 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       }
 
       // 8. The landing that makes the answer a revision — the text travels, no file is touched.
+      //    BOOK-222: it travels as a **candidate**; `done` is what publishes it (BOOK-222, BOOK-219:
+      //    the `landed` push happens at the close). A pass that never closes leaves nothing served,
+      //    so the way back below has nothing of ours to undo.
       let landing: LandView | null;
       try {
         landing = await lane.land(text);
-        landedHere = true;
+        landedHere = landing === null || landing.provisional !== true;
       } catch (error) {
         return (await goneAfterBack(helpers, codeOf(error), reasonOf(error))) ?? (await lane.park(failureOf(error)));
       }
@@ -454,7 +458,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       const back = await recovery.takeBack('гейт не ответил');
       if (back.kind !== 'none') return await recovery.parkAfter({ ...survived, cause: 'failed' }, back);
       // `none`: this run published nothing (a resumed step that only read the gates).
-      deps.log('[writer] откат не нужен: текст опубликован не этим проходом — шаг закрывается');
+      deps.log('[writer] нечего возвращать: этот проход ничего не опубликовал — шаг закрывается');
     }
 
     // 10–11. `landed`, then `done`: the close is its own seam (`closePass.ts`) — the money it
@@ -480,9 +484,11 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     const stepped = await goneAfterBack(helpers, codeOf(error), reasonOf(error));
     if (stepped !== null) return stepped;
     // BOOK-219's invariant covers a thrown failure too: after our own landing the text goes back
-    // before the pass parks, or a reader keeps a revision a broken pass published.
+    // before the pass parks, or a reader keeps a revision a broken pass published. BOOK-222: a
+    // candidate was never served, so there is nothing to take back — and the note still owes the
+    // reader a sentence of ours, never the machine's own detail.
     const back = await recovery.takeBack('проход сломался');
     if (back.kind !== 'none') return await recovery.parkAfter(failureOf(error), back);
-    return await lane.park(failureOf(error));
+    return await lane.park({ ...failureOf(error), fallback: readerFallbacks.stopped });
   }
 }

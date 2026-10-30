@@ -130,6 +130,11 @@ export type LandView = {
    * writer reacts to it — it never computes a closure of its own, because it owns no ledger.
    */
   plan?: RipplePlan | null;
+  /**
+   * BOOK-222: the text is held on the step and **nothing was served** — the close publishes it.
+   * `landed` still says «the step holds this text», which is what lets a gate read it.
+   */
+  provisional?: boolean;
 };
 
 export type VerdictView = {

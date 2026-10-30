@@ -245,6 +245,83 @@ describe('a provisional land publishes nothing (BOOK-222)', () => {
   });
 });
 
+describe('the patch’s edits travel with the candidate (BOOK-222)', () => {
+  /** One well-formed character edit, shaped as `sentences/transform.ts` reads it. */
+  const EDIT = {
+    blockId: 'bkd_old',
+    newBlockId: 'bkd_new',
+    oldText: 'Второй абзац главы.',
+    newText: 'Второй абзац изменён.',
+    from: 0,
+    oldFragment: 'Второй абзац главы.',
+    newFragment: 'Второй абзац изменён.',
+  };
+
+  it('holds the edits a landing carried, and the publish reads them and clears them', () => {
+    const fixture = seeded();
+    try {
+      const assignment = changePass(fixture);
+      fixture.writeChapterBlocks(1, 'Начало', ['Первый абзац главы.', 'Второй абзац изменён.']);
+      const landed = fixture.engine.land(assignment.leaseId, { provisional: true, sentences: [EDIT] });
+      expect(landed.provisional).toBe(true);
+      // The publish is the only moment these can be applied, so they wait beside the text.
+      expect(store.getStep(fixture.db, assignment.stepId)?.candidate_sentences).toBe(JSON.stringify([EDIT]));
+
+      answer(fixture, 'editor');
+      answer(fixture, 'consultant');
+      submitRights(fixture);
+      const done = fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
+      expect(done.outcome).toBe('rewritten');
+      expect(fixture.readChapter(1)).toContain('Второй абзац изменён.');
+      expect(store.getStep(fixture.db, assignment.stepId)?.candidate_sentences).toBeNull();
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('drops the edits a replacing candidate does not carry', () => {
+    const fixture = seeded();
+    try {
+      const assignment = changePass(fixture);
+      fixture.writeChapterBlocks(1, 'Начало', ['Первый абзац главы.', 'Второй абзац изменён.']);
+      const landed = fixture.engine.land(assignment.leaseId, { provisional: true, sentences: [EDIT] });
+
+      // A new attempt carries no patch: the stale edits describe a text nobody lands any more.
+      fixture.writeChapterBlocks(1, 'Начало', ['Первый абзац главы.', 'Третий вариант.']);
+      const replaced = fixture.engine.land(assignment.leaseId, { provisional: true });
+      expect(replaced.sha).not.toBe(landed.sha);
+      expect(store.getStep(fixture.db, assignment.stepId)?.candidate_sentences).toBeNull();
+    } finally {
+      fixture.close();
+    }
+  });
+
+  for (const raw of ['not json', '{"a":1}', '[{"blockId":5}]']) {
+    it(`publishes a candidate whose edit set reads as «none»: ${raw}`, () => {
+      const fixture = seeded();
+      try {
+        const assignment = changePass(fixture);
+        provisionalLand(fixture, assignment, ['Первый абзац главы.', 'Второй абзац изменён.']);
+        // An edit set no reader could vouch for: the publish re-segments the text (the behaviour of
+        // a build that carried none) instead of writing a sentence row nobody named.
+        fixture.db
+          .prepare('UPDATE steps SET candidate_sentences = ? WHERE step_id = ?')
+          .run(raw, assignment.stepId);
+        answer(fixture, 'editor');
+        answer(fixture, 'consultant');
+        submitRights(fixture);
+
+        const done = fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
+        expect(done.outcome).toBe('rewritten');
+        expect(fixture.readChapter(1)).toContain('Второй абзац изменён.');
+        expect(store.getStep(fixture.db, assignment.stepId)?.candidate_sentences).toBeNull();
+      } finally {
+        fixture.close();
+      }
+    });
+  }
+});
+
 describe('the door says what it did (BOOK-222)', () => {
   it('`POST /internal/land` answers `{ landed, provisional, sha }` and serves nothing', async () => {
     const fixture = seeded();

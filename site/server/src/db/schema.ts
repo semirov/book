@@ -53,6 +53,9 @@
  * not hours): `widening_note` says why the third failure widened the reading. `widened` carries
  * the code from `stateWords.ts`, and `desperate` marks the sixth attempt the engine answers with
  * the coded floor rung, no model.
+ * v38 (BOOK-222 follow-up) adds `steps.candidate_sentences`: the patch's character edits held
+ * with the candidate, because the close — not `land` — is where that text is published and the
+ * sentence ledger can keep its ids (`migrateV38.ts`).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
@@ -69,7 +72,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 /**
  * BOOK-209 (v34) — the reader's place: one row per identity, so a second device resumes where

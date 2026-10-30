@@ -338,12 +338,18 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
    * back like any other, instead of parking over live prose with no revision of ours on record.
    */
   async function land(value: string): Promise<LandView | null> {
+    // BOOK-222: the patch's character edits describe **this** text: they travel once, with the
+    // candidate they were computed for. A landing after it (a gate's revision) is a whole-text
+    // answer whose blocks the edits no longer name, and the engine would re-key the ledger against
+    // a block that does not exist — so the edits are spent here, not carried on.
+    const edits = sentences;
+    sentences = null;
     try {
       const published = await engine.land(job.leaseId, {
         text: value,
         // BOOK-222: the lane's landing is a candidate; the close publishes it, once.
         provisional: true,
-        ...(sentences === null ? {} : { sentences }),
+        ...(edits === null ? {} : { sentences: edits }),
         ...(mode === null ? {} : { mode }),
         ...(estimate === null ? {} : { estimateUsd: estimate.usd }),
       });

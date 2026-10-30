@@ -19,6 +19,7 @@ import { migrateV34 } from './migrateV34.ts';
 import { migrateV35 } from './migrateV35.ts';
 import { migrateV36 } from './migrateV36.ts';
 import { migrateV37 } from './migrateV37.ts';
+import { migrateV38 } from './migrateV38.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -353,6 +354,9 @@ const MIGRATIONS: Migration[] = [
   // BOOK-206 (owner, 2026-10-29): `migrateV37.ts` — the ladder's operator note on the attempt
   // ledger (`widening_note`; BOOK-220's v35 already carries `widened`/`desperate`). Additive.
   { to: 37, up: migrateV37 },
+  // BOOK-222 follow-up: `migrateV38.ts` — the patch's character edits held with the candidate,
+  // so the publish keeps sentence ids (`steps.candidate_sentences`). Additive.
+  { to: 38, up: migrateV38 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

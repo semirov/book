@@ -21,7 +21,7 @@ describe('migration v37 — six attempts on the ledger', () => {
   it('a fresh install carries every v37 column, in the order the step appends them', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    expect(SCHEMA_VERSION).toBe(37);
+    expect(SCHEMA_VERSION).toBe(38);
     expect(columns(db, 'comment_attempts').slice(-V37_ATTEMPT_COLUMNS.length)).toEqual(
       V37_ATTEMPT_COLUMNS.map(([name]) => name),
     );

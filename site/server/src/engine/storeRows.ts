@@ -49,6 +49,8 @@ export type StepRow = {
   /** BOOK-222: the text a pass wrote and no close has published yet (`landed_*` = published). */
   candidate_text: string | null;
   candidate_sha: string | null;
+  /** BOOK-222: the patch's character edits, held with the candidate and applied at the publish. */
+  candidate_sentences: string | null;
   pre_blocks: string | null;
   rights_scan: string | null;         // BOOK-61 — Gate B's scan of the new blocks, as JSON
   closed_at: string | null;

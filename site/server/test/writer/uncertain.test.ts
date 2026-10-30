@@ -126,7 +126,7 @@ describe('a lost answer — the rows decide, never the missing response', () => 
     }
   });
 
-  it('puts the text back when the read says the step is still open — the close is known missing', async () => {
+  it('leaves the served text standing when the read says the step is still open — the close is known missing', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
@@ -144,10 +144,15 @@ describe('a lost answer — the rows decide, never the missing response', () => 
       const result = await harness.run({ lanes: ['fwd'] });
 
       expect(result.status).toBe('parked');
-      // The step reads `open`: no close happened, so the invariant's undo is the honest answer.
+      // The step reads `open`, so the close is known to be missing — and BOOK-222 makes the answer
+      // honest: the pass's text was a candidate, so nothing of it is served and nothing is taken
+      // back. The chapter keeps its own revision, which is the last true one.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisions(harness)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.closeReverted);
+      expect(revisions(harness).map((row) => row.kind)).toEqual(['draft']);
+      expect(harness.engineCalls).not.toContain('restore');
+      expect(harness.logs.join('\n')).not.toContain('закрытие не подтверждено');
+      expect(result.code).toBe('ENGINE_UNREACHABLE');
+      expect(result.reason).toBe(readerSentences.closeStanding);
       expect(stagesOf(harness)).not.toContain('landed');
     } finally {
       await harness.close();

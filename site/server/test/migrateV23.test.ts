@@ -49,7 +49,7 @@ describe('migration v23 — the author marker', () => {
   it('adds the column to a fresh install, unmarked, and records that the book has no author yet', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(37);
+    expect(SCHEMA_VERSION).toBe(38);
     const column = columns(db, 'identities').find((entry) => entry.name === 'is_author');
     expect(column).toMatchObject({ notnull: 1, dflt_value: '0' });
     // Zero identities: nobody is guessed into the role, and the decision is on the record.

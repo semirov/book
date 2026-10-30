@@ -147,13 +147,43 @@ export const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой
 export type PublishResult = { rev: number; sha: string; changed: boolean };
 
 /**
+ * The character edits a landing held with its candidate, as the ingest reads them. A column that
+ * does not parse is no edits: the publish then re-segments the text (the old behaviour) instead of
+ * writing a sentence row nobody could vouch for.
+ */
+function parseSentences(raw: string | null): ReadonlyArray<SentencePatchEdit> | null {
+  if (raw === null || raw.trim().length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const edits = parsed.filter((entry): entry is SentencePatchEdit => {
+      if (entry === null || typeof entry !== 'object') return false;
+      const edit = entry as Partial<SentencePatchEdit>;
+      return (
+        typeof edit.blockId === 'string' &&
+        typeof edit.newBlockId === 'string' &&
+        typeof edit.oldText === 'string' &&
+        typeof edit.newText === 'string' &&
+        typeof edit.from === 'number' &&
+        typeof edit.oldFragment === 'string' &&
+        typeof edit.newFragment === 'string'
+      );
+    });
+    return edits.length === 0 ? null : edits;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * BOOK-222 — publish the step's candidate, once, at the close.
  *
  * The text is the one the gates read (`candidate_text`): it is re-parsed, its frame is checked
  * again, its own delta is scanned if no scan is on the step, and it goes through `ingestLanding`
- * — the same applier `land` uses. `landed_*`, the revision and the `step.landed` event are written
- * here, and only here: a step that closes without publishing (`refuse`) keeps none of them and the
- * chapter keeps the text the reader already has.
+ * — the same applier `land` uses, with the character edits the landing held beside the candidate
+ * (`candidate_sentences`), so a patch keeps the sentence ids it moved. `landed_*`, the revision and
+ * the `step.landed` event are written here, and only here: a step that closes without publishing
+ * keeps none of them and the chapter keeps the text the reader already has.
  *
  * `null` means the step carries no candidate (a non-provisional landing, a `noWrite` close): the
  * caller proceeds exactly as before.
@@ -184,8 +214,12 @@ export function publishCandidate(deps: EngineDeps, step: store.StepRow, at: numb
   }
 
   const changedFromStart = step.start_sha === null || sha !== step.start_sha;
+  // BOOK-222: the patch's character edits travelled with the candidate (`steps.candidate_sentences`)
+  // because the text they edit did not exist before this publish; they are what keeps sentence ids
+  // across the write. A candidate that carried none (a rewrite, a gate's revision) applies none.
+  const sentences = parseSentences(step.candidate_sentences);
   const ingested: IngestOutcome = changedFromStart
-    ? ingestLanding(deps, step, at, raw, {})
+    ? ingestLanding(deps, step, at, raw, sentences === null ? {} : { sentences })
     : { rev: null, changed: false, frameRejected: false, planned: null };
   if (ingested.frameRejected && step.chapter !== null) {
     const fresh = chapterTarget(deps.db, step.chapter, raw);
@@ -210,6 +244,7 @@ export function publishCandidate(deps: EngineDeps, step: store.StepRow, at: numb
     // The publication is the end of the candidate: a second close cannot publish it again.
     candidate_text: null,
     candidate_sha: null,
+    candidate_sentences: null,
   });
   appendEvent(
     deps.db,

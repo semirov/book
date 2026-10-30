@@ -306,6 +306,7 @@ export const STEPS_COLUMNS = [
   'landed_sha',
   'candidate_text',
   'candidate_sha',
+  'candidate_sentences',
   'pre_blocks',
   'rights_scan',
   'closed_at',
@@ -352,6 +353,9 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   -- BOOK-222: text a pass wrote and no gate blessed yet — never published before done.
   candidate_text TEXT,                           -- the writer's text, held until the verdict
   candidate_sha  TEXT,                           -- sha of it; gates read it, the close publishes it
+  -- BOOK-222: the patch's character edits, held with the candidate — the publish is what applies
+  -- them (a sentence id survives a patch only if the edits that moved it travel to the ingest).
+  candidate_sentences TEXT,                      -- JSON [{blockId, newBlockId, from, …}] or null
   pre_blocks  TEXT,                              -- JSON block hashes before the write (delta ratio)
   -- BOOK-61: Gate B's deterministic scan — JSON {"verdict":"clear"|"flag","rule":…}; a refusal
   -- is never stored here.

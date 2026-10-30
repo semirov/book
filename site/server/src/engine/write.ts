@@ -38,6 +38,7 @@ import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
 import { chapterTarget, frontTarget, ingestLanding, type IngestOutcome } from './landing.ts';
+import { planCandidate, type LandingPlan } from './ripple.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
@@ -90,7 +91,9 @@ export type LandResult = {
   blocksTouched: number;
   /**
    * BOOK-173: the change's ripple plan, computed here because the ledger lives here (§3, §7).
-   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
+   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch. BOOK-222:
+   * a **candidate** is planned too — the writer reacts to the closure before the gates spend, and
+   * the close re-plans the same text inside the publish.
    */
   plan?: RipplePlan | null;
   /** BOOK-222: the text is held on the step and nothing was published. */
@@ -369,14 +372,27 @@ export function createWriteOps(deps: EngineDeps) {
         store.deleteVerdicts(db, step.step_id);
       }
       const measured = measureDelta(step, chapter?.blocks ?? []);
-      store.updateStep(db, step.step_id, {
-        start_sha: step.start_sha ?? sha,
-        candidate_text: target.raw,
-        candidate_sha: sha,
-        blocks_touched: measured.touched,
-        chars_delta: measured.delta,
-        rights_scan: state.stored,
-      });
+      // BOOK-222: the patch's character edits are held **with** the candidate — the publish is the
+      // only moment they can be applied (the text is not in `blocks` before it), and a candidate
+      // that carries no edit (a rewrite, a gate's revision) replaces the ones it replaced.
+      const sentences = options.sentences === undefined ? null : JSON.stringify(options.sentences);
+      // The candidate and its plan are one write: the writer reacts to the closure before the
+      // gates spend, and a plan that cannot be stored leaves no candidate behind either.
+      const planned = db.transaction((): LandingPlan | null => {
+        store.updateStep(db, step.step_id, {
+          start_sha: step.start_sha ?? sha,
+          candidate_text: target.raw,
+          candidate_sha: sha,
+          candidate_sentences: sentences,
+          blocks_touched: measured.touched,
+          chars_delta: measured.delta,
+          rights_scan: state.stored,
+        });
+        return planCandidate(deps, step, target.raw, chapter?.blocks ?? [], {
+          mode: options.mode,
+          priceUsd: options.estimateUsd,
+        });
+      })();
       return {
         landed: true,
         provisional: true,
@@ -385,6 +401,7 @@ export function createWriteOps(deps: EngineDeps) {
         changed: true,
         deltaRatio: measured.ratio,
         blocksTouched: measured.touched,
+        ...(planned === null ? {} : { plan: planned.plan }),
       };
     }
 
@@ -431,6 +448,11 @@ export function createWriteOps(deps: EngineDeps) {
       blocks_touched: measured.touched,
       chars_delta: measured.delta,
       rights_scan: state.stored,
+      // BOOK-222: this landed text **is** the step's text now, so a candidate an earlier call
+      // held is dead — the close must not publish it over what the site already serves.
+      candidate_text: null,
+      candidate_sha: null,
+      candidate_sentences: null,
     });
     appendEvent(
       db,

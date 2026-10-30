@@ -102,11 +102,12 @@ describe('a pass closes `done` or puts the chapter back', () => {
       // BOOK-219: the stop is the refusal — the change ends `void · dropped`, never `escalated`.
       expect(changeRow(harness, changeId)?.status).toBe('void');
       expect(changeRow(harness, changeId)?.outcome).toBe('dropped');
-      // The sentence names the way back, never «текст стоит»; the code stays in the log.
+      // The sentence names the refusal, never «текст стоит»; the code stays in the log.
       expect(result.reason).toBe(readerSentences.rightsReverted);
-      // The way back is the engine's (BOOK-219: the refusal puts the text back itself), so the
-      // writer's own put-back may be the one that finds nothing left to do.
-      expect(harness.logs.join('\n')).toContain('откат');
+      // BOOK-222: the refused text was never served, so there is nothing to put back — the writer
+      // asks for no restore, and no line of the log claims one.
+      expect(harness.engineCalls).not.toContain('restore');
+      expect(harness.logs.join('\n')).not.toContain('откат');
       // Nothing was announced about a landing — one `decision` claim is the reader hearing
       // «не принято» (BOOK-219), and no stage claims a landing.
       expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);

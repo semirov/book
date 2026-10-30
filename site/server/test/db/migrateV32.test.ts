@@ -78,7 +78,7 @@ function numbers(): number[] {
 describe('migration v32 — the filing’s public number', () => {
   it('gives two inserts consecutive numbers, 1-based and in insertion order', () => {
     db = boot();
-    expect(SCHEMA_VERSION).toBe(37);
+    expect(SCHEMA_VERSION).toBe(38);
     filing('cmt_a');
     filing('cmt_b');
     expect(numbers()).toEqual([1, 2]);

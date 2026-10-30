@@ -1,7 +1,11 @@
 /**
  * BOOK-219 — the two ways a pass ends when the provider says less than the money needs: an
- * estimated close (a good answer with no `usage`) and the compensating revert (a gate that never
- * answered over text the pass had already published).
+ * estimated close (a good answer with no `usage`) and the way back for a pass that published.
+ *
+ * BOOK-222 moved the ordinary case out of the second story: a pass lands a **candidate**, so an
+ * exit without `done` serves nothing and there is nothing to put back (the served chapter and its
+ * revision are untouched). The way back is still the net for an engine from **before** BOOK-222 —
+ * one that publishes at `land` — and those cells say so out loud (`publishingLand`).
  *
  * Its own file because `pass.test.ts` is at the `arch` bound, and because these cases are one
  * story: the prod pass that parked over a live revision, and the spend it never recorded.
@@ -13,7 +17,7 @@ import { filingStatus, type FilingChange } from '../../src/comments/filingState.
 import { EngineRefusalError, type EngineClient } from '../../src/writer/client.ts';
 import { runPass, type PassResult } from '../../src/writer/pass.ts';
 import { ProviderError } from '../../src/writer/provider.ts';
-import { readerSentences } from '../../src/writer/reasons.ts';
+import { readerFallbacks, readerSentences } from '../../src/writer/reasons.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
@@ -85,6 +89,24 @@ function refusing(method: 'restore' | 'reconcile'): (engine: EngineClient) => En
     }) as EngineClient;
 }
 
+/**
+ * An engine from **before** BOOK-222: it does not know `provisional` and publishes at `land`.
+ * That build is the one case in which a pass still has a served text of its own to take back, and
+ * `putBack` is the safety net for it — so the way back's own branches are proved here, on that
+ * engine, rather than dropped from the suite with the model that made them rare.
+ */
+function publishingLand(engine: EngineClient): EngineClient {
+  return new Proxy(engine, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (typeof value !== 'function') return value;
+      if (String(property) !== 'land') return (value as (...rest: unknown[]) => unknown).bind(target);
+      return (leaseId: string, input: { provisional?: boolean } = {}) =>
+        (value as (...rest: unknown[]) => unknown).call(target, leaseId, { ...input, provisional: false });
+    },
+  }) as EngineClient;
+}
+
 describe('runPass — BOOK-219: an estimated close and the compensating revert', () => {
   it('closes when the gates answer without usage, and the ledger says the money is an estimate', async () => {
     const harness = await createHarness(REWRITE);
@@ -119,22 +141,28 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
     }
   });
 
-  it('puts the chapter back when the gate dies after the landing, and parks saying so', async () => {
+  it('leaves the served chapter and its revision untouched when the gate dies after the candidate, and parks saying so', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
       const result = await deadGate(harness);
       expect(result.status).toBe('parked');
       const stepId = result.stepId ?? '';
-      // The text is the pre-pass text again, and the way back is a revision of its own.
+      // BOOK-222: the pass's text was a **candidate** — the gate's death served nothing, so the
+      // chapter is the text it had, at the revision it had, and there is nothing to put back.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       const revisions = revisionsOf(harness, CHAPTER);
-      // Base 1, the pass's landing 2, and the restore that put the base back as revision 3.
-      expect(revisions.map((row) => row.rev)).toEqual([3, 2, 1]);
-      expect(revisions[0]?.kind).toBe('restore');
-      // The reader is told the text went back, and the filing is not applied.
-      expect(result.reason).toBe(readerSentences.reverted);
-      expect(stepRow(harness.fixture, stepId)?.note).toBe(readerSentences.reverted);
+      expect(revisions.map((row) => row.rev)).toEqual([1]);
+      expect(revisions.map((row) => row.kind)).toEqual(['draft']);
+      // No way back is asked for, and no line of the log claims one (the log is where `putBack`
+      // says what it did — a restore or its refusal would carry the word).
+      expect(harness.logs.join('\n')).not.toContain('откат');
+      // The candidate dies with the step; the note is ours, and never the machine's detail.
+      expect(stepRow(harness.fixture, stepId)?.outcome).toBe('escalated');
+      expect(stepRow(harness.fixture, stepId)?.candidate_sha).toBeNull();
+      expect(result.code).toBe('PROVIDER_SHAPE');
+      expect(result.reason).toBe(readerFallbacks.gate);
+      expect(stepRow(harness.fixture, stepId)?.note).toBe(readerFallbacks.gate);
       const change = harness.fixture.db
         .prepare('SELECT id, status FROM changes WHERE chapter = ? AND premise = 0')
         .get(CHAPTER) as { id: string; status: string };
@@ -168,14 +196,18 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('says the text stands unverified when the way back itself fails, and names the revision', async () => {
+    // An engine from before BOOK-222 still publishes at `land`: that is the one case with a text
+    // of ours to take back, and the way back's own failure is what this cell proves.
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
-      const result = await deadGate(harness, refusing('restore'));
+      const result = await deadGate(harness, (engine) => refusing('restore')(publishingLand(engine)));
 
       expect(result.status).toBe('parked');
-      // The chapter still carries the pass's landing — nobody put it back — and the note says so.
-      // BOOK-222: nothing was served before the close, so the site keeps the text it had.
+      // The text was published (this engine knows no candidate) and the writer cannot prove its
+      // own way back, so the note says exactly that; the engine's own refusal is what returns the
+      // text, as it always did — one restore revision, and no `новый` in the chapter.
       expect(harness.fixture.readChapter(CHAPTER)).not.toContain('новый');
+      expect(revisionsOf(harness, CHAPTER)[0]?.kind).toBe('restore');
       expect(result.reason).toBe(readerSentences.unverified);
       expect(stepRow(harness.fixture, result.stepId ?? '')?.note).toBe(readerSentences.unverified);
       // The revision it stands at is in the detail (the log and the transcript), never the note.
@@ -189,10 +221,11 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
   });
 
   it('refuses a way back that returned another revision: the text is not proved, so it stands', async () => {
+    // The old engine again: a published landing is the only text a way back may be refused for.
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: chapterAnswer('Глава сорок', 'исходный') } });
     try {
       const wrong = (engine: EngineClient): EngineClient =>
-        new Proxy(engine, {
+        new Proxy(publishingLand(engine), {
           get(target, property, receiver) {
             const value = Reflect.get(target, property, receiver) as unknown;
             if (typeof value !== 'function') return value;
@@ -219,7 +252,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
-      const result = await deadGate(harness, refusing('reconcile'));
+      const result = await deadGate(harness, (engine) => refusing('reconcile')(publishingLand(engine)));
 
       expect(result.status).toBe('parked');
       expect(result.reason).toBe(readerSentences.reverted);
@@ -230,7 +263,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
     }
   });
 
-  it('puts a resumed step’s own re-landing back: the guard is this run, not the step', async () => {
+  it('leaves a resumed step’s re-landing unpublished: the served chapter and its revision are untouched', async () => {
     const harness = await createHarness(REWRITE);
     try {
       // A previous run landed this step's text and died at the gate; the row is open, `landed`.
@@ -240,8 +273,9 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
       harness.fixture.writeChapter(CHAPTER, chapterAnswer('Глава сорок', 'первый прогон'));
       harness.fixture.engine.land(assignment.leaseId);
       const base = harness.fixture.readChapter(CHAPTER);
+      const baseRev = revisionsOf(harness, CHAPTER)[0]?.rev;
 
-      // The gate asks for a revision, so this run re-lands — and that landing is its own.
+      // The gate asks for a revision, so this run re-lands — as a candidate, like any landing.
       harness.script.push(
         'GAP\nblocker · глава 40, «служебный абзац» · повтор вместо прозы · переписать абзац',
         chapterAnswer('Глава сорок', 'правка'),
@@ -256,11 +290,18 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
       const result = await harness.run({ lanes: ['fwd'] });
 
       expect(result.status).toBe('parked');
-      // The chapter goes back to the revision the resumed step stood at — not to nothing, and
-      // not left at the text this run published.
+      // BOOK-222: a resumed pass holds its own text as a candidate too, so a refused close serves
+      // nothing: the chapter still reads the revision the resumed step stood at, and no restore —
+      // the site's own revision and the pass's candidate cannot be confused.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(base);
-      expect(revisionsOf(harness, CHAPTER)[0]?.kind).toBe('restore');
-      expect(result.reason).toBe(readerSentences.closeReverted);
+      expect(revisionsOf(harness, CHAPTER).map((row) => row.rev)).toEqual([baseRev]);
+      expect(harness.engineCalls).not.toContain('restore');
+      // The candidate was dropped with the step, and the earlier landing is what the step served.
+      const step = stepRow(harness.fixture, result.stepId ?? '');
+      expect(step?.candidate_sha).toBeNull();
+      expect(step?.candidate_text).toBeNull();
+      expect(step?.landed_sha).not.toBeNull();
+      expect(result.reason).toBe(readerSentences.closeStanding);
     } finally {
       await harness.close();
     }
@@ -284,7 +325,7 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
       expect(harness.fixture.readChapter(CHAPTER)).toBe(landed);
       expect(revisionsOf(harness, CHAPTER).map((row) => row.kind)).toEqual(['draft']);
       expect(harness.engineCalls).not.toContain('restore');
-      expect(harness.logs.join('\n')).toContain('откат не нужен');
+      expect(harness.logs.join('\n')).toContain('нечего возвращать: этот проход ничего не опубликовал');
       // And the reader is still not told the queue is the whole story: the text stands, and the
       // close never confirmed it.
       expect(result.reason).toBe(readerSentences.closeStanding);

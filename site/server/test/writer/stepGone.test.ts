@@ -5,10 +5,10 @@
  * asks for the next assignment at once (`status: 'gone'`, exit 0) and never escalates a step
  * that is not its own — a second park there would tell the reader a false story.
  *
- * BOOK-219 adds the other half: a run that **landed** takes its own text back before it answers
- * `gone`. The wall closed the step and nobody else holds this pass's `preRev`, so a revision left
- * behind would stay served with no gate and no owner — `gone` on its own is only the answer when
- * the way back finds nothing of ours.
+ * BOOK-219 adds the other half: a run that **published** takes its own text back before it answers
+ * `gone` — nobody else holds this pass's `preRev`, so a revision left behind would stay served with
+ * no gate and no owner. BOOK-222 narrowed it: a pass lands a **candidate**, so a wall that closes
+ * the step publishes nothing and there is nothing to take back — the chapter keeps its revision.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -58,7 +58,7 @@ describe('a dead step', () => {
     }
   });
 
-  it('puts the landed text back when the step wall closes the step after the draft', async () => {
+  it('publishes nothing when the step wall closes the step after the draft', async () => {
     const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ ...REWRITE, chapters: { [CHAPTER]: original } });
     try {
@@ -68,8 +68,8 @@ describe('a dead step', () => {
         intent: 'в главе 40 появляется документ о допуске',
       });
       harness.script.push(chapterAnswer('Глава сорок', 'новый'));
-      // The wall stops the step between the landing and the editor's answer — the reaper's own
-      // close (`escalated:gate_timeout`), the lease released under a revision already served.
+      // The wall stops the step between the candidate and the editor's answer — the reaper's own
+      // close (`escalated:gate_timeout`), the lease released under a step that serves nothing.
       let beats = 0;
       harness.hooks.beforeCall = (name) => {
         if (name !== 'beat') return;
@@ -82,13 +82,14 @@ describe('a dead step', () => {
       const result = await harness.run({ lanes: ['fwd'] });
 
       expect(result.status).toBe('gone');
-      // BOOK-219: the text this run published goes back to what the site served before the pass.
+      // BOOK-222: the draft's text was a candidate, so the wall published nothing — the chapter
+      // keeps the revision it had (the one its own text made), and no restore is owed.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       const revisions = harness.fixture.db
         .prepare('SELECT rev, cause_kind AS kind FROM revisions WHERE chapter = ? ORDER BY rev DESC')
         .all(CHAPTER) as Array<{ rev: number; kind: string }>;
-      // The engine's own refusal puts the base back; the writer's client never asks for it.
-      expect(revisions.map((row) => row.kind)).toEqual(['restore', 'change', 'draft']);
+      expect(revisions.map((row) => row.kind)).toEqual(['draft']);
+      expect(revisions.map((row) => row.rev)).toEqual([1]);
       expect(harness.engineCalls).not.toContain('restore');
       // A `gone` step never claims a landing: no stage, no push, no second park sentence.
       expect(listStages(harness.fixture.db, CHAPTER).some((stage) => stage.stage === 'landed')).toBe(false);
