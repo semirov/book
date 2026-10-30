@@ -15,17 +15,17 @@
  * verdict and Gate B's clearance, the first placement writes both, and `acceptComment` no-ops on
  * a `change_id` it already holds — so a second poll, a restarted site or a second process changes
  * nothing. Every way of *not* placing is bounded too: a gate that has not spoken parks the row for
- * six hours with one event, and a broken row is settled `held` at the tries cap, so no tick can
- * re-process the same row once a second.
+ * six hours with one event, and an answer the applier cannot place is asked once more and then
+ * refused (`defect`) — a broken row never waits on the page as «ждёт».
  */
 
-import type { CommentDecisionPayload } from '@book/shared';
+import { TRIAGE_REFUSED_LINE, type CommentDecisionPayload } from '@book/shared';
 
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { readQueue } from '../engineState/reader.ts';
 import type { Db } from '../db/db.ts';
 import { attemptCounts } from '../comments/attemptToday.ts';
-import { TRIAGE_DESPERATE_ATTEMPT, TRIAGE_MAX_TRIES, latestAttempt } from '../comments/attempts.ts';
+import { TRIAGE_MODEL_TRIES, TRIAGE_MAX_TRIES, latestAttempt, refuseTriage } from '../comments/triage.ts';
 import { filingStateOf } from '../comments/filingState.ts';
 import { emitFilingUpdate } from './filingFrame.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
@@ -84,13 +84,14 @@ function duePlacements(db: Db, limit: number): string[] {
           WHERE c.status = 'new' AND c.disposition IS NULL AND c.rights_verdict = 'CLEAR'
             AND EXISTS (
               SELECT 1 FROM comment_attempts a
-               WHERE a.comment_id = c.id AND a.verdict IS NOT NULL AND a.outcome = 'submitted'
+               WHERE a.comment_id = c.id AND a.verdict IS NOT NULL
+                 AND (a.outcome = 'submitted' OR (a.outcome = 'held' AND a.tries >= ?))
                  AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
             )
           ORDER BY c.created_at, c.id
           LIMIT ?`,
       )
-      .all(limit) as Array<{ id: string }>
+      .all(TRIAGE_MAX_TRIES, limit) as Array<{ id: string }>
   ).map((row) => row.id);
 }
 
@@ -134,6 +135,27 @@ function queueAhead(db: Db, changeId: string | null): number {
 
 function nowOf(options: TriageApplierOptions): () => Date {
   return options.now ?? (() => new Date());
+}
+
+/**
+ * Close the attempt the placement answered. A `held` attempt (the recovery pass) is not open in
+ * `settleAttempt`'s sense; it is closed here by the same one-write rule, so a successful recovery
+ * does not leave a held attempt behind a placed filing.
+ */
+function settlePlaced(
+  db: Db,
+  row: CommentRow,
+  n: number,
+  outcome: 'accepted' | 'refused',
+  at: string,
+  recover: boolean,
+): void {
+  if (settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome, at }) !== null) return;
+  if (!recover) return;
+  db.prepare(
+    `UPDATE comment_attempts SET outcome = ?, decided_at = ?
+      WHERE comment_id = ? AND n = ? AND outcome = 'held'`,
+  ).run(outcome, at, row.id, n);
 }
 
 /** One `comment:decision` frame, the shape `DecisionsTailer` publishes. */
@@ -184,14 +206,29 @@ function defect(
   at: string,
   type: string,
   code: string,
+  recover: boolean,
 ): void {
   appendOnce(db, row.id, type, at, { code, attempt });
-  settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome: 'held', at });
   db.prepare('UPDATE comment_attempts SET tries = ? WHERE comment_id = ? AND n = ?').run(
     TRIAGE_MAX_TRIES,
     row.id,
     attempt,
   );
+  if (!recover) {
+    settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome: 'held', at });
+    return;
+  }
+  // The answer was asked twice and still cannot be placed: the refusal sink, in our own words.
+  if (!refuseTriage(db, { commentId: row.id, n: attempt, at, unplaced: true })) return;
+  appendCommentEvent(db, row.id, 'triage.failed', at, {
+    code: 'TRIAGE_UNPLACED',
+    attempt,
+    try: TRIAGE_MAX_TRIES,
+    of: TRIAGE_MAX_TRIES,
+    cap: true,
+    retryAt: null,
+    reason: TRIAGE_REFUSED_LINE,
+  });
 }
 
 /**
@@ -218,17 +255,19 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
     // Only the **latest** attempt is placed, and only while it is still open: a settled attempt
     // was already answered (placed, held or refused) and this tick must not answer it again.
     const attempt = latestAttempt(db, commentId);
-    if (attempt === undefined || attempt.outcome !== 'submitted') return null;
+    if (attempt === undefined) return null;
+    const recover = attempt.outcome === 'held' && attempt.tries >= TRIAGE_MAX_TRIES;
+    if (attempt.outcome !== 'submitted' && !recover) return null;
     // A verdict that is not one object is a broken row, not a reason to retry once a second.
     const stored = attempt.verdict === null ? null : safeJson<StoredVerdict>(attempt.verdict);
     if (stored === null) {
-      defect(db, row, attempt.n, at, 'triage.verdict-invalid', 'VERDICT_UNREADABLE');
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', 'VERDICT_UNREADABLE', recover);
       return null;
     }
     const verdict = stored.verdict === 'OFF' ? 'OFF' : 'FITS';
     const parsed = parseReadingBlock(stored.reading, verdict);
     if (!parsed.ok) {
-      defect(db, row, attempt.n, at, 'triage.verdict-invalid', parsed.code);
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', parsed.code, recover);
       return null;
     }
 
@@ -247,7 +286,7 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
       // rejection path's, and the decision travels with it — a finale lock the model named must
       // not be re-chosen from the row (that would lose the lock and escalate).
       disposeRejection(db, { comment: row, at, note: decision.reason, decision });
-      settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'refused', at });
+      settlePlaced(db, row, attempt.n, 'refused', at, recover);
       return { row: readCommentRow(db, commentId) ?? row, status: 'rejected' };
     }
 
@@ -274,7 +313,7 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
         return null;
       }
       // A verdict was stored, so the audit must have spoken; a caller that gets here is a defect.
-      defect(db, row, attempt.n, at, 'triage.defect', code);
+      defect(db, row, attempt.n, at, 'triage.defect', code, recover);
       return null;
     }
 
@@ -283,10 +322,10 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
       // `acceptComment` answered without writing a chain and a status: the filing was not placed,
       // and nothing may be announced — a push here would tell the reader «отклонена» for a row
       // nobody refused and nobody placed.
-      defect(db, row, attempt.n, at, 'triage.not-placed', 'PLACEMENT_EMPTY');
+      defect(db, row, attempt.n, at, 'triage.not-placed', 'PLACEMENT_EMPTY', recover);
       return null;
     }
-    settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'accepted', at });
+    settlePlaced(db, row, attempt.n, 'accepted', at, recover);
     return { row: after, status: after.status === 'registered' ? 'registered' : 'accepted' };
   })();
 
@@ -326,13 +365,13 @@ function settleDesperate(options: TriageApplierOptions, commentId: string): bool
     appendOnce(db, commentId, 'triage.failed', at, {
       code: 'DESPERATE',
       attempt: attempt.n,
-      try: TRIAGE_DESPERATE_ATTEMPT,
+      try: TRIAGE_MODEL_TRIES + 1,
       desperate: true,
       cap: true,
     });
     settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'held', at });
     db.prepare('UPDATE comment_attempts SET tries = ?, desperate = 1 WHERE comment_id = ? AND n = ?').run(
-      TRIAGE_DESPERATE_ATTEMPT,
+      TRIAGE_MODEL_TRIES + 1,
       commentId,
       attempt.n,
     );

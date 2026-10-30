@@ -4,6 +4,8 @@ export * from './pages.ts';
 export * from './types.ts';
 export * from './protocol.ts';
 export * from './reading.ts';
+export * from './attempt.ts';
+export * from './harm.ts';
 export * from './change.ts';
 export * from './writeMode.ts';
 export * from './stateWords.ts';

@@ -17,13 +17,13 @@
  * leaves the column null. A row without a verdict is never accepted, so a flag fails closed.
  */
 
-import { COMMENT_AUDITED_BY_MAX_CHARS } from '@book/shared';
+import { COMMENT_AUDITED_BY_MAX_CHARS, HARM_CASE_FLAGS } from '@book/shared';
 
 import { appendCommentEvent } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 import { lockDecision } from '../feedback/disposition.ts';
 import { storeChain } from '../feedback/dispositionStore.ts';
-import { isRightsRule, rightsRefusalLine, type RightsRuleId } from './rules.ts';
+import { harmCaseOfRule, isRightsRule, rightsRefusalLine, type RightsRuleId } from './rules.ts';
 
 export type RightsVerdict = 'CLEAR' | 'REFUSED';
 
@@ -72,13 +72,25 @@ export type RecordRightsResult = { ok: true; verdict: RightsVerdict } | { ok: fa
 
 type RightsRow = { rights_verdict: string | null; flags: string | null };
 
-/** The public flag a refusal keeps so the body is never republished (audit m5 precedent). */
+/**
+ * The public flags a refusal leaves. `STOP-PERSON` and an accusation name a real person; a
+ * child and sexual content name case 3; a recipe, a weapon or a method to hurt oneself name
+ * case 1; the rest of the law is case 4. `illegal-content` stays on every law refusal — it is
+ * what hides the body from the thread — and the case flag is what the reader's sentence is
+ * derived from, so a refusal names **which** of the four it is.
+ */
 function refusalFlags(rule: string): string[] {
   if (rule === 'STOP-PERSON' || rule === 'RIGHTS-PERSON') return ['real-person'];
   // A quote or a paraphrase is about provenance, not about unlawful content: the body stays
   // visible, and only a law category hides it.
   if (rule === 'RIGHTS-QUOTE' || rule === 'RIGHTS-PARAPHRASE') return [];
-  return ['illegal-content'];
+  const harmCase = harmCaseOfRule(rule);
+  // An accusation of a real person is also a law category, so its body is hidden too.
+  if (harmCase === 'real-person') return ['real-person', 'illegal-content'];
+  // Unreachable while `recordRights` validates the rule first (a quote or a paraphrase returned
+  // above); it keeps the function total for a rule this build does not know.
+  if (harmCase === null) return ['illegal-content'];
+  return ['illegal-content', HARM_CASE_FLAGS[harmCase]];
 }
 
 /** The row's flags as a list; a malformed value is an empty list, never a crash. */
@@ -156,8 +168,17 @@ export function recordRights(db: Db, input: RecordRightsInput): RecordRightsResu
           )
           .run(input.at, sentence, input.commentId);
         // BOOK-174: a rights refusal is the rights lock, and its chain travels with the row it
-        // refuses — the reader's report says «не принято» and why, with the alternative.
-        if (rejected.changes > 0) storeChain(db, input.commentId, lockDecision('rights'));
+        // refuses — the reader's report says «не принято» and why, with the alternative. A rule
+        // that names one of the harm lock's four cases stores **that** lock instead, so the
+        // reader's sentence is about the case, never about provenance («это не ваш текст»).
+        if (rejected.changes > 0) {
+          const harmCase = harmCaseOfRule(rule as string);
+          storeChain(
+            db,
+            input.commentId,
+            harmCase === null ? lockDecision('rights') : lockDecision('harm', harmCase),
+          );
+        }
       }
       const row = db.prepare('SELECT flags FROM comments WHERE id = ?').get(input.commentId) as RightsRow;
       db.prepare('UPDATE comments SET flags = ? WHERE id = ?').run(

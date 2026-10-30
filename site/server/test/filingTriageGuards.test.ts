@@ -6,10 +6,10 @@
  * path's to answer.
  */
 
-import { LOCK_LINES } from '@book/shared';
+import { HARM_LOCK_LINES, LOCK_LINES, OUR_FAILURE_LINE, TRIAGE_REFUSED_LINE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { TRIAGE_BACKOFF_MS, TRIAGE_MAX_TRIES } from '../src/comments/attempts.ts';
+import { TRIAGE_BACKOFF_MS, TRIAGE_MAX_TRIES, dueTriage } from '../src/comments/triage.ts';
 import { readCommentRow, toCommentDto } from '../src/comments/repo.ts';
 import { migrateV30 } from '../src/db/migrateV30.ts';
 import { placeFiling } from '../src/feedback/triageApplier.ts';
@@ -32,7 +32,6 @@ afterEach(async () => {
 });
 
 const OWNER = 'cmt_01M635KZP466CGBC0CKS1NWS4Z';
-/** The fixture clock starts 2026-10-25 09:00 UTC, so its next midnight is this one. */
 
 describe('the applier never guesses (BOOK-206)', () => {
   it('does not re-process a settled attempt: a corrupt stored verdict is recorded once', async () => {
@@ -62,6 +61,27 @@ describe('the applier never guesses (BOOK-206)', () => {
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.verdict-invalid'`).get()).toEqual({
       n: 1,
     });
+  });
+
+  it('places a held answer once it is readable again, instead of refusing a placeable row', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+    await context.pulse();
+    const stored = attemptOf(db, id).verdict;
+    expect(typeof stored).toBe('string');
+
+    // A broken answer is held at the cap; the next tick asks it once more.
+    db.prepare('UPDATE comment_attempts SET verdict = ? WHERE comment_id = ? AND n = 1').run('{not json', id);
+    expect(context.place()).toBe(0);
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: TRIAGE_MAX_TRIES });
+
+    // The row is readable again (a later build, an operator's repair): the recovery places it.
+    db.prepare('UPDATE comment_attempts SET verdict = ? WHERE comment_id = ? AND n = 1').run(String(stored), id);
+    expect(context.place()).toBe(1);
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'accepted' });
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'accepted' });
   });
 
   it('a model-named finale lock is refused under its own clause, never escalated', async () => {
@@ -127,12 +147,16 @@ describe('the applier never guesses (BOOK-206)', () => {
     // The gates are not this path's to override: without gate C's column, nothing is placed.
     db.prepare('UPDATE comments SET audit_verdict = NULL WHERE id = ?').run(id);
 
+    // The first tick holds the answer, the second asks it once more, and the second failure is
+    // the refusal sink: an answer the applier cannot place never waits on the page as «ждёт».
     for (let tick = 0; tick < 3; tick += 1) expect(context.place()).toBe(0);
-    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: TRIAGE_MAX_TRIES });
-    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'refused', tries: TRIAGE_MAX_TRIES });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'rejected', reason: OUR_FAILURE_LINE });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.defect'`).get()).toEqual({ n: 1 });
-    // The page names the attempt as failed, and the row claims no reading.
-    expect(toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms).attempt).toBe('failed');
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 1 });
+    // The page offers the retry, because the failure was ours and the idea was not judged.
+    const dto = toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms);
+    expect(dto).toMatchObject({ status: 'rejected', reason: OUR_FAILURE_LINE, retryable: true });
   });
 
   it('does not call an acceptance that wrote nothing a placement (BOOK-206 B2)', async () => {
@@ -174,11 +198,12 @@ describe('the applier never guesses (BOOK-206)', () => {
     };
     expect(placeFiling(options, id)).toBe(false);
     expect(placeFiling(options, id)).toBe(false);
-    // Nothing was announced — a push here would say «отклонена» for a filing nobody placed.
+    // Nothing was announced as a placement — a push here would say «принята» for a filing the
+    // applier could not place. The second failure is the refusal sink, in our own words.
     expect(frames).toEqual([]);
     expect(notified).toEqual([]);
-    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
-    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: TRIAGE_MAX_TRIES });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'rejected', reason: OUR_FAILURE_LINE });
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'refused', tries: TRIAGE_MAX_TRIES });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.not-placed'`).get()).toEqual({ n: 1 });
   });
 
@@ -192,53 +217,135 @@ describe('the applier never guesses (BOOK-206)', () => {
     db.prepare('UPDATE comment_attempts SET verdict = ? WHERE comment_id = ? AND n = 1').run('{not json', id);
 
     for (let tick = 0; tick < 3; tick += 1) expect(context.place()).toBe(0);
-    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: TRIAGE_MAX_TRIES });
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'refused', tries: TRIAGE_MAX_TRIES });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.verdict-invalid'`).get()).toEqual({ n: 1 });
-    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
-    expect(toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms).attempt).toBe('failed');
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'rejected', reason: OUR_FAILURE_LINE });
+    const dto = toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms);
+    expect(dto).toMatchObject({ status: 'rejected', retryable: true });
   });
 });
 
-describe('a broken call is retried, counted, and shown — never a silent terminal row (BOOK-206)', () => {
-  it('backs off by the try, and at the cap hands over to the desperate sixth (B5, §10.8)', async () => {
+describe('a broken call is retried, counted, and corrected by the schedule — never a silent row (BOOK-206)', () => {
+  /** The ladder a broken provider walks, in the order the engine schedules it. */
+  const BACKOFFS = [60_000, 5 * 60_000, 20 * 60_000, 40 * 60_000];
+
+  it('backs off by the try, and the sixth attempt needs no model at all', async () => {
     context = await bootTriage();
     const { db, h } = context;
-    const id = await context.post();
+    // The floor's own intent must be a sentence the chapter accepts: this one is.
+    const id = await context.post({ proposedText: INTENT });
 
     // The script is empty: every pulse is a broken call, which is exactly the case to bound.
     await context.pulse();
     expect(attemptOf(db, id)).toMatchObject({ outcome: 'submitted', tries: 1, verdict: null });
-    expect(Date.parse(attemptOf(db, id).next_at as string) - h.clock.ms).toBe(TRIAGE_BACKOFF_MS[0]);
+    expect(Date.parse(attemptOf(db, id).next_at as string) - h.clock.ms).toBe(60_000);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 1 });
 
-    // Every rung of the ladder: 60 s, 10 min, 6 h, 6 h, then the cap.
-    for (const [index, backoff] of TRIAGE_BACKOFF_MS.entries()) {
+    // The ladder is 60 s → 5 min → 20 min → 40 min between model calls.
+    expect(TRIAGE_BACKOFF_MS).toEqual(BACKOFFS);
+
+    for (const [index, backoff] of BACKOFFS.entries()) {
       h.clock.advance(backoff + 1);
       await context.pulse();
-      // After the second, third and fourth failures a next rung is set; the fifth is the cap.
-      if (index < TRIAGE_BACKOFF_MS.length - 2) {
-        expect(Date.parse(attemptOf(db, id).next_at as string) - h.clock.ms).toBe(TRIAGE_BACKOFF_MS[index + 1]);
+      if (index < 2) {
+        expect(attemptOf(db, id)).toMatchObject({ tries: index + 2 });
+        expect(Date.parse(attemptOf(db, id).next_at as string) - h.clock.ms).toBe(BACKOFFS[index + 1]);
       }
     }
+
+    // Five model calls, then the engine's own sixth attempt: the floor rung, no call bought.
+    expect(context.calls).toHaveLength(TRIAGE_MAX_TRIES - 1);
+    expect(attemptOf(db, id)).toMatchObject({ tries: TRIAGE_MAX_TRIES, desperate: 1, verdict: expect.any(String) });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', audit_verdict: 'FITS' });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.desperate'`).get()).toEqual({
+      n: 1,
+    });
+
+    // The applier places it, and the record leaves every queue: no field of the page promises a wait.
+    expect(context.place()).toBe(1);
+    const row = readCommentRow(db, id)!;
+    expect(row).toMatchObject({ status: 'accepted', disposition: 'as_said' });
+    expect(dueTriage(db, new Date(h.clock.ms + 24 * 60 * 60_000).toISOString())).toEqual([]);
+    const dto = toCommentDto(db, row, h.clock.ms);
+    expect(JSON.stringify(dto)).not.toContain('в очереди');
+    expect(JSON.stringify(dto)).not.toContain('ждёт');
+
+    // Nothing retries it: no tick, no applier, no model — the row is decided for good.
+    const callsBefore = context.calls.length;
+    h.clock.advance(6 * 60 * 60_000);
+    await context.pulse();
+    expect(context.calls).toHaveLength(callsBefore);
+    expect(context.place()).toBe(0);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 5 });
+  });
+
+  it('refuses a filing whose floor cannot apply, with the one sentence and one alert', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    // An order about the prose itself: the floor's intent guard refuses it, so the sixth failure
+    // is the refusal — once, both for the page and for the operator.
+    const id = await context.post({ proposedText: 'сократи абзац и убери повтор' });
+
+    for (let tryNo = 1; tryNo <= BACKOFFS.length + 1; tryNo += 1) {
+      await context.pulse();
+      if (tryNo <= BACKOFFS.length) h.clock.advance(BACKOFFS[tryNo - 1]! + 1);
+    }
+
+    expect(context.calls).toHaveLength(TRIAGE_MAX_TRIES - 1);
+    const row = readCommentRow(db, id)!;
+    expect(row).toMatchObject({ status: 'rejected', disposition: null, reason: TRIAGE_REFUSED_LINE });
+    expect(row.decided_at).not.toBeNull();
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'refused', desperate: 1, next_at: null });
     expect(context.alerts).toHaveLength(1);
     expect(context.alerts[0]).toMatchObject({ kind: 'triage' });
-    expect(context.alerts[0]?.detail).toContain('desperate sixth');
-    const failed = db.prepare(`SELECT meta FROM comment_events WHERE type = 'triage.failed'`).all() as Array<{
-      meta: string;
-    }>;
-    expect(failed).toHaveLength(TRIAGE_MAX_TRIES);
-    // The cap is a fact in the event's own meta: the site draws the desperate frame from it.
-    expect(JSON.parse(failed.at(-1)!.meta)).toMatchObject({ cap: true, desperate: true });
-    expect(JSON.parse(failed[0]!.meta).cap).toBeUndefined();
-
-    // §10.8: no sixth call and no next day — the site settles the sixth without a model call.
-    expect(attemptOf(db, id)).toMatchObject({ tries: TRIAGE_MAX_TRIES, next_at: null, desperate: 1, verdict: null });
-    expect(context.place()).toBe(1);
-    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: 6, desperate: 1 });
-    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
-    // One settlement, not a loop.
+    const dto = toCommentDto(db, row, h.clock.ms);
+    expect(dto.reason).toBe(TRIAGE_REFUSED_LINE);
+    expect(JSON.stringify(dto)).not.toContain('в очереди');
     expect(context.place()).toBe(0);
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM changes`).get()).toEqual({ n: 0 });
+  });
+
+  it('keeps a lock’s own sentence at the sixth, and never borrows our failure for it', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    const id = await context.post({ proposedText: INTENT });
+    // The law refuses the text: a harm lock the floor may not override with a FITS reading.
+    db.prepare("UPDATE comments SET guard = 'legal' WHERE id = ?").run(id);
+
+    for (let tryNo = 1; tryNo <= BACKOFFS.length + 1; tryNo += 1) {
+      await context.pulse();
+      if (tryNo <= BACKOFFS.length) h.clock.advance(BACKOFFS[tryNo - 1]! + 1);
+    }
+
+    // A lock was judged: the page reads the lock's own clause, the chain carries it, and the
+    // retry door stays shut — this was not our failure.
+    const sentence = HARM_LOCK_LINES.unpublishable;
+    const row = readCommentRow(db, id)!;
+    expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'harm', reason: sentence });
+    const dto = toCommentDto(db, row, h.clock.ms);
+    expect(dto).toMatchObject({ status: 'rejected', retryable: false, reason: sentence });
+    expect(JSON.stringify(dto)).not.toContain('не дошло');
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'refused', desperate: 1 });
+  });
+
+  it('keeps a recorded OFF’s own sentence at the sixth, and offers no retry for it', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    const id = await context.post({ proposedText: INTENT });
+    // Gate C already read the filing as outside the book: the floor may not contradict it with a
+    // FITS reading, and the stored sentence is the one the reader is owed.
+    const sentence = 'вне книги: бумага не меняет ни одного факта';
+    db.prepare("UPDATE comments SET audit_verdict = 'OFF', audit_reason = ? WHERE id = ?").run(sentence, id);
+
+    for (let tryNo = 1; tryNo <= BACKOFFS.length + 1; tryNo += 1) {
+      await context.pulse();
+      if (tryNo <= BACKOFFS.length) h.clock.advance(BACKOFFS[tryNo - 1]! + 1);
+    }
+
+    const row = readCommentRow(db, id)!;
+    expect(row).toMatchObject({ status: 'rejected', reason: sentence });
+    const dto = toCommentDto(db, row, h.clock.ms);
+    expect(dto).toMatchObject({ status: 'rejected', retryable: false, reason: sentence });
+    expect(JSON.stringify(dto)).not.toContain('не дошло');
   });
 
   it('a paused day hands out nothing and touches no row', async () => {
@@ -257,6 +364,14 @@ describe('a broken call is retried, counted, and shown — never a silent termin
     expect(context.calls).toHaveLength(0);
     expect(attemptOf(db, id)).toMatchObject({ tries: 0, claim_by: null, next_at: null });
     expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+
+    // No clock ends it either: a paused day is a wait, and the row is where it was — the attempt
+    // counter has not moved, so nothing has been spent and nothing may be decided.
+    h.clock.advance(60 * 60_000);
+    expect(await context.client.nextTriage('writer-triage-test')).toEqual({ assignment: null, reason: 'budget' });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null, reason: null });
+    expect(attemptOf(db, id)).toMatchObject({ tries: 0, outcome: 'submitted', desperate: 0 });
+    expect(context.calls).toHaveLength(0);
   });
 });
 

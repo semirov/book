@@ -18,6 +18,7 @@ import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
 import { normalizeVerification, verificationSchema } from '../ledger/graph/verification.ts';
 import * as bodies from './bodySchemas.ts';
+import { registerRefuseRoutes } from './refuseRoutes.ts';
 import { registerTriageRoutes } from './filingTriage.ts';
 import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
 import { registerWriterDoors } from './writerDoors.ts';
@@ -108,6 +109,11 @@ const landBody = z.object({
   /** BOOK-173 §4: the mode the pass ran, and the estimate it was opened with. */
   mode: z.enum(['patch', 'rewrite']).optional(),
   estimateUsd: z.number().min(0).max(100).optional(),
+  /**
+   * BOOK-222: the lane's own landing is a candidate — validated and held on the step, published by
+   * the close, never before. A refusal drops it and the site keeps the text it already serves.
+   */
+  provisional: z.boolean().optional(),
 });
 
 const verdictBody = z.object({
@@ -253,6 +259,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         sentences: body.sentences,
         mode: body.mode,
         estimateUsd: body.estimateUsd,
+        provisional: body.provisional,
       }),
     };
   });
@@ -325,14 +332,12 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     return {
       ok: true,
       data: options.engine.escalate(body.leaseId, body.because, {
-        model: body.model,
-        tokensIn: body.tokensIn,
-        tokensOut: body.tokensOut,
-        cause: body.cause,
-        provenance: body.provenance,
+        model: body.model, tokensIn: body.tokensIn, tokensOut: body.tokensOut,
+        cause: body.cause, provenance: body.provenance,
       }),
     };
   });
+  registerRefuseRoutes(app, options.engine); // the refusal's own door
   /** BOOK-117: reopen a landed, escalated step so the gates it now satisfies can close it. */
   app.post('/internal/reopen', async (request) => {
     const body = reopenBody.parse(request.body ?? {});

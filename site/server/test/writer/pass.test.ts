@@ -221,14 +221,14 @@ describe('runPass — one pass, end to end', () => {
       const result = await harness.run({ chapter: CHAPTER });
       expect(result.status).toBe('closed');
 
-      const step = stepRow(harness.fixture, result.stepId ?? '');
-      expect(step?.cycle).toBe(1);
+      expect(stepRow(harness.fixture, result.stepId ?? '')?.cycle).toBe(1);
 
-      const revisions = harness.fixture.db
-        .prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = ?')
-        .get(CHAPTER) as { n: number };
-      expect(revisions.n).toBe(2);
-
+      // BOOK-222: both the draft and the gate's revision land — as **candidates** — and one close
+      // publishes one text: the revision the gates read last.
+      expect(harness.engineCalls.filter((call) => call === 'land')).toHaveLength(2);
+      expect(harness.fixture.readChapter(CHAPTER)).toContain('правка');
+      const revisions = harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = ?').get(CHAPTER);
+      expect(revisions).toEqual({ n: 1 });
       const stages = listStages(harness.fixture.db, CHAPTER);
       // Two rounds of editor + consultant (start and answer each), plus Gate B per revision.
       expect(stages.filter((stage) => stage.stage === 'verdict')).toHaveLength(10);

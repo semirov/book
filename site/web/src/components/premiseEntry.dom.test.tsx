@@ -185,6 +185,8 @@ describe('one filing, one entry (BOOK-137)', () => {
     // No contradiction with the queue line: the premise holds no queue place, and nothing on
     // the page presents it as queued.
     expect(container.querySelector('#discussion .qline')?.textContent).toContain(queueLabel(0));
+    // Nothing on this page presents the filing as waiting: the queue line is the only place a
+    // wait is spoken of, and this row holds no queue place.
     expect(count(text, 'ждёт')).toBe(0);
     // The work sentence names the work («правок в работе нет»); no row does.
     const labels = [...container.querySelectorAll('.premise-label')].map((row) => row.textContent);
@@ -326,8 +328,13 @@ describe('one filing, one entry (BOOK-137)', () => {
 
     const text = container.textContent ?? '';
     // One state word, one human sentence — and the engine's own code never on the page.
-    expect(count(text, 'ждёт')).toBe(1);
+    // BOOK-219: an attempt that came back empty no longer adds a promise of a wait, so the one
+    // line under «принято» is the attempt's own and nothing else.
+    expect(count(text, STATE_WORDS.accepted)).toBe(1);
+    // BOOK-218's own sentence for a failed attempt says the filing waits — the page prints it once
+    // under the row, and never as a second wait of its own.
     expect(count(text, FAILED_ATTEMPT_LINE)).toBe(1);
+    expect(count(text, 'ждёт')).toBe(1);
     expect(container.querySelector('#ch-40 .premise-note')?.textContent).toBe(FAILED_ATTEMPT_LINE);
     expect(container.querySelector('.premise-row .premise-note')).toBeNull();
     expect(text).not.toContain('PROVIDER_SHAPE');

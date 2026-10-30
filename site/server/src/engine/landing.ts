@@ -12,11 +12,23 @@ import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { parseFront } from '../ingest/parseFront.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
+import { toIso } from '../util/time.ts';
+import { frameIntact } from '../ingest/frameGuard.ts';
+import { appendEvent } from '../history/log.ts';
 import { currentRev } from './close.ts';
+import { measureDelta } from './helpers.ts';
+import { scanStepDelta } from './rightsScan.ts';
 import { settleLanding, type LandingPlan } from './ripple.ts';
-import { readChapterRows, readFrontRows, type ChapterText, type FrontText } from './text.ts';
+import {
+  chapterBodyOf,
+  readChapterRows,
+  readFrontRows,
+  type ChapterText,
+  type ChapterTextView,
+  type FrontText,
+} from './text.ts';
 import * as store from './store.ts';
-import type { EngineDeps } from './types.ts';
+import { refuse, type EngineDeps } from './types.ts';
 
 /** What a landing states about itself beyond its lease (BOOK-173 §2/§4). */
 export type LandingOptions = {
@@ -127,4 +139,153 @@ export function frontTarget(db: EngineDeps['db'], supplied: string | undefined):
   if (supplied === undefined) return readFrontRows(db);
   const raw = normalizeChapterText(supplied);
   return { ...parseFront(raw), exists: true, raw };
+}
+
+/** BOOK-137 — the frame's refusal, spoken by both doors: the guard and the ingest. */
+export const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой главы не меняется — правка остаётся бумагой';
+
+export type PublishResult = { rev: number; sha: string; changed: boolean };
+
+/**
+ * The character edits a landing held with its candidate, as the ingest reads them. A column that
+ * does not parse is no edits: the publish then re-segments the text (the old behaviour) instead of
+ * writing a sentence row nobody could vouch for.
+ */
+function parseSentences(raw: string | null): ReadonlyArray<SentencePatchEdit> | null {
+  if (raw === null || raw.trim().length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    const edits = parsed.filter((entry): entry is SentencePatchEdit => {
+      if (entry === null || typeof entry !== 'object') return false;
+      const edit = entry as Partial<SentencePatchEdit>;
+      return (
+        typeof edit.blockId === 'string' &&
+        typeof edit.newBlockId === 'string' &&
+        typeof edit.oldText === 'string' &&
+        typeof edit.newText === 'string' &&
+        typeof edit.from === 'number' &&
+        typeof edit.oldFragment === 'string' &&
+        typeof edit.newFragment === 'string'
+      );
+    });
+    return edits.length === 0 ? null : edits;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * BOOK-222 — publish the step's candidate, once, at the close.
+ *
+ * The text is the one the gates read (`candidate_text`): it is re-parsed, its frame is checked
+ * again, its own delta is scanned if no scan is on the step, and it goes through `ingestLanding`
+ * — the same applier `land` uses, with the character edits the landing held beside the candidate
+ * (`candidate_sentences`), so a patch keeps the sentence ids it moved. `landed_*`, the revision and
+ * the `step.landed` event are written here, and only here: a step that closes without publishing
+ * keeps none of them and the chapter keeps the text the reader already has.
+ *
+ * `null` means the step carries no candidate (a non-provisional landing, a `noWrite` close): the
+ * caller proceeds exactly as before.
+ */
+export function publishCandidate(deps: EngineDeps, step: store.StepRow, at: number): PublishResult | null {
+  const raw = step.candidate_text;
+  const sha = step.candidate_sha;
+  if (raw === null || sha === null) return null;
+
+  const front = step.pass === 'front';
+  const chapter = front || step.chapter === null ? null : chapterTarget(deps.db, step.chapter, raw);
+  const target = front ? frontTarget(deps.db, raw) : chapter;
+  if (target === null) refuse('TARGET_MISSING', 409, 'the step has no text to publish');
+  // The candidate's sha is the fact the gates answered about; a text that no longer parses to it
+  // is not the text they read.
+  if (target.sha256 !== sha) {
+    refuse('CANDIDATE_MOVED', 409, 'the candidate no longer matches the sha its gates read');
+  }
+  if (!front && step.chapter !== null && chapter !== null && !frameIntact(step.chapter, chapter.raw)) {
+    refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE);
+  }
+
+  // Gate B on the delta, if the step did not scan at its provisional landing (a step that landed
+  // before this rule). A non-releasable hit refuses the publication: nothing is served.
+  const state = step.rights_scan === null ? scanStepDelta(step, chapter) : null;
+  if (state !== null && state.refusal !== null) {
+    refuse('RIGHTS_STOPLIST', 409, state.refusal, { rule: state.rule, block: state.block });
+  }
+
+  const changedFromStart = step.start_sha === null || sha !== step.start_sha;
+  // BOOK-222: the patch's character edits travelled with the candidate (`steps.candidate_sentences`)
+  // because the text they edit did not exist before this publish; they are what keeps sentence ids
+  // across the write. A candidate that carried none (a rewrite, a gate's revision) applies none.
+  const sentences = parseSentences(step.candidate_sentences);
+  const ingested: IngestOutcome = changedFromStart
+    ? ingestLanding(deps, step, at, raw, sentences === null ? {} : { sentences })
+    : { rev: null, changed: false, frameRejected: false, planned: null };
+  if (ingested.frameRejected && step.chapter !== null) {
+    const fresh = chapterTarget(deps.db, step.chapter, raw);
+    refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE, { intact: frameIntact(step.chapter, fresh.raw) });
+  }
+  const revAfter = changedFromStart
+    ? (ingested.rev ??
+      (step.chapter === null
+        ? (step.rev_before ?? 0) + 1
+        : Math.max(currentRev(deps.db, step.chapter), (step.rev_before ?? 0) + 1)))
+    : (step.rev_before ?? 0);
+  const measured = measureDelta(step, chapter?.blocks ?? []);
+
+  store.updateStep(deps.db, step.step_id, {
+    start_sha: step.start_sha ?? sha,
+    landed_at: toIso(at),
+    landed_sha: sha,
+    rev_after: revAfter,
+    blocks_touched: measured.touched,
+    chars_delta: measured.delta,
+    rights_scan: step.rights_scan ?? state?.stored ?? null,
+    // The publication is the end of the candidate: a second close cannot publish it again.
+    candidate_text: null,
+    candidate_sha: null,
+    candidate_sentences: null,
+  });
+  appendEvent(
+    deps.db,
+    {
+      kind: 'step.landed',
+      stepId: step.step_id,
+      cascadeId: step.cascade_id,
+      chapter: step.chapter,
+      isFront: front,
+      rev: step.chapter === null ? null : revAfter,
+      payload: { sha, revision: false, provisional: true, deltaRatio: measured.ratio },
+    },
+    at,
+  );
+  return { rev: revAfter, sha, changed: changedFromStart && ingested.changed };
+}
+
+/**
+ * BOOK-222 — the text a prompt may quote of a chapter that has a candidate.
+ *
+ * `POST /internal/text` answers with rows, and the rows are the text the **site serves**. While a
+ * pass holds a candidate, the text the pass and its gates must read is the candidate — never the
+ * served chapter, and never a version of it the gates were not handed. So the door prefers the
+ * candidate of an open step on that chapter; the reader's own view still comes from the rows.
+ */
+export function candidateViewOf(db: EngineDeps['db'], n: number): ChapterTextView | null {
+  const row = db
+    .prepare(
+      `SELECT candidate_text FROM steps
+        WHERE chapter = ? AND outcome IS NULL AND candidate_text IS NOT NULL
+        ORDER BY at DESC LIMIT 1`,
+    )
+    .get(n) as { candidate_text: string } | undefined;
+  if (row === undefined) return null;
+  const parsed = parseChapter(n, normalizeChapterText(row.candidate_text));
+  return {
+    n,
+    title: parsed.title,
+    exists: true,
+    basis: parsed.basis,
+    chars: parsed.chars,
+    text: parsed.blocks.length === 0 ? '' : `${chapterBodyOf(parsed.blocks)}\n`,
+  };
 }

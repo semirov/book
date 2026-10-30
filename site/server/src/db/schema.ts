@@ -46,6 +46,16 @@
  * BOOK-220 (v35, BOOK-DOC-84 §10.8) adds the ladder's own facts: `steps.desperate`/
  * `steps.widened` and `comment_attempts.widened`/`desperate`, plus the two stages `revising` and
  * `desperate` in `pass_stages` (`migrateV35.ts`).
+ * v36 adds the candidate (BOOK-222): `steps.candidate_text`/`candidate_sha` hold the text a pass
+ * wrote and no gate has blessed yet (nothing is served before the verdict), and the gate tables
+ * record the sha a gate was handed and who answered (`gate_verdicts.source`: model or mechanical).
+ * v37 gives the attempt ledger the ladder's operator note (BOOK-206, owner 2026-10-29 — attempts,
+ * not hours): `widening_note` says why the third failure widened the reading. `widened` carries
+ * the code from `stateWords.ts`, and `desperate` marks the sixth attempt the engine answers with
+ * the coded floor rung, no model.
+ * v38 (BOOK-222 follow-up) adds `steps.candidate_sentences`: the patch's character edits held
+ * with the candidate, because the close — not `land` — is where that text is published and the
+ * sentence ledger can keep its ids (`migrateV38.ts`).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
@@ -62,7 +72,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 38;
 
 /**
  * BOOK-209 (v34) — the reader's place: one row per identity, so a second device resumes where

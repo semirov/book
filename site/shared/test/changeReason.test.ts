@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { attemptOfLine, queueAttemptsLine } from '../src/attempt.ts';
 import { holdsInternalCode, readerReason } from '../src/change.ts';
-import { ATTEMPT_LINE, STOP_REASONS } from '../src/stateWords.ts';
+import { ATTEMPT_LINE, FAILED_ATTEMPT_LINE, STOP_REASONS, TRIAGE_REFUSED_LINE } from '../src/stateWords.ts';
 
 /**
  * A public reason is a sentence a reader may read.
@@ -28,8 +29,11 @@ describe('readerReason', () => {
 
   it('replaces an off-shape model answer with the deck’s line', () => {
     expect(readerReason('модель не ответила: PROVIDER_SHAPE')).toBe(STOP_REASONS.shape);
-    expect(STOP_REASONS.shape).toBe(STOP_REASONS.shape);
+    // BOOK-218 owns the sentence a stored code becomes: it is our failure, and it is retryable.
     expect(STOP_REASONS.shape).toMatch(/^не дошло: /u);
+    // A filed attempt's own line is a different fact from a stop: it is the attempt that failed.
+    expect(FAILED_ATTEMPT_LINE.length).toBeGreaterThan(0);
+    expect(FAILED_ATTEMPT_LINE).not.toMatch(/в очереди|исчерпа/iu);
   });
 
   it('names the engine’s silence, in either spelling', () => {
@@ -46,7 +50,8 @@ describe('readerReason', () => {
 
   it('falls back to one plain line for any other code, and never lets a code through', () => {
     expect(readerReason('движок отказал: PROVIDER_ONLY_CODE')).toBe(ATTEMPT_LINE);
-    expect(ATTEMPT_LINE).toBe('попытка не удалась — правка ждёт');
+    expect(ATTEMPT_LINE).not.toBe(FAILED_ATTEMPT_LINE);
+    expect(ATTEMPT_LINE).not.toMatch(/в очереди|исчерпа/iu);
     const raw = ['модель не ответила: PROVIDER_SHAPE', 'движок: ENGINE_TIMEOUT', 'стоп: GATE_ABORT_X'];
     for (const line of raw) expect(readerReason(line) ?? '').not.toMatch(/[A-Z]{2,}_[A-Z]/u);
   });
@@ -75,5 +80,21 @@ describe('readerReason', () => {
     expect(readerReason(human)).toBe(human);
     // Another snake word is not a code either — the list is the engine's handles, not a shape.
     expect(holdsInternalCode('правка прошла: second_pass')).toBe(false);
+  });
+});
+
+/**
+ * The owner's correction (2026-10-29): «нет, сроков не надо — только конечное количество
+ * попыток». A record may show a count; a sentence may never promise a wait.
+ */
+describe('an attempt is a count, never a wait', () => {
+  it('names a filing’s place in the count, and the queue’s end in the same words', () => {
+    expect(attemptOfLine(4)).toBe('попытка 4 из 6');
+    expect(attemptOfLine(6, 6)).toBe('попытка 6 из 6');
+    expect(queueAttemptsLine()).toBe('заявка не дошла до главы за 6 попыток');
+    expect(queueAttemptsLine(3)).toBe('заявка не дошла до главы за 3 попыток');
+    for (const line of [attemptOfLine(2), queueAttemptsLine(), TRIAGE_REFUSED_LINE]) {
+      expect(line).not.toMatch(/ждёт|в очереди|исчерпа|час|минут/iu);
+    }
   });
 });

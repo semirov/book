@@ -137,7 +137,7 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
         log(
           result.desperate === true
             ? `[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки не дали ответа — шестая, последняя, без звонка модели`
-            : `[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки за день — следующее чтение после 00:00 UTC`,
+            : `[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки — заявка отклонена`,
         );
       }
     } catch (error) {

@@ -50,10 +50,13 @@ export function budgetBreach(budget: CascadeBudget, state: BudgetState, addsChap
 
 /** The public, one-line reason a change carries when the ripple was stopped by a bound. */
 export function budgetReason(breach: Exclude<BudgetBreach, null>, budget: CascadeBudget): string {
+  // One register for every bound: the line names the boundary in words and says what happened to
+  // the text (the refusal's own vocabulary). «нужно решение» was a third state that does not
+  // exist — a stop is a refusal, and the filing left the queue.
   switch (breach) {
     case 'wave':
-      // BOOK-59: with one wave the bound is not a failure — it is where a deeper change asks
-      // for the owner's decision. The line says so, and never names a budget or a number run.
+      // BOOK-59: with one wave the bound is not a failure — it is where a deeper change would
+      // have needed the owner. The line says so, and never names a budget or a number run.
       return budget.maxWave === 1
         ? 'правка сделала одну волну — вторая волна только по решению владельца'
         : `правка ушла глубже ${String(budget.maxWave)} волн — дальше только по решению владельца`;

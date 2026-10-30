@@ -9,6 +9,11 @@
  * BOOK-219 shares this scenario: a first write cannot be put back, so the park has to say the
  * text stands unverified (`readerSentences.unverified`) instead of claiming a queue place — a
  * parked pass escalates the change, and an escalated change is terminal.
+ *
+ * BOOK-222 moved the first sentence of that story: the first write is a **candidate** now, so a
+ * broken pass publishes nothing at all — the park says our check did not arrive, and the premise
+ * stays queued for the pass that answers for it. The `refused` cause (the model's own no) is
+ * unchanged: it is a refusal of the filing and ends it.
  */
 
 import { existsSync } from 'node:fs';
@@ -19,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import type { PassDeps } from '../../src/writer/pass.ts';
 import { runPass } from '../../src/writer/pass.ts';
 import { ProviderError } from '../../src/writer/provider.ts';
-import { readerSentences } from '../../src/writer/reasons.ts';
+import { readerFallbacks, readerSentences } from '../../src/writer/reasons.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
@@ -31,14 +36,14 @@ const changeRow = (harness: Harness, id: string): Record<string, unknown> | unde
     | undefined;
 
 describe('a parked pass tells a broken call from a refusal', () => {
-  it('parks a failed gate call as `failed`, and says the first text stands unverified', async () => {
+  it('parks a failed gate call as `failed`, and leaves the first write unpublished', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer());
       const answered = harness.provider;
       let calls = 0;
-      // The gate's re-ask is the call that dies: the revision is on disk and landed by then.
+      // The gate's re-ask is the call that dies: the candidate is on the step by then.
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
@@ -55,20 +60,21 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const result = await runPass(deps);
 
       expect(result.status).toBe('parked');
-      // BOOK-219: this chapter had no revision behind it, so nothing can be put back — and the
-      // sentence says what is true: the new text stands, unverified, and the filing waits.
-      expect(result.reason).toBe(readerSentences.unverified);
+      // BOOK-222: the text the broken pass wrote was a **candidate** — nothing was served, so the
+      // sentence says our check did not arrive, never that a text stands in the book.
+      expect(result.reason).toBe(readerFallbacks.gate);
       expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
-      // The chapter the broken pass wrote is the first edition the premise entered.
-      expect(harness.fixture.readChapter(CHAPTER)).not.toBeNull();
+      // The chapter the broken pass wrote never entered the book: no rows, no revision.
+      expect(harness.fixture.readChapter(CHAPTER)).toBeNull();
+      expect(
+        harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = ?').get(CHAPTER),
+      ).toEqual({ n: 0 });
       expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
-      expect(changeRow(harness, changeId)).toEqual({
-        status: 'done',
-        outcome: 'applied',
-        reason: 'вошло в первую редакцию главы 40',
-      });
+      // The premise is still queued: nothing was published, so no first edition took it.
+      expect(changeRow(harness, changeId)).toEqual({ status: 'pending', reason: null, outcome: null });
       // The step is still an escalation — the pass broke — and one stage carries the sentence.
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
+      expect(stepRow(harness.fixture, result.stepId ?? '')?.candidate_sha).toBeNull();
       expect(listStages(harness.fixture.db, CHAPTER).at(-1)?.stage).toBe('refused');
     } finally {
       await harness.close();

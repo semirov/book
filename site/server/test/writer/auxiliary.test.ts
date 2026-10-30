@@ -202,7 +202,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
     }
   });
 
-  it('parks a landed first write when the gate never answers, and says the text stands unverified', async () => {
+  it('parks a first write the gate never answered, and says the text is ours to retry', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
@@ -220,22 +220,31 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      // BOOK-219: a chapter with no revision behind it cannot be put back, so the pass does not
-      // pretend a close is imminent — it says the new text stands, unverified, and escalates.
-      expect(harness.engineCalls).not.toContain('done');
+      // BOOK-222: the first write is a **candidate**, so a gate that never answers serves nothing —
+      // the chapter the reader has is the chapter he had, and the note says only what went wrong:
+      // our check did not arrive. The close is still tried (it is what would publish the candidate)
+      // and the engine refuses it, because the verdict the dead gate owed is not there.
+      expect(harness.engineCalls).toContain('done');
+      expect(result.code).toBe('ENGINE_TIMEOUT');
       expect(harness.engineCalls).toContain('escalate');
+      expect(harness.engineCalls).not.toContain('restore');
+      expect(harness.fixture.readChapter(CHAPTER)).toBeNull();
+      expect(
+        harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = ?').get(CHAPTER),
+      ).toEqual({ n: 0 });
       const note = noteOf(harness, result.stepId ?? '');
-      expect(note).toBe(readerSentences.unverified);
+      expect(note).toBe(readerFallbacks.gate);
       expect(note).not.toMatch(CODE_TOKEN);
       expect(note.match(/:/gu) ?? []).toHaveLength(1);
       // The code and its detail are in the log, which is where an operator looks.
       expect(parkedLine(harness)).toContain('ENGINE_TIMEOUT');
       expect(parkedLine(harness)).toContain('did not answer within 60000 ms');
-      // The reader's intervention was written into the book, so it is applied, not dropped.
+      // Nothing was published, so nothing entered a first edition: the premise is still queued for
+      // the pass that answers for it — the filing is not judged, and not spent either.
       const change = harness.fixture.db
         .prepare('SELECT status, outcome FROM changes WHERE id = ?')
         .get(changeId);
-      expect(change).toEqual({ status: 'done', outcome: 'applied' });
+      expect(change).toEqual({ status: 'pending', outcome: null });
     } finally {
       await harness.close();
     }

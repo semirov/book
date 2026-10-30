@@ -130,6 +130,11 @@ export type LandView = {
    * writer reacts to it — it never computes a closure of its own, because it owns no ledger.
    */
   plan?: RipplePlan | null;
+  /**
+   * BOOK-222: the text is held on the step and **nothing was served** — the close publishes it.
+   * `landed` still says «the step holds this text», which is what lets a gate read it.
+   */
+  provisional?: boolean;
 };
 
 export type VerdictView = {
@@ -216,6 +221,11 @@ export type LandInput = {
   /** The mode the pass ran and the estimate it was opened with — recorded with the plan. */
   mode?: 'patch' | 'rewrite';
   estimateUsd?: number;
+  /**
+   * BOOK-222: the lane's own landing holds its text as a **candidate** — nothing is served until
+   * the close publishes it. A refusal drops it and the chapter keeps the text it already has.
+   */
+  provisional?: boolean;
 };
 
 /** What an escalation reports about the model calls it made before it parked (BOOK-117). */

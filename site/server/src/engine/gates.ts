@@ -16,7 +16,6 @@ import type { Finding, FindingSeverity, GateRole } from '@book/shared';
 import { normalizeRetroMode } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { isRightsRule, rightsRefusalLine, type RightsRuleId } from '../rights/rules.ts';
 import { toIso } from '../util/time.ts';
 import { changeForStep, readRightsScan } from './helpers.ts';
 import { requirePipelineModel } from './model.ts';
@@ -107,6 +106,15 @@ export type GateAssignment = {
 
 const SEVERITIES = new Set<FindingSeverity>(['blocker', 'major', 'minor']);
 
+/**
+ * BOOK-222 — the sha of the text a gate reads. A step's text is its **candidate** while the pass
+ * is open (nothing is published before the verdict) and its `landed_sha` once the text is served
+ * (a non-provisional landing, a reopened step). `null` means there is no text to read yet.
+ */
+export function gateTextSha(step: StepRow): string | null {
+  return step.candidate_sha ?? step.landed_sha;
+}
+
 function text(value: unknown, max: number): string {
   const raw = typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim() : '';
   return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
@@ -157,8 +165,9 @@ export function openDispatch(
   const at = toIso(now);
 
   if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
+  const textSha = gateTextSha(step);
+  if (textSha === null) {
+    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text and no candidate — a gate cannot bless a file it has not seen`);
   }
   // BOOK-173 §7: a dispatched gate always sees the plan its change stands on — for a **ripple**.
   // The engine writes the plan row in the same transaction that gives a change the `ripple`
@@ -188,6 +197,7 @@ export function openDispatch(
     session,
     dispatched_at: existing && existing.session === session ? existing.dispatched_at : at,
     expires_at: expiresAt,
+    landed_sha: textSha,
   };
   upsertDispatch(deps.db, dispatch);
   return dispatch;
@@ -239,8 +249,14 @@ export function recordVerdict(
   if (dispatch.session !== session) {
     refuse('GATE_NOT_DISPATCHED', 409, `step ${step.step_id} was dispatched to another session`);
   }
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, 'a verdict for an unlanded file is refused (§6A.11)');
+  const textSha = gateTextSha(step);
+  if (textSha === null) {
+    refuse('NOT_LANDED', 409, 'a verdict for a step with no text is refused (§6A.11)');
+  }
+  if (dispatch.landed_sha !== null && dispatch.landed_sha !== textSha) {
+    // BOOK-222: the gate read one text and the step now holds another. Its answer describes a
+    // text nobody will serve, so it is refused — a gate blesses the candidate it was handed.
+    refuse('CANDIDATE_MOVED', 409, `the text moved under the ${answer.role} gate — read the new candidate`);
   }
 
   const findings = normalizeFindings(answer.findings);
@@ -263,6 +279,7 @@ export function recordVerdict(
     tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
     at,
     late: late ? 1 : 0,
+    source: 'model',
   });
 
   // The assignment is consumed by the answer; a revision will be dispatched again.
@@ -294,6 +311,7 @@ export function recordVerdict(
       tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
       at,
       late: late ? 1 : 0,
+      source: 'model',
     },
     action,
     downgraded,
@@ -358,7 +376,9 @@ export function assignmentOf(
     chapter: step.chapter,
     boundary: step.boundary,
     cycle: step.cycle,
-    landedSha: step.landed_sha,
+    // BOOK-222: the sha the gate is handed is the step's text — the **candidate** while the pass
+    // is open, the published landing otherwise.
+    landedSha: gateTextSha(step),
     note: step.note,
     indexSlice,
     plan,
@@ -373,115 +393,12 @@ export function assignmentOf(
  * different (may this text be in the book?), the answer is a different enum, and the scan that
  * demanded it is the whole brief — a rule id and the block it hit, never the book.
  */
-export type RightsAssignment = {
-  stepId: string;
-  role: typeof RIGHTS_ROLE;
-  session: string;
-  pass: string;
-  chapter: number | null;
-  landedSha: string | null;
-  /** The rule the scan flagged, so the session does not have to guess the question; `null` = clean. */
-  rule: string | null;
-  block: number | null;
-  expiresAt: string;
-};
 
-/** Hand a flagged step to a rights session. Order does not apply: B is not one of the two prose gates. */
-export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: string): RightsAssignment {
-  const now = deps.clock.now();
-  const at = toIso(now);
-  if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
-  if (step.landed_at === null) {
-    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
-  }
-  // A `clear` scan is still answered (owner, 2026-10-28): the writer submits the clean verdict
-  // mechanically, so the record says what was checked instead of saying nothing. A `flag` is the
-  // question this gate exists for, and `rule` names it.
-  const scan = readRightsScan(step);
-  const rule = scan?.verdict === 'flag' ? scan.rule : null;
-  if (getVerdict(deps.db, step.step_id, RIGHTS_ROLE)) {
-    refuse('GATE_ANSWERED', 409, `the rights gate already answered step ${step.step_id}`);
-  }
-  const existing = getDispatch(deps.db, step.step_id, RIGHTS_ROLE);
-  if (existing && existing.session !== session && existing.expires_at > at) {
-    refuse('GATE_TAKEN', 409, `step ${step.step_id} is being read by another rights session`);
-  }
-  const expiresAt = toIso(now + deps.config.gateTtlMs);
-  upsertDispatch(deps.db, {
-    step_id: step.step_id,
-    role: RIGHTS_ROLE,
-    session,
-    dispatched_at: existing && existing.session === session ? existing.dispatched_at : at,
-    expires_at: expiresAt,
-  });
-  return {
-    stepId: step.step_id,
-    role: RIGHTS_ROLE,
-    session,
-    pass: step.pass,
-    chapter: step.chapter,
-    landedSha: step.landed_sha,
-    rule,
-    block: scan !== null && scan.verdict === 'flag' ? (scan.block ?? null) : null,
-    expiresAt,
-  };
-}
-
-export type RightsAnswer = {
-  role: typeof RIGHTS_ROLE;
-  verdict: 'CLEAR' | 'REFUSED';
-  /** Required for `REFUSED` (an id from `rights/rules.ts`), forbidden for `CLEAR`. */
-  rule: string | null;
-  model: string;
-  tokensIn: number;
-  tokensOut: number;
-};
-
-/**
- * Record Gate B's answer for a step. The engine validates the rule against the closed table
- * and refuses a refusal it cannot print — a `REFUSED` without a sentence would be a silent
- * refusal, and a `CLEAR` that names a rule would be a second, contradictory answer. Nothing
- * here judges prose; it stores what the session said, under the session it was handed.
- */
-export function recordRightsVerdict(
-  deps: EngineDeps,
-  step: StepRow,
-  answer: RightsAnswer,
-  session: string,
-): { verdict: 'CLEAR' | 'REFUSED'; rule: string | null } {
-  const db = deps.db;
-  const at = toIso(deps.clock.now());
-  const dispatch = getDispatch(db, step.step_id, RIGHTS_ROLE);
-  if (!dispatch) refuse('GATE_NOT_DISPATCHED', 409, `no rights gate was dispatched for step ${step.step_id}`);
-  if (dispatch.session !== session) {
-    refuse('GATE_NOT_DISPATCHED', 409, `step ${step.step_id} was dispatched to another session`);
-  }
-  if (step.landed_at === null) refuse('NOT_LANDED', 409, 'a verdict for an unlanded file is refused (§6A.11)');
-  if (answer.verdict === 'CLEAR' && answer.rule !== null) {
-    refuse('RIGHTS_RULE_WITH_CLEAR', 422, 'a CLEAR names no rule');
-  }
-  if (answer.verdict === 'REFUSED') {
-    if (answer.rule === null) refuse('RIGHTS_RULE_REQUIRED', 422, 'a REFUSED needs a rule id');
-    if (!isRightsRule(answer.rule) || rightsRefusalLine(answer.rule) === null) {
-      refuse('RIGHTS_RULE_UNKNOWN', 422, `${answer.rule} is not in the rights table`);
-    }
-  }
-
-  const findings = answer.rule === null ? [] : [{ rule: answer.rule }];
-  const row: Omit<VerdictRow, 'late'> & { late: number } = {
-    step_id: step.step_id,
-    role: RIGHTS_ROLE,
-    verdict: answer.verdict,
-    findings: JSON.stringify(findings),
-    cycles: step.cycle,
-    model: text(answer.model, 120) || 'stub',
-    tokens_in: Math.max(0, Math.trunc(answer.tokensIn)),
-    tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
-    at,
-    late: dispatch.expires_at <= at ? 1 : 0,
-  };
-  upsertVerdict(db, row);
-  // The assignment is consumed by the answer, exactly as a prose gate's is.
-  deleteDispatch(db, step.step_id, RIGHTS_ROLE);
-  return { verdict: row.verdict as 'CLEAR' | 'REFUSED', rule: answer.rule === null ? null : (answer.rule as RightsRuleId) };
-}
+// BOOK-222: the rights gate's own half (its dispatch and its answer) lives in `rightsVerdict.ts`,
+// where a step's **candidate** sha is what it is handed; re-exported so no call site moved.
+export {
+  openRightsDispatch,
+  recordRightsVerdict,
+  type RightsAnswer,
+  type RightsAssignment,
+} from './rightsVerdict.ts';

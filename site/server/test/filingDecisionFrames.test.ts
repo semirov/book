@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { TRIAGE_REFUSED_LINE } from '@book/shared';
+
 import { appendCommentEvent } from '../src/comments/repo.ts';
 import { createEngine } from '../src/engine/service.ts';
 import { EngineBridge } from '../src/engineState/bridge.ts';
@@ -285,25 +287,23 @@ describe('BOOK-DOC-84 §10.1 — `filing:reading`, one frame per attempt', () =>
       narrator.tick();
     }
 
-    // The fifth failure marks the row `desperate` in the same transaction, and the ladder's
-    // fifth rung is still 5 of 5 — the sixth has not run yet.
+    // The fifth failure marks the row `desperate` in the same transaction: the ladder's sixth
+    // attempt is the engine's own floor, so the count the row carries is 6 and no call was bought.
     expect(
       h.db.prepare('SELECT tries, desperate FROM comment_attempts WHERE comment_id = ? AND n = 1').get(id),
-    ).toEqual({ tries: 5, desperate: 1 });
+    ).toEqual({ tries: 6, desperate: 1 });
     const fifth = readings().filter((frame) => frame.phase === 'failed').at(-1);
-    expect(fifth).toMatchObject({ attempt: 5, maxAttempts: 5, desperate: false, retryAt: null, reason: 'таймаут' });
+    expect(fifth).toMatchObject({ attempt: 5, maxAttempts: 5, desperate: false, retryAt: null });
 
-    // The site settles the sixth deterministically: no call, one event, and that frame is the sink.
+    // BOOK-219: the sixth attempt is the **engine's own** floor rung (`engine/triageFloor.ts`),
+    // so it spends no call and the applier has nothing to settle — five bought attempts, five
+    // frames, and a second tick over the same rows says nothing twice.
     poll({ db: h.db, emit: () => {}, notify: () => {}, now: h.clock.now });
     narrator.tick();
-    const sixth = readings().filter((frame) => frame.phase === 'failed').at(-1);
-    expect(sixth).toMatchObject({ attempt: 6, maxAttempts: 6, desperate: true, retryAt: null, reason: 'сбой вызова' });
-    // Exactly one frame per failure: five bought attempts, one settlement — and a second tick
-    // over the same rows says nothing twice.
-    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(6);
+    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(5);
     poll({ db: h.db, emit: () => {}, notify: () => {}, now: h.clock.now });
     narrator.tick();
-    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(6);
+    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(5);
   });
 
   it('says nothing for a withdrawn filing', async () => {
@@ -343,5 +343,62 @@ describe('BOOK-DOC-84 §10.1 — `filing:reading`, one frame per attempt', () =>
     h.clock.advance(60_000);
     engine.tick();
     expect(frames.filter((frame) => frame.type === 'filing:reading')).toEqual([]);
+  });
+});
+
+describe('BOOK-206 B5 — a refused read reaches the page as a decision', () => {
+  it('drains `triage.failed` of a refused triage as the reading’s own frame, once', async () => {
+    const h = await boot();
+    const id = await post(h);
+    // The engine's refusal, as `refuseTriage` leaves it: the row is decided, the attempt settled,
+    // and no hour is named anywhere — the filing has left every queue.
+    const at = '2026-10-25T12:10:00.000Z';
+    h.db.prepare(`UPDATE comments SET status = 'rejected', reason = ?, decided_at = ? WHERE id = ?`).run(
+      TRIAGE_REFUSED_LINE,
+      at,
+      id,
+    );
+    h.db
+      .prepare(`UPDATE comment_attempts SET outcome = 'refused', tries = 3, next_at = NULL WHERE comment_id = ?`)
+      .run(id);
+    const frames: Frame[] = [];
+    const engine = bridge(h, frames, { replay: true });
+
+    appendCommentEvent(h.db, id, 'triage.failed', at, {
+      code: 'TRIAGE_UNPLACED',
+      attempt: 1,
+      try: 3,
+      cap: true,
+      retryAt: null,
+    });
+
+    engine.tick();
+
+    // §10.1 (BOOK-220): the reading's own frame is the page's word for a failed try, and the
+    // row's sentence is read from the DTO — never a second `comment:decision` for one row.
+    const reading = frames.filter((frame) => frame.type === 'filing:reading');
+    expect(reading).toHaveLength(1);
+    expect(reading[0]?.data).toMatchObject({ commentId: id, chapter: 8, phase: 'failed' });
+    expect(frames.filter((frame) => frame.type === 'comment:decision')).toEqual([]);
+
+    // A second failure kind on the same refusal is its own row, told once: the abandoned claim
+    // carries the same row and no hour.
+    appendCommentEvent(h.db, id, 'triage.abandoned', '2026-10-25T12:20:00.000Z', {
+      attempt: 2,
+      tries: 3,
+      detail: 'claim-abandoned',
+    });
+    const seen = frames.length;
+    engine.tick();
+    const after = frames.slice(seen).filter((frame) => frame.type === 'filing:reading');
+    expect(after.length).toBeLessThanOrEqual(1);
+    for (const frame of after) {
+      expect(String((frame.data as { reason?: string }).reason ?? '')).not.toContain('00:00');
+    }
+
+    // The cursor has already passed both rows: a second tick narrates nothing.
+    const settled = frames.length;
+    engine.tick();
+    expect(frames.slice(settled).filter((frame) => frame.type === 'filing:reading')).toEqual([]);
   });
 });

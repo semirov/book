@@ -107,3 +107,23 @@ export function chronicleWorking(seq: number | null): string {
   return `${changeName(seq)} в работе`;
 }
 
+/**
+ * The stored author palette (§11.6): `CommentDto.authorColor` is written by the server and kept
+ * on the wire, and this list is the only authority on what a value may be.
+ *
+ * BOOK-199 (audit #21) — the book no longer paints it. Six colours for six readers measured
+ * 1.98–2.41:1 on the day paper and named nothing a reader could use: identity is the name, and
+ * a reader's own filing is marked by the word `ваше`. The palette stays so stored rows keep
+ * their shape; the sheet gives every name one ink (`--ink`).
+ */
+export const AUTHOR_COLORS = ['#6f9bb5', '#a98b6f', '#7d9b6f', '#9b7f9e', '#b58f6f', '#6f8fb5'] as const;
+
+/** Stable colour for a display name: same reader, same stored value, no server state. */
+export function authorColor(seed: string): string {
+  let hash = 2166136261;
+  for (const char of seed) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return AUTHOR_COLORS[hash % AUTHOR_COLORS.length] ?? AUTHOR_COLORS[0];
+}

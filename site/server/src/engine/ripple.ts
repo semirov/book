@@ -38,6 +38,7 @@ import { readSnapshot } from '../versions/snapshots.ts';
 import { toIso } from '../util/time.ts';
 import { newStepId } from '../util/ulid.ts';
 import { changeForStep, preBlocksOf, boundaryFor } from './helpers.ts';
+import { currentRev } from './closeRead.ts';
 import { acquireLease } from './leases.ts';
 import * as store from './store.ts';
 import { readChapterRows } from './text.ts';
@@ -147,9 +148,63 @@ export function planLanding(
   if (edited.length === 0) return null;
 
   const touched = [...edited.map((block) => block.id), ...replacedBlocksOf(db, chapter, revAfter)];
-  const seeds = seedFactsOf(db, touched);
   const after = readChapterRows(db, chapter).raw;
   const previous = previousText(deps, chapter, step.rev_before ?? Math.max(0, revAfter - 1));
+  return planText(deps, change, chapter, previous, after, touched, context);
+}
+
+/** A block as a landing's text carries it: the content-derived id, and the hash `start` counted. */
+export type LandingBlock = { id: string; hash: string };
+
+/**
+ * BOOK-222 — the plan of the text a pass **holds as a candidate**: computed at `land`, before
+ * anything is served, because the writer reacts to the closure before the gates spend (§4, §7)
+ * and the reader's line on the origin pass is written from it. The same plan the publish freezes
+ * again (`settleLanding`), so the two readings of one text cannot disagree: the ids are the ones
+ * this text will carry (a block id is content-derived), and a served block that text no longer
+ * holds is a block it replaced — which is where the facts the patch overruns are named.
+ *
+ * `null` when there is nothing to plan: not a `change` step, no change behind it, or a candidate
+ * that moved no block (a re-land of the same prose).
+ */
+export function planCandidate(
+  deps: EngineDeps,
+  step: store.StepRow,
+  after: string,
+  blocks: ReadonlyArray<LandingBlock>,
+  context: PlanContext = {},
+): LandingPlan | null {
+  if (step.pass !== 'change' || step.chapter === null) return null;
+  const { db } = deps;
+  const chapter = step.chapter;
+  const change = changeForStep(db, step);
+  if (change === undefined) return null;
+
+  const before = new Set(preBlocksOf(step).map((block) => block.hash));
+  const edited = blocks.filter((block) => !before.has(block.hash));
+  if (edited.length === 0) return null;
+  const kept = new Set(blocks.map((block) => block.id));
+  const replaced = listBlocks(db, chapter).filter((block) => !kept.has(block.id)).map((block) => block.id);
+  const previous = previousText(deps, chapter, step.rev_before ?? currentRev(db, chapter));
+  return planText(deps, change, chapter, previous, after, [...edited.map((block) => block.id), ...replaced], context);
+}
+
+/**
+ * The plan of one text, whatever wrote it: the seeds of the blocks it touched, the walk, then the
+ * one row per change. A rewrite is a whole-chapter decision and gets the empty `local` record
+ * instead (BOOK-173 §7) — the writer is answered `null` either way when there is no closure.
+ */
+function planText(
+  deps: EngineDeps,
+  change: store.ChangeRow,
+  chapter: number,
+  previous: string,
+  after: string,
+  touched: readonly string[],
+  context: PlanContext,
+): LandingPlan | null {
+  const { db } = deps;
+  const seeds = seedFactsOf(db, touched);
   // A rewrite is a whole-chapter decision, not a patch: «a patch fixes words; a ripple fixes
   // consequences», and only the first has a point to walk away from. The measure is the writer's
   // own patch bound (§6: 15 % of the chapter's characters changed, not blocks replaced).

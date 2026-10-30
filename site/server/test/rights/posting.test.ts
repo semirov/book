@@ -15,6 +15,12 @@ import { acceptComment } from '../../src/feedback/accept.ts';
 import { createBatch, readBatchLines } from '../../src/feedback/batches.ts';
 import { RIGHTS_COPY } from '../../src/rights/rules.ts';
 
+/** A run past the 240-character quote floor, with no source in the paragraph. */
+const FOREIGN_PARAGRAPH =
+  'Этот абзац взят из чужой книги без указания источника, и в нём достаточно слов, чтобы считаться ' +
+  'абзацем чужой прозы, а не термином или названием: он описывает комнату, свет и человека, который ' +
+  'ждёт у окна, и ни слова не говорит о том, кто это написал.';
+
 describe('posting — Gate B decides the law, Gate A no longer tries', () => {
   it('refuses a filing that asks for a real living person', async () => {
     const h = await bootComments();
@@ -126,7 +132,42 @@ describe('posting — Gate B decides the law, Gate A no longer tries', () => {
     const h = await bootComments();
     try {
       // Both questions are asked of the same filing: A rejects the scope («напиши ещё одну
-      // главу»), B refuses the recipe. B may not print its sentence over A's refusal.
+      // главу»), B refuses a quote with no source. B may not print its sentence over A's refusal.
+      const response = await h.app.inject({
+        method: 'POST',
+        url: '/api/comments',
+        headers: h.headers(),
+        payload: commentBody({ body: `Напиши ещё одну главу. «${FOREIGN_PARAGRAPH}»` }),
+      });
+      expect(response.statusCode).toBe(201);
+      const row = h.db.prepare('SELECT status, reason, decided_at, rights_verdict, rights_rule FROM comments').get() as {
+        status: string;
+        reason: string | null;
+        decided_at: string | null;
+        rights_verdict: string | null;
+        rights_rule: string | null;
+      };
+      expect(row).toEqual({
+        status: 'rejected',
+        reason: 'вне рамок: форма книги',
+        decided_at: null,
+        rights_verdict: 'REFUSED',
+        // The scan's rule id; the category itself is in its `detail`, not in the column.
+        rights_rule: 'RIGHTS-QUOTE',
+      });
+      // The public word is A's (none of B's «не принято» is attached to A's reason).
+      expect(response.json().comment).toMatchObject({ status: 'rejected', refusal: null });
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('a filing that is both a shape request and a recipe is the law’s to refuse', async () => {
+    const h = await bootComments();
+    try {
+      // Owner's ruling, 2026-10-29: the recipe is harm case 1, and Gate A drops a hit only Gate B
+      // may answer — so the reader gets B's case sentence, not «вне рамок: форма книги», and the
+      // row is B's refusal from the first word. The shape request died with the filing.
       const response = await h.app.inject({
         method: 'POST',
         url: '/api/comments',
@@ -143,14 +184,13 @@ describe('posting — Gate B decides the law, Gate A no longer tries', () => {
       };
       expect(row).toEqual({
         status: 'rejected',
-        reason: 'вне рамок: форма книги',
-        decided_at: null,
+        reason: RIGHTS_COPY.instructions,
+        decided_at: expect.any(String) as unknown as string,
         rights_verdict: 'REFUSED',
-        // The scan's rule id; the category itself is in its `detail`, not in the column.
-        rights_rule: 'RIGHTS-STOP',
+        // The scan's own entry names case 1 — a recipe, not «содержимое вне закона».
+        rights_rule: 'STOP-DRUGS',
       });
-      // The public word is A's (none of B's «не принято» is attached to A's reason).
-      expect(response.json().comment).toMatchObject({ status: 'rejected', refusal: null });
+      expect(response.json().comment).toMatchObject({ status: 'rejected', refusal: 'rights' });
     } finally {
       await h.close();
     }

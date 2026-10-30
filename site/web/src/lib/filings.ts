@@ -296,8 +296,17 @@ export function withDecisionReport(
   const at = comments.findIndex((row) => row.id === frame.id);
   if (at < 0) return null;
   const row = comments[at] as FilingRow;
+  /**
+   * A frame that **moves** the row's status makes the row's own `retryable` stale: the flag was
+   * the server's answer about the state the frame has just replaced (a retry re-arms the row to
+   * `new` and the button must go). Until the durable read (`refreshComments`, which the frame
+   * handler triggers) brings the new flag, the door stays shut — withholding is not a lie,
+   * offering a spent one is.
+   */
+  const restatused = frame.status !== undefined && frame.status !== row.status;
   const next: FilingRow = {
     ...row,
+    ...(restatused ? { retryable: false } : {}),
     ...(frame.status === undefined ? {} : { status: frame.status }),
     ...(frame.reason === undefined ? {} : { reason: frame.reason }),
     ...(frame.decidedAt === undefined ? {} : { decidedAt: frame.decidedAt }),
@@ -316,6 +325,7 @@ export function withDecisionReport(
     next.reason === row.reason &&
     next.decidedAt === row.decidedAt &&
     next.changeId === row.changeId &&
+    (next.retryable ?? false) === (row.retryable ?? false) &&
     sameApplied(next.applied, row.applied) &&
     (next.disposition ?? null) === (row.disposition ?? null) &&
     (next.carrierKind ?? null) === (row.carrierKind ?? null) &&

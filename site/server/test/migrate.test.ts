@@ -25,12 +25,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v35', () => {
+describe('migrate — schema v38', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(35);
+    expect(SCHEMA_VERSION).toBe(38);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -57,8 +57,9 @@ describe('migrate — schema v35', () => {
     // BOOK-7: an intervention on an empty chapter is that chapter's premise.
     expect(columns(db, 'changes')).toContain('premise');
     expect(columns(db, 'steps')).toContain('premise_change');
-    // BOOK-117 (v31): the wall's second window, nullable — a step opened before it has none.
-    expect(columns(db, 'steps')).toContain('reopened_at');
+    // BOOK-222 (v32): a landing is a candidate until the close; a verdict says who answered.
+    expect(columns(db, 'steps')).toEqual(expect.arrayContaining(['candidate_text', 'candidate_sha', 'reopened_at']));
+    expect(columns(db, 'gate_verdicts')).toContain('source');
     expect(
       db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'changes_premise_pending'`).get(),
     ).toEqual({ name: 'changes_premise_pending' });

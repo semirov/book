@@ -8,27 +8,25 @@
  * replaying the rows replays the cascade.
  */
 
-import { type CascadeOutcome, type CascadeStatus, type ChangeOutcome, type ChangeStatus } from '@book/shared';
+import { type CascadeOutcome, type CascadeStatus, type ChangeOutcome } from '@book/shared';
 
-import { appendChangeEvent, appendEvent } from '../history/log.ts';
-import { recordAcceptance } from '../comments/acceptance.ts';
-import { recordImpact } from '../history/impact.ts';
+import { appendEvent } from '../history/log.ts';
 import { passUsdOf, recordCloseSpend, spendOfClose } from '../budget.ts';
-import { budgetFromConfig } from './budget.ts';
-import { publishIndexNotices } from './indexNotice.ts';
-import type { Db } from '../db/db.ts';
 import { sendPassEvent } from '../push/passEvent.ts';
+import { budgetFromConfig } from './budget.ts';
+import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
-import { alertKind, recordAlert } from './alerts.ts';
 import { planCascade, type CascadeFacts } from './cascade.ts';
+import { closeChange, stopChange } from './changeClose.ts';
 import { changeForStep } from './helpers.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { stepProvenance } from './model.ts';
+import { publishCandidate } from './landing.ts';
 import { settleDraftPremise } from './premise.ts';
 import { pricePlanAfterPass } from '../ledger/graph/plan.ts';
 import { closeVerification } from '../ledger/graph/verification.ts';
-import { rippleOutcomeFor } from './ripple.ts';
+import { restoreCascadePrePass, restorePrePass } from './restore.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { writtenChaptersOf } from './text.ts';
@@ -39,68 +37,14 @@ export { openRippleStep } from './ripple.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
 
-import { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
+import { currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
 export { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
 // ── change close ─────────────────────────────────────────────────────────────
-
-export function releaseLane(deps: EngineDeps, changeId: string): void {
-  const lane = store.readLane(deps.db);
-  if (lane.holder === changeId) store.releaseLaneRow(deps.db, changeId);
-}
-
-export function closeChange(
-  deps: EngineDeps,
-  change: store.ChangeRow,
-  status: ChangeStatus,
-  outcome: ChangeOutcome,
-  reason: string | null,
-  now: number,
-): void {
-  // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied`; the plan is evidence.
-  const settled = rippleOutcomeFor(deps.db, change.id, outcome) as ChangeOutcome;
-  // Tokens and the model are frozen here, once (§6D.5); cost stays the placeholder zero and the
-  // row is not priced, so BOOK-23 reads it as «not measured» (`measuredRub`), never as free.
-  const steps = store.stepsOfChange(deps.db, change.id);
-  const tokensIn = steps.reduce((sum, step) => sum + step.tokens_in, 0);
-  const tokensOut = steps.reduce((sum, step) => sum + step.tokens_out, 0);
-  const writerModel = steps.find((step) => step.pass === 'change' && step.model !== null)?.model ?? null;
-  store.updateChange(deps.db, change.id, {
-    status,
-    outcome: settled,
-    reason,
-    finished_at: toIso(now),
-    tokens_in: tokensIn,
-    tokens_out: tokensOut,
-    model: writerModel,
-  });
-  // BOOK-58 §10: a reader's variant that landed is entered into the book — the acceptance
-  // record is written here, once, from the change's own outcome (`recordAcceptance` is silent
-  // for anything that did not land, and for a change that is not a reader's).
-  recordAcceptance(deps.db, change.id, toIso(now));
-  appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome: settled, reason }, now);
-  appendEvent(
-    deps.db,
-    {
-      kind: 'change.decided',
-      changeId: change.id,
-      cascadeId: change.cascade_id,
-      payload: { status, outcome: settled, reason },
-    },
-    now,
-  );
-  // BOOK-18: one public statement when a document's status moved, then the artifact is
-  // refreshed. Both live inside the index module's own guard and cannot fail this close.
-  publishIndexNotices(deps, change, now);
-  // §6F.5: the impact is materialized once, at close, and is a projection (§T-impact).
-  recordImpact(deps.db, change.id, now);
-  releaseLane(deps, change.id);
-  // BOOK-189: the reader who filed for this change hears how it was decided. The row's status
-  // and outcome are written above, so `sendPassEvent` reads the decision it is announcing rather
-  // than guessing it; a failed push is not a failed close (the helper never throws).
-  sendPassEvent(deps.db, { kind: 'decision', changeId: change.id }, now);
-}
+//
+// `closeChange`, `stopChange` and `releaseLane` live in `changeClose.ts`: both this module and
+// the refusal (`refuse.ts`) write them, and neither of the two may own the other.
 
 // ── cascade close ────────────────────────────────────────────────────────────
 
@@ -116,7 +60,15 @@ function cascadeDepth(cascadeId: string, origin: number, steps: store.StepRow[])
 function cancelOpenSteps(deps: EngineDeps, cascadeId: string, now: number): void {
   for (const step of store.listCascadeSteps(deps.db, cascadeId)) {
     if (step.outcome !== null) continue;
-    store.updateStep(deps.db, step.step_id, { outcome: 'interrupted', closed_at: toIso(now), note: 'cascade closed' });
+    store.updateStep(deps.db, step.step_id, {
+      outcome: 'interrupted',
+      closed_at: toIso(now),
+      note: 'cascade closed',
+      // BOOK-222: an interrupted step publishes nothing it held — the candidate dies with it.
+      candidate_text: null,
+      candidate_sha: null,
+      candidate_sentences: null,
+    });
     const lease = store.liveLeaseForStep(deps.db, step.step_id);
     if (lease) releaseLease(deps.db, lease.id, 'escalated', now);
     appendEvent(
@@ -133,6 +85,23 @@ export function closeCascade(
   outcome: CascadeOutcome,
   reason: string,
   now: number,
+  /** `false` only for a refusal whose every way back is spent (`reap.ts`, `TEXT_STUCK`). */
+  restoreText = true,
+): void {
+  // One transaction: a refusal's restore of several chapters and the decision that follows it
+  // are one fact, and a restore that cannot be made (`TEXT_STUCK`) leaves nothing half-closed.
+  deps.db.transaction(() => {
+    closeCascadeIn(deps, cascadeId, outcome, reason, now, restoreText);
+  })();
+}
+
+function closeCascadeIn(
+  deps: EngineDeps,
+  cascadeId: string,
+  outcome: CascadeOutcome,
+  reason: string,
+  now: number,
+  restoreText: boolean,
 ): void {
   const db = deps.db;
   const cascade = store.getCascade(db, cascadeId);
@@ -142,6 +111,12 @@ export function closeCascade(
   const tokens = steps.reduce((sum, step) => sum + step.tokens_in + step.tokens_out, 0);
   const depth = change ? cascadeDepth(cascadeId, change.chapter, steps) : { down: 0, up: 0 };
   const escalated = outcome.startsWith('escalated:');
+
+  // A refused ripple means **none** of its text stands, not only the last step's: every chapter
+  // it wrote goes back to its own pre-pass revision before the filing is decided. A restore that
+  // cannot be made throws `TEXT_STUCK` and the whole close rolls back — the refusal is never a
+  // decision over text that moved.
+  if (escalated && restoreText) restoreCascadePrePass(deps, cascadeId, now);
 
   store.updateCascade(db, cascadeId, {
     status: (escalated ? 'escalated' : 'closed') satisfies CascadeStatus,
@@ -158,27 +133,12 @@ export function closeCascade(
   appendEvent(db, { kind: 'cascade.closed', changeId: cascade.change_id, cascadeId, payload: { outcome, reason } }, now);
 
   if (change) {
-    const changeOutcome = escalated
-      ? changeOutcomeOf(outcome)
-      : ((change.outcome as ChangeOutcome | null) ?? 'applied');
-    closeChange(
-      deps,
-      change,
-      escalated ? 'escalated' : 'done',
-      changeOutcome,
-      escalated ? reason : null,
-      now,
-    );
-    if (escalated) {
-      recordAlert(deps, {
-        kind: alertKind(outcome),
-        at: toIso(now),
-        changeId: change.id,
-        cascadeId,
-        stepId: null,
-        detail: reason,
-      });
-    }
+    // BOOK-206 B2: a stopped ripple is a **refusal**, not a change left `escalated` for an
+    // operator to find: the text is back, the filing is `void · dropped`, and the reason names
+    // the stop in words (`cascade.ts`'s table, never a code). The cascade keeps its own status —
+    // «escalated» there is the ripple's word for how it ended, not the filing's.
+    if (escalated) stopChange(deps, change, reason, now, outcome);
+    else closeChange(deps, change, 'done', (change.outcome ?? 'applied') as ChangeOutcome, null, now);
   }
   cancelOpenSteps(deps, cascadeId, now);
 }
@@ -303,6 +263,11 @@ export function closeStep(
   const ms = Math.max(0, now - Date.parse(step.at));
 
   const close = db.transaction((): CloseStepResult => {
+    // BOOK-222: the candidate becomes the chapter here — the one publication, in this transaction,
+    // so a close that cannot be made leaves nothing served. A refusal publishes nothing: its text
+    // is dropped with the step (`restorePrePass` puts back only text that was served).
+    if (input.outcome !== 'escalated') publishCandidate(deps, step, now);
+    const published = store.getStep(db, step.step_id) ?? step;
     store.updateStep(db, step.step_id, {
       outcome: input.outcome,
       seams_out: JSON.stringify(input.seamsOut),
@@ -315,6 +280,12 @@ export function closeStep(
       ms,
       lease_id: lease?.id ?? step.lease_id,
       session: lease?.session ?? step.session,
+      // BOOK-222: a close that did not publish the candidate drops it. `done` clears it before it
+      // calls this (the publication happened); every other close — a refusal, a wall, a session
+      // that never came back — serves nothing, and the reader keeps the text he already has.
+      candidate_text: null,
+      candidate_sha: null,
+      candidate_sentences: null,
     });
     if (input.expiredLeaseId) {
       releaseForExpiredClose(db, live, input.expiredLeaseId, now);
@@ -365,32 +336,38 @@ export function closeStep(
     // closes by restore (`escalated`) says nothing about a landing; a draft (no change on its
     // lease) and a step with no change at all notify nobody, and a cascade step for a neighbour's
     // chapter is filtered by `recipientOf` — the reader asked about theirs.
-    if (input.outcome !== 'escalated' && step.chapter !== null && step.landed_at !== null) {
-      const landedChange = changeForStep(db, step);
+    if (input.outcome !== 'escalated' && published.chapter !== null && published.landed_at !== null) {
+      const landedChange = changeForStep(db, published);
       if (landedChange !== undefined) {
-        sendPassEvent(db, { kind: 'landed', chapter: step.chapter, changeId: landedChange.id }, now);
+        sendPassEvent(db, { kind: 'landed', chapter: published.chapter, changeId: landedChange.id }, now);
       }
     }
 
     if (input.outcome === 'escalated') {
+      // The refusal sink (§BOOK-206 B2, owner's invariant 2026-10-29): a step stopped by a rule
+      // does not leave its change in limbo. Its text goes back to the pre-pass revision, and the
+      // change closes `void · dropped` with the caller's public sentence — one of the two ends a
+      // filing has. `escalated` stays the *step's* word; it is not a change status any more.
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
       const change = cascade ? store.getChange(db, cascade.change_id) : findOriginChange(db, step);
       const outcome = input.escalation ?? 'escalated:origin';
       const reason = input.changeReason ?? escalationCopy(outcome);
       if (cascade) {
-        closeCascade(deps, cascade.id, outcome, reason, now);
-      } else if (change) {
-        closeChange(deps, change, 'escalated', changeOutcomeOf(outcome), reason, now);
-        recordAlert(deps, {
-          kind: alertKind(outcome),
-          at: toIso(now),
-          changeId: change.id,
-          cascadeId: null,
-          stepId: step.step_id,
-          detail: reason,
-        });
+        // A whole ripple: `closeCascade` puts every chapter it wrote back before deciding — unless
+        // every way back is spent, and the refusal is made with the text where it stands.
+        closeCascade(deps, cascade.id, outcome, reason, now, input.restoreText !== false);
+      } else {
+        // A broken pass is not a refusal of the work (BOOK-7): a draft that wrote its chapter
+        // keeps that first edition, and its premise is settled by the text, not by the stop.
+        if (input.restoreText !== false && !(step.pass === 'draft' && input.premiseCause === 'failed')) {
+          restorePrePass(deps, step, now);
+        }
+        if (change) {
+          stopChange(deps, change, reason, now, outcome);
+          return { cascadeId: null, outcome: input.outcome, changeStatus: 'void' };
+        }
       }
-      return { cascadeId: cascade?.id ?? null, outcome: input.outcome, changeStatus: 'escalated' };
+      return { cascadeId: cascade?.id ?? null, outcome: input.outcome, changeStatus: cascade ? 'void' : null };
     }
 
     if (step.pass === 'change') {

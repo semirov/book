@@ -21,7 +21,7 @@
  * schema and the post-write validator are what actually protect the book.
  */
 
-import { classifyText, type GuardCategory, type GuardHit } from '@book/shared';
+import { classifyScope, classifyText, type GuardCategory, type GuardHit } from '@book/shared';
 
 export type GuardOutcome = {
   status: 'new' | 'rejected' | 'quarantined';
@@ -40,13 +40,28 @@ function rank(hit: GuardHit): number {
   return hit.category === 'instruction' ? 2 : 1;
 }
 
+/**
+ * Which question A answers about one value. An **instruction** wins over everything (BOOK-61
+ * review m3): a text that addresses the machine is held, not refused, whatever else it carries.
+ * A filing Gate B will refuse (`illegal`, `person`) is B's to answer — the harm lock's cases
+ * (owner's ruling, 2026-10-29) reach the reader through B — so A stays silent about it and never
+ * prints a shape word over the law's refusal (B1). Only a pure scope request is A's own.
+ */
+function guardHit(raw: string): GuardHit | null {
+  const scope = classifyScope(raw);
+  if (scope?.category === 'instruction') return scope;
+  const full = classifyText(raw);
+  if (full !== null && !GATE_A.has(full.category)) return null;
+  return scope ?? full;
+}
+
 export function classifyComment(body: string, proposedText: string | null): GuardOutcome {
   const hits: GuardHit[] = [];
-  const bodyHit = classifyText(body);
-  if (bodyHit !== null && GATE_A.has(bodyHit.category)) hits.push(bodyHit);
+  const bodyHit = guardHit(body);
+  if (bodyHit !== null) hits.push(bodyHit);
   if (proposedText !== null) {
-    const proposedHit = classifyText(proposedText);
-    if (proposedHit !== null && GATE_A.has(proposedHit.category)) hits.push(proposedHit);
+    const proposedHit = guardHit(proposedText);
+    if (proposedHit !== null) hits.push(proposedHit);
   }
   if (hits.length === 0) return PASS;
 

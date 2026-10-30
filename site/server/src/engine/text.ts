@@ -26,7 +26,7 @@ import { FRONT_FILE, TOTAL_CHAPTERS, chapterLabel } from '@book/shared';
 import type { Db } from '../db/db.ts';
 import { getChapterRow, listBlocks, listChapterRows } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
-import { parseChapter, type ParsedBlock, type ParsedChapter } from '../ingest/parseChapter.ts';
+import { normalizeChapterText, parseChapter, type ParsedBlock, type ParsedChapter } from '../ingest/parseChapter.ts';
 import { parseFront, type ParsedFront } from '../ingest/parseFront.ts';
 
 export type ChapterText = ParsedChapter & { exists: boolean; raw: string };
@@ -131,9 +131,29 @@ export function readFrontRows(db: Db): FrontText {
   };
 }
 
-/** One statement per chapter's blocks is enough for a prompt; the rows are already ordered. */
+/**
+ * One statement per chapter's blocks is enough for a prompt; the rows are already ordered.
+ *
+ * BOOK-222: a chapter with an open step's **candidate** is served as that candidate — the text a
+ * prompt quotes must be the text the pass wrote and its gates are reading, never the older text
+ * the site still serves. The reader's own view (`viewOfChapter`) is untouched.
+ */
 export function textViewsOf(db: Db, chapters: readonly number[]): ChapterTextView[] {
-  return chapters.map((n) => viewOfChapter(readChapterRows(db, n)));
+  return chapters.map((n) => candidateViewOfChapter(db, n) ?? viewOfChapter(readChapterRows(db, n)));
+}
+
+/** The candidate an open step holds on chapter `n`, as the prompt's own shape — or nothing. */
+function candidateViewOfChapter(db: Db, n: number): ChapterTextView | null {
+  const row = db
+    .prepare(
+      `SELECT candidate_text FROM steps
+        WHERE chapter = ? AND outcome IS NULL AND candidate_text IS NOT NULL
+        ORDER BY at DESC LIMIT 1`,
+    )
+    .get(n) as { candidate_text: string } | undefined;
+  if (row === undefined) return null;
+  const raw = normalizeChapterText(row.candidate_text);
+  return viewOfChapter({ ...parseChapter(n, raw), n, exists: true, raw });
 }
 
 /**

@@ -8,13 +8,22 @@
  * an event, so "the engine recovered" is auditable like everything else.
  */
 
-import { FAILURE_LINES, parseSeams } from '@book/shared';
+import { OUR_FAILURE_LINE, QUEUE_MAX_ATTEMPTS } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
+import { budgetCapsOf, budgetSnapshot } from '../budget.ts';
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { lastLeaseOfStep, releaseLease, stampEscalatedRelease, stepWallOf } from './leases.ts';
+import {
+  BUDGET_STOP_REASON,
+  GATE_WINDOW_REASON,
+  gateWindowNote,
+  lostSessionReason,
+  refuseChange,
+  stepWallReason,
+} from './refuse.ts';
 import * as store from './store.ts';
 import { changeForStep } from './helpers.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
@@ -35,8 +44,56 @@ export type ReapReport = {
   /** Steps whose session vanished and whose job is re-issued by the next poll. */
   reissued: string[];
   gateTimeouts: string[];
+  /** The money stop: changes this tick refused because the book's cap is spent. */
+  refused: string[];
+  /** Refusals that could not be made (`TEXT_STUCK`) — a stuck chapter, reported not swallowed. */
+  refusalFailures: Array<{ changeId: string; code: string }>;
   laneReleased: string | null;
 };
+
+/** Where one step's way back is counted. A step id is a row key, never a reader's word. */
+function stuckKey(stepId: string): string {
+  return `step.stuck.${stepId}`;
+}
+
+/**
+ * The `TEXT_STUCK` attempt counter (owner's rule, 2026-10-29): a refusal that cannot put the text
+ * back is retried by the wall, and a retry is an attempt like any other. Six is the same bound the
+ * queue and the ladders use; when they are spent the change is refused **without** the restore —
+ * the text stays where it is, but the filing reaches a sink with our-failure sentence instead of
+ * being retried forever.
+ */
+function stuckAttempts(deps: EngineDeps, stepId: string): number {
+  const raw = store.getMeta(deps.db, stuckKey(stepId));
+  const value = raw === null ? 0 : Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * The sixth `TEXT_STUCK`: a refusal that cannot restore is still a refusal. The step closes
+ * `escalated` and the change `void · dropped` with the our-failure sentence, and the text is left
+ * exactly where it is — the reader keeps what the site serves.
+ */
+function refuseStuck(deps: EngineDeps, step: store.StepRow, now: number): void {
+  closeStep(
+    deps,
+    step.step_id,
+    {
+      outcome: 'escalated',
+      seamsOut: [],
+      note: `${OUR_FAILURE_LINE}: текст главы не удалось вернуть за ${String(QUEUE_MAX_ATTEMPTS)} попыток`.slice(0, 200),
+      model: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      escalation: 'escalated:gate_timeout',
+      changeReason: OUR_FAILURE_LINE,
+      premiseCause: 'failed',
+      restoreText: false,
+    },
+    now,
+  );
+  store.setMeta(deps.db, stuckKey(step.step_id), String(QUEUE_MAX_ATTEMPTS + 1));
+}
 
 function bumpAttempts(deps: EngineDeps, changeId: string | null): number {
   if (changeId === null) return 0;
@@ -103,6 +160,8 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     recovered: [],
     reissued: [],
     gateTimeouts: [],
+    refused: [],
+    refusalFailures: [],
     laneReleased: null,
   };
 
@@ -146,24 +205,19 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     }
     const lease = store.liveLeaseForStep(db, step.step_id) ?? lastLeaseOfStep(db, step.step_id);
     try {
-      closeStep(
-        deps,
-        step.step_id,
-        {
-          outcome: 'escalated',
-          seamsOut: parseSeams(null),
-          // The note is read by an operator and copied to a page: a sentence, never a constant.
-          note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
-          model: null,
-          tokensIn: 0,
-          tokensOut: 0,
-          // The existing wall vocabulary: a step that did not close in time is a stop, and its
-          // draft premise stays queued to the next pass rather than being read as a refusal.
-          escalation: 'escalated:gate_timeout',
-          changeReason: FAILURE_LINES.outOfTime,
-        },
+      refuseChange(deps, {
+        stepId: step.step_id,
+        // The reader's sentence: the pass outlived its window, so its text does not stand.
+        because: stepWallReason(Math.round(wall / 60_000)),
+        // The note is read by an operator and copied to a page: the step's own words, not the
+        // filing's, so the two rows still tell one story each (BOOK-34's wall).
+        note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
+        cause: 'escalated:gate_timeout',
+        // A draft that wrote its chapter keeps it: a stop by the clock is not a refusal of the
+        // work, and its premise is settled by the text (BOOK-7).
+        premiseCause: 'failed',
         now,
-      );
+      });
       // The stop owns the lease: one the reaper already released as `expired` must now read
       // `escalated`, or the step and its lease tell two different stories (§BOOK-34).
       if (lease) stampEscalatedRelease(db, lease.id);
@@ -171,10 +225,24 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     } catch (error) {
       // One wedged step must not stop the tick (nor the boot): the lease, gate and lane passes
       // below still run, and the failure is a fact in the report instead of a swallowed throw.
-      report.stepWallFailures.push({
-        stepId: step.step_id,
-        code: isEngineError(error) ? error.code : 'UNKNOWN',
-      });
+      const code = isEngineError(error) ? error.code : 'UNKNOWN';
+      report.stepWallFailures.push({ stepId: step.step_id, code });
+      // A way back that cannot be made is counted, not looped on: the same six the queue and the
+      // ladders use. When they are spent the change is refused without the restore.
+      if (code === 'TEXT_STUCK') {
+        const attempts = stuckAttempts(deps, step.step_id) + 1;
+        store.setMeta(deps.db, stuckKey(step.step_id), String(attempts));
+        store.updateStep(deps.db, step.step_id, {
+          note: `текст не вернулся к прежней редакции — попытка ${String(attempts)} из ${String(QUEUE_MAX_ATTEMPTS)}`.slice(0, 200),
+        });
+        if (attempts >= QUEUE_MAX_ATTEMPTS) {
+          try {
+            refuseStuck(deps, step, now);
+          } catch (stuck) {
+            report.stepWallFailures.push({ stepId: step.step_id, code: isEngineError(stuck) ? stuck.code : 'UNKNOWN' });
+          }
+        }
+      }
     }
   }
 
@@ -257,20 +325,16 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         continue;
       }
       if (attempts > 4) {
-        closeStep(
-          deps,
-          step.step_id,
-          {
-            outcome: 'escalated',
-            seamsOut: [],
-            note: 'the session did not bring the step back',
-            model: null,
-            tokensIn: 0,
-            tokensOut: 0,
-            escalation: 'escalated:gate_timeout',
-          },
+        // The ladder's last rung: six leases produced no text, so the filing is refused in the
+        // words a broken pass owes (BOOK-219), never left `escalated` for an operator to find.
+        refuseChange(deps, {
+          stepId: step.step_id,
+          because: lostSessionReason(false),
+          note: 'the session did not bring the step back',
+          cause: 'escalated:gate_timeout',
+          premiseCause: 'failed',
           now,
-        );
+        });
         report.gateTimeouts.push(step.step_id);
         continue;
       }
@@ -285,15 +349,14 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
 
     // Landed, but the session vanished: the gates may continue under a fresh lease.
     if (attempts > 4) {
-      closeStep(deps, step.step_id, {
-        outcome: 'escalated',
-        seamsOut: parseSeams(null),
+      refuseChange(deps, {
+        stepId: step.step_id,
+        because: lostSessionReason(true),
         note: 'the session did not come back to close the step',
-        model: null,
-        tokensIn: 0,
-        tokensOut: 0,
-        escalation: 'escalated:gate_timeout',
-      }, now);
+        cause: 'escalated:gate_timeout',
+        premiseCause: 'failed',
+        now,
+      });
       continue;
     }
     report.reissued.push(step.step_id);
@@ -302,7 +365,7 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   // ── gates that never answered ─────────────────────────────────────────────
   // The window is the reading budget (`GATE_TTL_MS`), and the sentence says how long it was: an
   // operator reads a minute count, never a config name, and the code stays in the event payload.
-  const gateTimeoutNote = `гейт не ответил за ${String(Math.round(deps.config.gateTtlMs / 60_000))} мин — проход остановлен`;
+  const gateMinutes = Math.round(deps.config.gateTtlMs / 60_000);
   const staleDispatches = db
     .prepare('SELECT * FROM gate_dispatches WHERE expires_at <= ?')
     .all(at) as Array<{ step_id: string; role: 'editor' | 'consultant' | 'rights' }>;
@@ -311,17 +374,44 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     store.deleteDispatch(db, dispatch.step_id, dispatch.role);
     if (!step || step.outcome !== null) continue;
     if (store.getVerdict(db, dispatch.step_id, dispatch.role)) continue;
-    closeStep(deps, step.step_id, {
-      outcome: 'escalated',
-      seamsOut: parseSeams(null),
-      note: gateTimeoutNote,
-      model: null,
-      tokensIn: 0,
-      tokensOut: 0,
-      escalation: 'escalated:gate_timeout',
-      changeReason: gateTimeoutNote,
-    }, now);
+    refuseChange(deps, {
+      stepId: step.step_id,
+      because: GATE_WINDOW_REASON,
+      // BOOK-222: a candidate was never served, so the note does not claim a restore.
+      note: gateWindowNote(gateMinutes, step.landed_at !== null),
+      cause: 'escalated:gate_timeout',
+      premiseCause: 'failed',
+      now,
+    });
     report.gateTimeouts.push(step.step_id);
+  }
+
+  // ── the money stop, and nothing on a clock ────────────────────────────────
+  // The owner's correction (2026-10-29): no hour ends a filing — only a counter does. The queue's
+  // attempts are counted where the lane is actually asked for the change (`queue.ts`), so this
+  // tick keeps exactly one power over a queued change: the book's cap ends writing for good (a
+  // day's pause lifts at 00:00 UTC, a book's does not), so it is refused at once.
+  const money = budgetSnapshot(db, budgetCapsOf(deps.config), now);
+  const drafting = db.prepare(
+    `SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`,
+  );
+  if (money.state === 'stop') {
+    for (const change of store.listPending(db)) {
+      if (change.status !== 'pending') continue;
+      // A pass is running on that chapter right now: the premise is the pass's own filing, and the
+      // step wall bounds it. Refusing it under the session would decide a filing nobody has
+      // answered yet — `reconcilePremises` keeps the same rule.
+      if (drafting.get(change.chapter) !== undefined) continue;
+      try {
+        refuseChange(deps, { changeId: change.id, because: BUDGET_STOP_REASON, cause: 'escalated:budget', now });
+        report.refused.push(change.id);
+      } catch (error) {
+        report.refusalFailures.push({
+          changeId: change.id,
+          code: isEngineError(error) ? error.code : 'UNKNOWN',
+        });
+      }
+    }
   }
 
   // ── a lane whose holder died ──────────────────────────────────────────────

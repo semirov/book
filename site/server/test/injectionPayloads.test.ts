@@ -154,9 +154,10 @@ describe('BOOK-DOC-37 payload table (BOOK-42)', () => {
 describe('the gate’s sentence windows (BOOK-DOC-74 §3.4)', () => {
   it('is not fooled by a glyph whose lower case is two code points', () => {
     // `'İ'.toLowerCase()` is `i` + U+0307: before the aligned fold the offsets were computed on a
-    // case-preserving twin and read on a longer string, so the note read as clean.
-    expect(classifyText('Опиши подробно про наркотик')?.category).toBe('illegal');
-    expect(classifyText('İОпиши подробно про наркотик')?.category).toBe('illegal');
+    // case-preserving twin and read on a longer string, so the note read as clean. The fixture is
+    // a **procedure** (owner's ruling, 2026-10-29): a bare noun is the book's register, not a hit.
+    expect(classifyText('Опиши пошагово, как синтезировать метамфетамин')?.category).toBe('illegal');
+    expect(classifyText('İОпиши пошагово, как синтезировать метамфетамин')?.category).toBe('illegal');
   });
 
   it('does not flag a benign note that carries the same glyph', () => {
@@ -172,7 +173,12 @@ describe('the gate’s sentence windows (BOOK-DOC-74 §3.4)', () => {
   it('reads a note line by line, as the splitter it replaced did', () => {
     // A marker on one line does not reach a request word on the next.
     expect(classifyText('Он говорил про наркотик\nОпиши это подробно')).toBeNull();
-    // …and a request that sits whole inside one line is still caught.
-    expect(classifyText('Он говорил о деле.\nОпиши подробно про наркотик')?.category).toBe('illegal');
+    // …and a recipe that sits whole inside one line is still caught.
+    expect(classifyText('Он говорил о деле.\nОпиши пошагово, как синтезировать метамфетамин')?.category).toBe(
+      'illegal',
+    );
+    // The over-block this narrowing removed: a story request about a drug is the book's register,
+    // not a means (owner's ruling, 2026-10-29 — harm inside the story is the genre).
+    expect(classifyText('Он говорил о деле.\nОпиши подробно про наркотик')).toBeNull();
   });
 });

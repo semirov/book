@@ -98,6 +98,8 @@ const CLOSE_COPY = {
   science: FAILURE_LINES.ourFailure,
   // BOOK-61: Gate B's one word (§5). The card's reason carries the rule's own fixed
   // sentence; this line is the fallback when a close names no rule.
+  // A gate that never answered is our failure, not a verdict on the filing — one line, the same
+  // the refusal sink uses, so no reader is told a stop was theirs to fix.
   rights: FAILURE_LINES.ourFailure,
   gate: FAILURE_LINES.outOfTime,
 } as const;

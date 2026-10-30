@@ -9,7 +9,6 @@
 import {
   FAILURE_LINES,
   NOTE_MAX_CHARS,
-  REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
   normalizeSeamBoundary,
   parseSeams,
@@ -27,6 +26,7 @@ import { ensureSlice } from '../index/store.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, openRippleStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
+import { closeReason } from './cascade.ts';
 import { type DraftLane } from './draft.ts';
 import {
   assignmentOf,
@@ -43,14 +43,16 @@ import {
 import { blockHashes, changeForStep, measureDelta, preBlocksOf, safeJson, sameSequence } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
 import { normalizeProvenance, requirePipelineModel } from './model.ts';
-import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
+import { refuseChange, stopCauseOf, type RefuseInput } from './refuse.ts';
 import { reap, type ReapReport } from './reap.ts';
 import { closeUnfiledDraft } from './filings.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapterRows, readFrontRows, textViewsOf, type ChapterTextView } from './text.ts';
 import { writerAssignment } from './trace.ts';
+import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
+import { reconcileSweep } from './sweep.ts';
 import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
@@ -99,7 +101,9 @@ export function createEngine(deps: EngineDeps) {
 
   function nextGate(role: GateRole, session: string): GateAssignment | null {
     for (const step of store.listOpenSteps(db)) {
-      if (step.landed_at === null) continue;
+      // BOOK-222: a step whose text is a **candidate** is a step the gates must read — nothing is
+      // served before the verdict, so `landed_at` is still null while the candidate stands.
+      if (step.landed_at === null && step.candidate_sha === null) continue;
       if (store.getVerdict(db, step.step_id, role)) continue;
       if (role === 'consultant' && !store.getVerdict(db, step.step_id, 'editor')) continue;
       const existing = store.getDispatch(db, step.step_id, role);
@@ -223,7 +227,9 @@ export function createEngine(deps: EngineDeps) {
     const model = requirePipelineModel(config, options.model, options.where, provenance);
     const at = options.now ?? deps.clock.now();
     const { lease, step, expired } = leaseStep(leaseId);
-    if (step.landed_at === null) {
+    // BOOK-222: a provisional landing holds the text as a **candidate** and publishes nothing —
+    // the close is what publishes it, so a step with a candidate is ready to close.
+    if (step.landed_at === null && step.candidate_sha === null) {
       refuse('NOT_LANDED', 409, 'a step closes on a landed file — call land first (§6A.11)');
     }
     // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
@@ -257,24 +263,26 @@ export function createEngine(deps: EngineDeps) {
       if (seamTouchesChapter(seam.boundary, chapter)) continue;
       if (step.pass === 'cascade') {
         // C2: a repair that needs a chapter outside this step's own reach is not a malformed
-        // report — it is an escalation with the pair recorded (§6A.6).
-        closeStep(
-          deps,
-          step.step_id,
-          {
-            outcome: 'escalated',
-            seamsOut: seams,
-            note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
-            model,
-            tokensIn: options.tokensIn ?? 0,
-            tokensOut: options.tokensOut ?? 0,
-            escalation: 'escalated:origin',
-            changeReason: FAILURE_LINES.ourFailure,
-            expiredLeaseId: expired ? lease.id : null,
-          },
-          at,
-        );
-        return { stepId: step.step_id, outcome: 'escalated', cascadeId: step.cascade_id, changeStatus: 'escalated' };
+        // report — it is a refusal with the pair recorded (§6A.6). Its text goes back with it.
+        const stopped = refuseChange(deps, {
+          stepId: step.step_id,
+          because: closeReason('origin'),
+          note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
+          now: at,
+          cause: 'escalated:origin',
+          seamsOut: seams,
+          model,
+          tokensIn: options.tokensIn ?? 0,
+          tokensOut: options.tokensOut ?? 0,
+          provenance,
+          expiredLeaseId: expired ? lease.id : null,
+        });
+        return {
+          stepId: step.step_id,
+          outcome: 'escalated',
+          cascadeId: stopped.cascadeId,
+          changeStatus: stopped.changeStatus,
+        };
       }
       refuse('INVALID_SEAM', 422, `step ${step.step_id} cannot claim seam ${String(seam.boundary)}`);
     }
@@ -291,10 +299,15 @@ export function createEngine(deps: EngineDeps) {
 
     const front = step.pass === 'front' ? readFrontRows(db) : null;
     const chapter = step.pass === 'front' || step.chapter === null ? null : readChapterRows(db, step.chapter);
+    // BOOK-222: while a **candidate** stands, the text the close is about is the candidate — the
+    // chapter rows still hold the text the site serves. An unchanged candidate is a no-op; any
+    // other candidate is a rewrite, and the publication happens inside `closeStep`.
     const unchanged =
-      step.pass === 'front'
-        ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
-        : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
+      step.candidate_sha !== null
+        ? step.start_sha !== null && step.candidate_sha === step.start_sha
+        : step.pass === 'front'
+          ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
+          : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
 
     // ADR-024: a GAP on the ending escalates — the fix is never another rewrite of the last chapter.
     const endingGap =
@@ -317,11 +330,17 @@ export function createEngine(deps: EngineDeps) {
     let outcome: StepOutcome = gateStop !== null ? 'escalated' : editorBlocked ? 'published_with_finding' : step.pass === 'ending' ? 'evaluated' : unchanged ? 'holds' : 'rewritten';
     let escalation: CascadeOutcome | null = gateStop === null ? null : gateStop === 'ending' ? 'escalated:ending' : 'escalated:science';
 
+    // BOOK-222: a candidates' own text is what the delta is measured against — the chapter rows
+    // still hold the text the site serves until the close publishes.
+    const measuredBlocks =
+      step.candidate_text !== null && step.chapter !== null
+        ? parseChapter(step.chapter, normalizeChapterText(step.candidate_text)).blocks
+        : (chapter?.blocks ?? []);
     if (step.pass === 'cascade' && !editorBlocked && outcome === 'rewritten' && chapter !== null) {
       const budget = step.cascade_id
         ? safeJson<{ maxDeltaRatio: number }>(store.getCascade(db, step.cascade_id)?.budget ?? null)
         : null;
-      const measured = measureDelta(step, chapter.blocks);
+      const measured = measureDelta(step, measuredBlocks);
       if (budget && measured.ratio > budget.maxDeltaRatio) {
         outcome = 'escalated';
         escalation = 'escalated:delta';
@@ -393,40 +412,32 @@ export function createEngine(deps: EngineDeps) {
 
   // ── escalate / beat ───────────────────────────────────────────────────────
 
+  /**
+   * The writer's own stop — one of the two ends a filing has (owner's invariant, 2026-10-29).
+   * It is the refusal (`refuse.ts`), never an `escalated` change: the text this pass landed goes
+   * back to the pre-pass revision, the change closes `void · dropped` with the writer's public
+   * sentence, and the reader hears «не принято» in words. `cause: 'failed'` still says the pass
+   * broke rather than refused the work: a draft that wrote its chapter keeps that edition.
+   */
   function escalate(leaseId: string, because: string, options: EscalateOptions = {}): DoneResult {
     const at = options.now ?? deps.clock.now();
-    const { lease, step, expired } = leaseStep(leaseId);
-    const reason = because.toLowerCase();
-    const outcome: CascadeOutcome = reason.includes('budget')
-      ? 'escalated:budget'
-      : reason.includes('oscillation')
-        ? 'escalated:oscillation'
-        : reason.includes('delta')
-          ? 'escalated:delta'
-          : reason.includes('ending')
-            ? 'escalated:ending'
-            : reason.includes('timeout')
-              ? 'escalated:gate_timeout'
-              : 'escalated:origin';
-    const result = closeStep(
-      deps,
-      step.step_id,
-      {
-        outcome: 'escalated',
-        seamsOut: [],
-        note: because.slice(0, NOTE_MAX_CHARS),
-        model: options.model ?? null,
-        tokensIn: options.tokensIn ?? 0,
-        tokensOut: options.tokensOut ?? 0,
-        provenance: options.provenance,
-        escalation: outcome,
-        changeReason: because.slice(0, REASON_MAX_CHARS),
-        premiseCause: options.cause ?? 'refused',
-        expiredLeaseId: expired ? lease.id : null,
-      },
-      at,
-    );
-    return { stepId: step.step_id, outcome: 'escalated', cascadeId: result.cascadeId, changeStatus: 'escalated' };
+    const result = refuseChange(deps, {
+      leaseId,
+      because,
+      now: at,
+      cause: stopCauseOf(because),
+      premiseCause: options.cause ?? 'refused',
+      model: options.model ?? null,
+      tokensIn: options.tokensIn ?? 0,
+      tokensOut: options.tokensOut ?? 0,
+      provenance: options.provenance ?? null,
+    });
+    return {
+      stepId: result.stepId ?? '',
+      outcome: 'escalated',
+      cascadeId: result.cascadeId,
+      changeStatus: result.changeStatus,
+    };
   }
 
   function beat(leaseId: string): Record<string, unknown> {
@@ -436,30 +447,6 @@ export function createEngine(deps: EngineDeps) {
   }
 
   // ── reconcile ─────────────────────────────────────────────────────────────
-
-  function reconcile(): Record<string, unknown> {
-    const report = reap(deps, deps.clock.now());
-    const leaked = db
-      .prepare(
-        `SELECT l.id FROM leases l JOIN steps s ON s.step_id = l.step_id
-          WHERE l.released_at IS NULL AND s.outcome IS NOT NULL`,
-      )
-      .all() as Array<{ id: string }>;
-    for (const lease of leaked) releaseLease(db, lease.id, 'expired', deps.clock.now());
-    // BOOK-7: a premise whose chapter was written outside its own first pass can never land
-    // in that edition any more; it is closed with a public reason instead of waiting forever.
-    const premisesSettled = reconcilePremises(deps, deps.clock.now());
-    const processing = store.countProcessing(db);
-    return {
-      ...report,
-      lane: { holder: store.readLane(db).holder },
-      leakedLeases: leaked.length,
-      premisesSettled,
-      processing,
-      pending: store.countPending(db),
-      openSteps: store.countOpenSteps(db),
-    };
-  }
 
   return {
     next,
@@ -480,13 +467,15 @@ export function createEngine(deps: EngineDeps) {
     done,
     seen,
     escalate,
+    /** The refusal's own door (owner's invariant): one step or one queued change, one sentence. */
+    refuse: (input: RefuseInput) => refuseChange(deps, input),
     reopen: (stepId: string, because: string) => reopenStep(deps, stepId, because),
     beat,
     enqueue: queue.enqueue,
     commentKind: overview.commentKind,
     state: overview.state,
     trace: overview.trace,
-    reconcile,
+    reconcile: () => reconcileSweep(deps),
     /** Two meanings of one word (§13.3): with a chapter, the mark on a restore; without, a sweep. */
     reconcileRestore: (input: { chapter: number; because: string; actor?: string }): RestoreReconcileResult =>
       reconcileRestore(deps, input),

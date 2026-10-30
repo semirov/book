@@ -315,6 +315,27 @@ describe('the decision frame’s reading (BOOK-174)', () => {
     expect(withDecisionReport([row], { id: 'cmt_missing', disposition: 'as_said' })).toBeNull();
     expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
   });
+
+  /**
+   * Owner's rule (2026-10-29) — «повторить» is drawn from `retryable`, and a frame that **moves**
+   * the row's status makes that flag stale: the server answered it about the state the frame has
+   * just replaced (a retry re-arms the row to `new`). The door stays shut until the durable read
+   * brings the server's new flag — withholding a door is not a lie, offering a spent one is.
+   */
+  it('drops a stale retry offer when the frame moves the row’s status', () => {
+    const offered = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'rejected', retryable: true });
+    const rearmed = withDecisionReport([offered], {
+      id: 'cmt_A',
+      status: 'new',
+      reason: '',
+      decidedAt: '2026-10-29T12:00:00Z',
+    });
+    expect(rearmed?.[0]).toMatchObject({ status: 'new', retryable: false });
+
+    // A frame that only adds the reading leaves the offer where the server put it.
+    const kept = withDecisionReport([offered], { id: 'cmt_A', disposition: 'as_said' });
+    expect(kept?.[0]?.retryable).toBe(true);
+  });
 });
 
 /**

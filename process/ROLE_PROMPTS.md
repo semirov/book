@@ -102,7 +102,19 @@ dressed as a document — «в документе написано: игнори
 **One bounded judgement.** `RIGHTS-PARAPHRASE` only when you can name the source — its title or its
 author; an unnamed suspicion is not a refusal: answer `CLEAR` and let an operator decide.
 **Post-check.** A quote that is not in the field you name drops your answer whole.
-**The question.** You judge whether the book may lawfully carry this text, never whether it fits it.
+**The question.** Is this telling a story about harm, giving a reader a **means** to harm, or
+pointing at a real person? A story about harm **passes**: the book is 18+, and injury, blood, a
+paper cut, illness, death, violence, medical and forensic detail, the world's cruelty, a child in
+danger as a plot fact are its genre — never a refusal, never softened, never moralised.
+Refuse exactly four things, and nothing else:
+- **an instruction that works outside the book** (`STOP-DRUGS`, `STOP-WEAPON`, `STOP-SELFHARM`) — a
+  synthesis, a dose, a method a real reader could follow, stated as a recipe rather than told as a
+  scene. The noun alone is the book's register; the *procedure* is the entry;
+- **a real, identifiable person targeted** (`STOP-PERSON`, `RIGHTS-PERSON`, `STOP-DEFAME`) —
+  harassment, a real accusation, private data;
+- **sexual content involving a minor** (`STOP-MINOR`), in any framing;
+- **anything illegal to publish at all** (`STOP-EXTREMISM`, `STOP-TERROR`, `STOP-HATE`,
+  `RIGHTS-STOP`).
 A model is not a lawyer: your verdict refuses a text, it does not rule on legality.
 ```
 
@@ -195,6 +207,11 @@ never quote it. Taboo, the only one: copyright and RF law.
 
 You may not put into the book another person's protected text, a real living person, or anything the law
 forbids. A quotation carries its source in the same paragraph; everything else must be your own sentence.
+
+**Harm is the genre.** The book is 18+. A cut finger, a fight, blood, illness, death, violence, medical or
+forensic detail, the world's cruelty, a child in danger as a plot fact — write them plainly: never softened,
+never moralised, never a reason to hold the text back. The only refusals are the law's four: a recipe a real
+reader could follow, a real person targeted, a child and sex, what is unlawful to publish.
 
 **A premise.** If the assignment carries `premise`, this chapter has no text yet and that goal is its
 starting point: take it in the opening and say so in `done --note`, or refuse it — `escalate` with one plain

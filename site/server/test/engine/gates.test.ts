@@ -201,8 +201,10 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
       expect(repairStep?.step.cycle).toBe(5);
       expect(repairStep?.gates.find((gate) => gate.role === 'editor')?.verdict).toBe('GAP');
       expect(trace.change.cascade?.outcome).toBe('escalated:finding');
-      expect(trace.change.change.status).toBe('escalated');
-      expect(trace.change.change.outcome).toBe('finding');
+      // BOOK-206 B2 / the owner's invariant: a stopped ripple refuses the change instead of
+      // parking it as `escalated`; the cascade keeps its own word for how the ripple ended.
+      expect(trace.change.change.status).toBe('void');
+      expect(trace.change.change.outcome).toBe('dropped');
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('finding');
     } finally {
       fixture.close();

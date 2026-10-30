@@ -211,7 +211,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
   it('builds the same shape on a fresh and on a migrated install, and keeps every v28 column', () => {
     const fresh = openDatabase(':memory:');
     migrate(fresh);
-    expect(SCHEMA_VERSION).toBe(35);
+    expect(SCHEMA_VERSION).toBe(38);
     const freshShape = {
       facts: info(fresh, 'facts'),
       dependency: info(fresh, 'fact_dependency'),

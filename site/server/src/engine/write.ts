@@ -38,6 +38,7 @@ import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
 import { chapterTarget, frontTarget, ingestLanding, type IngestOutcome } from './landing.ts';
+import { planCandidate, type LandingPlan } from './ripple.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
@@ -73,6 +74,12 @@ export type LandOptions = {
   mode?: WriteMode;
   /** BOOK-173 §4: the pass's estimate, frozen with the plan and replaced by the actual at close. */
   estimateUsd?: number;
+  /**
+   * BOOK-222: hold the text as a **candidate** on the step instead of publishing it. Nothing is
+   * served — no blocks, no revision, no push — until the close; a second call with the same sha is
+   * a no-op, and a different sha replaces the candidate (the latest attempt wins).
+   */
+  provisional?: boolean;
 };
 
 export type LandResult = {
@@ -84,9 +91,13 @@ export type LandResult = {
   blocksTouched: number;
   /**
    * BOOK-173: the change's ripple plan, computed here because the ledger lives here (§3, §7).
-   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
+   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch. BOOK-222:
+   * a **candidate** is planned too — the writer reacts to the closure before the gates spend, and
+   * the close re-plans the same text inside the publish.
    */
   plan?: RipplePlan | null;
+  /** BOOK-222: the text is held on the step and nothing was published. */
+  provisional?: boolean;
 };
 
 /** BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest, and the
@@ -311,8 +322,11 @@ export function createWriteOps(deps: EngineDeps) {
 
     const sha = target.sha256;
     if (step.landed_at !== null && step.landed_sha === sha) {
+      // The text the step already serves: nothing to write, and — asked as a candidate — nothing
+      // that a put-back would have to undo.
       return {
         landed: true,
+        ...(options.provisional === true ? { provisional: true as const } : {}),
         revAfter: step.rev_after ?? step.rev_before ?? 0,
         sha,
         changed: false,
@@ -328,6 +342,68 @@ export function createWriteOps(deps: EngineDeps) {
     // so a refused chapter leaves no partial state behind.
     const state = scanStepDelta(step, chapter);
     if (state.refusal !== null) refuse('RIGHTS_STOPLIST', 409, state.refusal, { rule: state.rule, block: state.block });
+
+    // BOOK-222 — the lane's own landing is a **candidate**: the text is validated here (size,
+    // frame, the rights scan of its delta) and held on the step, and *nothing* is published. The
+    // reader keeps the chapter the site already serves until the close; a gate reads the candidate,
+    // and a refusal drops it without a revision to take back. A resumed step may hold a new
+    // candidate too — nothing is served before the close, so it never publishes first.
+    if (options.provisional === true) {
+      if (supplied === undefined) {
+        refuse('TARGET_MISSING', 409, 'a provisional land carries its text — there is nothing to serve');
+      }
+      if (step.candidate_sha === sha) {
+        // The same attempt asked again: one candidate, one sha, nothing else to write.
+        return {
+          landed: true,
+          provisional: true,
+          revAfter: step.rev_before ?? 0,
+          sha,
+          changed: false,
+          deltaRatio: 0,
+          blocksTouched: 0,
+        };
+      }
+      // A different sha is a new attempt: the verdicts described the text no gate can see now.
+      // A **resumed** step may also already serve an older landing — its verdicts described that
+      // text, not the candidate, so they go the same way. The dispatch stays, so a late answer is
+      // `CANDIDATE_MOVED` instead of a blessing.
+      if (step.candidate_sha !== null || (step.landed_sha !== null && step.landed_sha !== sha)) {
+        store.deleteVerdicts(db, step.step_id);
+      }
+      const measured = measureDelta(step, chapter?.blocks ?? []);
+      // BOOK-222: the patch's character edits are held **with** the candidate — the publish is the
+      // only moment they can be applied (the text is not in `blocks` before it), and a candidate
+      // that carries no edit (a rewrite, a gate's revision) replaces the ones it replaced.
+      const sentences = options.sentences === undefined ? null : JSON.stringify(options.sentences);
+      // The candidate and its plan are one write: the writer reacts to the closure before the
+      // gates spend, and a plan that cannot be stored leaves no candidate behind either.
+      const planned = db.transaction((): LandingPlan | null => {
+        store.updateStep(db, step.step_id, {
+          start_sha: step.start_sha ?? sha,
+          candidate_text: target.raw,
+          candidate_sha: sha,
+          candidate_sentences: sentences,
+          blocks_touched: measured.touched,
+          chars_delta: measured.delta,
+          rights_scan: state.stored,
+        });
+        return planCandidate(deps, step, target.raw, chapter?.blocks ?? [], {
+          mode: options.mode,
+          priceUsd: options.estimateUsd,
+        });
+      })();
+      return {
+        landed: true,
+        provisional: true,
+        revAfter: step.rev_before ?? 0,
+        sha,
+        changed: true,
+        deltaRatio: measured.ratio,
+        blocksTouched: measured.touched,
+        ...(planned === null ? {} : { plan: planned.plan }),
+      };
+    }
 
     if (step.landed_at !== null) {
       // The text changed after an answer: the old verdicts described a file a gate can no
@@ -372,6 +448,11 @@ export function createWriteOps(deps: EngineDeps) {
       blocks_touched: measured.touched,
       chars_delta: measured.delta,
       rights_scan: state.stored,
+      // BOOK-222: this landed text **is** the step's text now, so a candidate an earlier call
+      // held is dead — the close must not publish it over what the site already serves.
+      candidate_text: null,
+      candidate_sha: null,
+      candidate_sentences: null,
     });
     appendEvent(
       db,

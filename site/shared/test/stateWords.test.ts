@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { HARM_CASES } from '../src/disposition.ts';
 import {
   ATTEMPT_LINE,
+  ENGINE_SILENT_LINE,
   FAILURE_LINES,
-  LOCK_LINES,
+  lockLine,
   outcomeLine,
   parseOutcomeLine,
   CAPACITY_PLATE,
@@ -11,6 +13,7 @@ import {
   FAILED_ATTEMPT_LINE,
   OWN_WAITING_LINE,
   PASS_STOPS,
+  REFUSAL_LINE,
   PREMISE_LINES,
   STATE_LINES,
   STATE_WORDS,
@@ -126,12 +129,17 @@ describe('the lines the other surfaces print', () => {
   });
 
   it('keeps the attempt lines distinct: a machine that could not, and nothing usable', () => {
-    // An attempt the filing survived is not a stopped pass: the filing keeps its word and the
-    // retry is promised, while a park stops the edit for good (BOOK-219).
+    // BOOK-219's register: an attempt is a **count** (`attempt.ts`), so no attempt line may
+    // promise a wait — the record carries the number, and only the counter decides the end.
     expect(FAILED_ATTEMPT_LINE).not.toBe(STOP_REASONS.stopped);
-    expect(FAILED_ATTEMPT_LINE).toContain('правка ждёт');
+    expect(FAILED_ATTEMPT_LINE).not.toBe(STOP_REASONS.shape);
     expect(ATTEMPT_LINE).not.toBe(FAILED_ATTEMPT_LINE);
-    expect(ATTEMPT_LINE).toContain('правка ждёт');
+    expect(ATTEMPT_LINE.length).toBeGreaterThan(0);
+    // The retired words are the owner's list: main's own line may say «ждёт» — what it may not do
+    // is promise a queue, a cap or a halt.
+    for (const line of [FAILED_ATTEMPT_LINE, ATTEMPT_LINE, ENGINE_SILENT_LINE]) {
+      expect(line).not.toMatch(/в очереди|исчерпано|остановлено/u);
+    }
     expect(TOO_MANY_FILINGS).not.toContain('очеред');
     expect(CAPACITY_PLATE).toContain('ждёте места');
     expect(WAITING_FOR_CHAPTER_LINE).toBe('ждёт своей главы');
@@ -174,11 +182,14 @@ describe('the reason a stopped pass leaves', () => {
       expect(sentence.length).toBeLessThanOrEqual(200);
     }
     // BOOK-218 — the only reason vocabulary: our failure (`не дошло`) and the edit not rejected.
-    for (const key of ['shape', 'modelTimeout', 'modelDown', 'truncated', 'refusal', 'answerRejected', 'engineDown'] as const) {
+    for (const key of ['shape', 'modelTimeout', 'modelDown', 'truncated', 'answerRejected', 'engineDown'] as const) {
       expect(STOP_REASONS[key], key).toMatch(/^не дошло: /u);
       expect(STOP_REASONS[key], key).toContain('правка не отклонена');
     }
     expect(STOP_REASONS.modelTimeout).toContain('не успели');
+    // One sentence per fact: the refusal line IS the register's own — a second line for the same
+    // fact is how a record starts lying.
+    expect(REFUSAL_LINE).toBe(STOP_REASONS.refusal);
   });
 });
 
@@ -202,12 +213,17 @@ describe('one reason line per outcome (BOOK-218, owner 2026-10-29)', () => {
       }
     }
     for (const lock of locks) {
-      const line = outcomeLine({ kind: 'lock', lock });
-      // The lock decides the sentence, word for word.
-      expect(line).toBe(LOCK_LINES[lock]);
-      expect(parseOutcomeLine(line)).toEqual({ kind: 'lock', lock });
-      expect(line).not.toContain('прочитали как');
-      seen.push(line);
+      // BOOK-219: the harm lock's four cases are four sentences, so it is walked case by case.
+      for (const harmCase of lock === 'harm' ? HARM_CASES : ([null] as const)) {
+        const line = outcomeLine({ kind: 'lock', lock, harmCase });
+        // The lock decides the sentence, word for word.
+        expect(line).toBe(lockLine(lock, harmCase));
+        expect(parseOutcomeLine(line)).toEqual(
+          harmCase === null ? { kind: 'lock', lock } : { kind: 'lock', lock, harmCase },
+        );
+        expect(line).not.toContain('прочитали как');
+        seen.push(line);
+      }
     }
     for (const failure of failures) {
       const line = outcomeLine({ kind: 'failure', failure });

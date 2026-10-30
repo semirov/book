@@ -2,6 +2,7 @@ import { FRAME_FIRST_SENTENCE, TOO_MANY_FILINGS, type WriterAssignment } from '@
 import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
+import { closeReason } from '../../src/engine/cascade.ts';
 import { createEngine } from '../../src/engine/service.ts';
 import * as store from '../../src/engine/store.ts';
 import { databaseFile, openDatabase } from '../../src/db/db.ts';
@@ -202,7 +203,7 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
 
   // BOOK-DOC-4 rule 3: the wave bound is the public promise now, so the end-to-end stop lives
   // in `waveBound.test.ts` (on the shipped budget) instead of an env override.
-  it('escalates a chapter that would be written twice in one cascade', () => {
+  it('refuses a chapter that would be written twice in one cascade', () => {
     const fixture = seeded();
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 3, intent: 'связать сцены' });
@@ -247,13 +248,15 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
         status: string;
         outcome: string;
       };
-      expect(row).toEqual({ status: 'escalated', outcome: 'oscillation' });
+      // The stop is the refusal: the change has no `escalated` resting place any more.
+      expect(row).toEqual({ status: 'void', outcome: 'dropped' });
+      expect(fixture.alerts.map((alert) => alert.kind)).toContain('oscillation');
     } finally {
       fixture.close();
     }
   });
 
-  it('escalates a repair that needs a chapter outside its reach (C2)', () => {
+  it('refuses a repair that needs a chapter outside its reach (C2)', () => {
     const fixture = seeded();
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 5, intent: 'связать сцены' });
@@ -276,15 +279,17 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
         outcome: string;
         reason: string;
       };
-      expect(row.status).toBe('escalated');
-      expect(row.outcome).toBe('origin');
-      expect(row.reason).toMatch(/^не дошло: /u);
+      expect(row.status).toBe('void');
+      expect(row.outcome).toBe('dropped');
+      // BOOK-218 owns the sentence: the close's own origin line, never a second table.
+      expect(row.reason).toBe(closeReason('origin'));
+      expect(fixture.alerts.map((alert) => alert.kind)).toContain('origin');
     } finally {
       fixture.close();
     }
   });
 
-  it('escalates a cascade step that replaced too much of its chapter (MAX_DELTA_RATIO)', () => {
+  it('refuses a cascade step that replaced too much of its chapter (MAX_DELTA_RATIO)', () => {
     const fixture = seeded();
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 5, intent: 'связать сцены' });
@@ -307,7 +312,7 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
         status: string;
         outcome: string;
       };
-      expect(row).toEqual({ status: 'escalated', outcome: 'delta' });
+      expect(row).toEqual({ status: 'void', outcome: 'dropped' });
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('delta');
     } finally {
       fixture.close();

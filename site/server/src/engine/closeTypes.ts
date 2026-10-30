@@ -84,6 +84,11 @@ export type CloseStepInput = {
    * then reads `expired-close` and `step.closed` says so.
    */
   expiredLeaseId?: string | null;
+  /**
+   * `false` on the one close that has spent every way back (`reap.ts`, `TEXT_STUCK`): the text
+   * stayed where it was, the refusal is still a refusal, and the reader is told it was ours.
+   */
+  restoreText?: boolean;
 };
 
 export type CloseStepResult = {

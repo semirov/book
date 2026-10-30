@@ -93,18 +93,24 @@ describe('a pass closes `done` or puts the chapter back', () => {
       const result = await harness.run({ lanes: ['filing'] });
 
       expect(result.status).toBe('parked');
-      // The refused revision is not live: the chapter reads what the pass found, as a restore.
+      // BOOK-222: the refused text was a **candidate** — it was never served, so the chapter
+      // reads what the pass found and there is nothing to restore.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['restore', 'change', 'draft']);
+      expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['draft']);
       // The step was closed by the engine as `escalated:rights`, and the change is not applied.
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
-      expect(changeRow(harness, changeId)?.status).toBe('escalated');
-      expect(changeRow(harness, changeId)?.outcome).not.toBe('applied');
-      // The sentence names the way back, never «текст стоит»; the code stays in the log.
+      // BOOK-219: the stop is the refusal — the change ends `void · dropped`, never `escalated`.
+      expect(changeRow(harness, changeId)?.status).toBe('void');
+      expect(changeRow(harness, changeId)?.outcome).toBe('dropped');
+      // The sentence names the refusal, never «текст стоит»; the code stays in the log.
       expect(result.reason).toBe(readerSentences.rightsReverted);
-      expect(harness.logs.join('\n')).toContain('откат: ревизия 1 возвращена');
-      // Nothing was announced about a landing, and no stage claims one.
-      expect(claims(harness)).toEqual([]);
+      // BOOK-222: the refused text was never served, so there is nothing to put back — the writer
+      // asks for no restore, and no line of the log claims one.
+      expect(harness.engineCalls).not.toContain('restore');
+      expect(harness.logs.join('\n')).not.toContain('откат');
+      // Nothing was announced about a landing — one `decision` claim is the reader hearing
+      // «не принято» (BOOK-219), and no stage claims a landing.
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
       expect(stagesOf(harness)).not.toContain('landed');
       expect(stagesOf(harness)).toContain('verdict');
     } finally {
@@ -127,11 +133,13 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
       expect(result.status).toBe('parked');
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
+      // BOOK-222: nothing was published, so no restore revision exists — the pass wrote no text.
+      expect(revisionsOf(harness).map((row) => row.kind)).not.toContain('restore');
       expect(result.reason).toBe(readerSentences.closeReverted);
-      expect(changeRow(harness, changeId)?.status).toBe('escalated');
-      // A close that failed leaves no «глава написана» line and no push claim behind.
-      expect(claims(harness)).toEqual([]);
+      expect(changeRow(harness, changeId)?.status).toBe('void');
+      // A close that failed leaves no «глава написана» line: the only claim is the refusal's
+      // own `decision` (BOOK-219), which is what the reader is owed.
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
       expect(stagesOf(harness)).not.toContain('landed');
       expect(harness.logs.join('\n')).toContain('VERDICTS_REQUIRED');
     } finally {
@@ -186,9 +194,11 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
       expect(result.status).toBe('parked');
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
+      // BOOK-222: nothing was published, so no restore revision exists — the pass wrote no text.
+      expect(revisionsOf(harness).map((row) => row.kind)).not.toContain('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      // The reader hears the refusal once (`decision`); a landing is never claimed.
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
       expect(stagesOf(harness)).not.toContain('landed');
     } finally {
       await harness.close();
@@ -208,9 +218,11 @@ describe('a pass closes `done` or puts the chapter back', () => {
       expect(result.status).toBe('parked');
       expect(harness.logs.join('\n')).toContain('GATE_UNPARSED');
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
+      // BOOK-222: nothing was published, so no restore revision exists — the pass wrote no text.
+      expect(revisionsOf(harness).map((row) => row.kind)).not.toContain('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      // The reader hears the refusal once (`decision`); a landing is never claimed.
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
       expect(stagesOf(harness)).not.toContain('landed');
     } finally {
       await harness.close();
@@ -240,9 +252,11 @@ describe('a pass closes `done` or puts the chapter back', () => {
 
       expect(result.status).toBe('parked');
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
-      expect(revisionsOf(harness)[0]?.kind).toBe('restore');
+      // BOOK-222: nothing was published, so no restore revision exists — the pass wrote no text.
+      expect(revisionsOf(harness).map((row) => row.kind)).not.toContain('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      // The reader hears the refusal once (`decision`); a landing is never claimed.
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
     } finally {
       await harness.close();
     }

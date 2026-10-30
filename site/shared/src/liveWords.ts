@@ -1,4 +1,5 @@
-import type { HeadWord } from './stateWords.ts';
+import type { DispositionLock, HarmCase } from './disposition.ts';
+import { STATE_WORDS, type HeadWord } from './stateWords.ts';
 
 /**
  * BOOK-DOC-84 §10.9 — the words a live page prints: the ladder's counters, the head line's
@@ -368,3 +369,46 @@ export function visibleLineWord(parts: readonly LinePart[], drops: readonly Line
     }));
   return headLineWord(kept);
 }
+
+/* ── BOOK-219 — the locks cases and the sinks sentences ─────────────────────── */
+
+/**
+ * 11 — a verdict about the idea: one of the four locks, one sentence each (owner, 2026-10-29).
+ * The verdict word `не принято` leads, so a surface that prints the word above takes
+ * `lockTail` alone.
+ *
+ * BOOK-219 narrows `harm` to four cases (`HarmCase`, `shared/harm.ts`): harm **inside** the
+ * story is the genre, so the blanket line is gone and only the four refusals the owner named have
+ * sentences. A row with no case flag is read as the law's own category.
+ */
+export const HARM_LOCK_LINES: Readonly<Record<HarmCase, string>> = {
+  'minor-sexual': 'не принято: с ребёнком и сексом — нельзя',
+  'real-person': 'не принято: это про реального человека — так нельзя',
+  instructions: 'не принято: это инструкция, как причинить вред человеку, — в книге такого не будет',
+  unpublishable: 'не принято: это незаконно публиковать',
+};
+
+export const LOCK_LINES: Readonly<Record<DispositionLock, string>> = {
+  rights: 'не принято: это чужой текст, а чужое мы не переписываем',
+  harm: HARM_LOCK_LINES.unpublishable,
+  frame: 'не принято: у этой главы есть рамка, и её не сдвигают',
+  finale: 'не принято: финал уже назван, его не меняют',
+};
+
+/** One lock's sentence, naming the harm case when the lock is `harm`. */
+export function lockLine(lock: DispositionLock, harmCase: HarmCase | null = null): string {
+  if (lock === 'harm') return HARM_LOCK_LINES[harmCase ?? 'unpublishable'];
+  return LOCK_LINES[lock];
+}
+
+/** One lock's sentence without the verdict word in front of it: `это чужой текст, …`. */
+export function lockTail(lock: DispositionLock, harmCase: HarmCase | null = null): string {
+  return lockLine(lock, harmCase).slice(`${STATE_WORDS.refused}: `.length);
+}
+
+/** The machine itself read the work and said no: about the work, and no retry is offered. */
+export const REFUSAL_LINE = 'правку писать отказались — заявка не принята';
+
+/** The engine itself did not answer: the attempt is not spent, the call never finished. */
+export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
+

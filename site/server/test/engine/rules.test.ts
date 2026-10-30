@@ -98,7 +98,7 @@ describe('leases — the write lock (§6A.11)', () => {
 });
 
 describe('the reaper gives up only after the ladder (§6A.11, BOOK-DOC-84 §10.8)', () => {
-  it('escalates a change whose session never lands anything', () => {
+  it('refuses a change whose session never lands anything', () => {
     const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
@@ -122,10 +122,12 @@ describe('the reaper gives up only after the ladder (§6A.11, BOOK-DOC-84 §10.8
         attempts: number;
         reason: string;
       };
-      expect(row.status).toBe('escalated');
-      expect(row.outcome).toBe('gate_timeout');
+      // BOOK-219: the stop is the refusal — the change ends `void · dropped` with its own
+      // sentence. `escalated` stayed the *step's* word, so no change row carries it.
+      expect(row.status).toBe('void');
+      expect(row.outcome).toBe('dropped');
       expect(row.attempts).toBe(6);
-      expect(row.reason).toMatch(/^не дошло: /u);
+      expect(row.reason).toContain('сессия не вернулась');
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
       expect(fixture.db.prepare('SELECT holder FROM lane WHERE id = 1').get()).toEqual({ holder: null });
     } finally {
@@ -404,7 +406,7 @@ describe('a malformed report is refused, never read as silence', () => {
   });
 });
 
-describe('escalate — the reason selects the outcome (§6A.6)', () => {
+describe('escalate — the reason selects the stop’s vocabulary (§6A.6)', () => {
   const cases: Array<[string, string]> = [
     ['не хватило budget', 'budget'],
     ['oscillation detected', 'oscillation'],
@@ -414,8 +416,8 @@ describe('escalate — the reason selects the outcome (§6A.6)', () => {
     ['something else', 'origin'],
   ];
 
-  for (const [because, outcome] of cases) {
-    it(`maps «${because}» to ${outcome}`, () => {
+  for (const [because, kind] of cases) {
+    it(`maps «${because}» to the ${kind} alert`, () => {
       const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
       try {
         const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
@@ -426,9 +428,9 @@ describe('escalate — the reason selects the outcome (§6A.6)', () => {
           outcome: string;
           reason: string;
         };
-        expect(row.status).toBe('escalated');
-        expect(row.outcome).toBe(outcome);
-        expect(row.reason).toContain(because);
+        // The writer's stop is the refusal: no `escalated` change, and the sentence is theirs.
+        expect(row).toEqual({ status: 'void', outcome: 'dropped', reason: because });
+        expect(fixture.alerts.map((alert) => alert.kind)).toContain(kind);
         expect(fixture.db.prepare('SELECT holder FROM lane WHERE id = 1').get()).toEqual({ holder: null });
       } finally {
         fixture.close();

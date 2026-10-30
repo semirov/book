@@ -1,19 +1,20 @@
 /**
  * The compensating revert of a writer pass (BOOK-219, AC3).
  *
- * The engine dispatches a gate only for a **landed** step (`engine/gates.ts` `NOT_LANDED`), so a
- * pass must publish before its verdict can exist. When the gate never answers, the text it
- * published is not a decision but it *is* live, and the reader was being told «заявка остаётся в
- * очереди» over a revision nobody checked. The fix is therefore not a reorder — it is an undo:
- * the pass puts its own landing back as a new `restore` revision, proves the chapter reads the
- * revision it started from (the returned sha is the pre-pass sha), and marks that restore as
- * reconciled so the panel stops asking about it.
+ * Since BOOK-222 a pass lands its text as a **candidate**, so the ordinary exits leave nothing to
+ * undo: the refusal drops it and the chapter keeps the text the site already serves. This module
+ * is the safety net for the one land that still publishes — an engine that does not know the
+ * `provisional` field (an older build), which serves the text and reports no candidate; a **resumed**
+ * step is not that case any more: it holds its revision as a candidate too. When such a pass does
+ * not reach `done`, its own landing is live, and the fix is an undo: the pass puts it back as a new
+ * `restore` revision, proves the chapter reads the revision it started from (the returned sha is
+ * the pre-pass sha), and marks that restore as reconciled so the panel stops asking about it.
  *
  * Three answers, and the caller says a different sentence for two of them:
  *
- *  · `none` — **this run** landed nothing of its own: a pass that never landed, and above all a
- *    resumed step that only read the gates (`landed` is *this run's* landing, never the step's
- *    `job.landed` — a resumed pass that re-lands holds its own revision and puts that one back);
+ *  · `none` — **this run** landed nothing of its own: a pass that never landed, and above all one
+ *    whose text is a candidate (`landed` is *this run's* published landing, never the step's
+ *    `job.landed` — nothing served means nothing to undo);
  *    a chapter that no longer reads this pass's text belongs to somebody else's write;
  *  · `reverted` — the chapter is the pre-pass text again (verified by sha);
  *  · `unverified` — the restore itself did not complete (or there was no revision behind a first
@@ -92,8 +93,8 @@ export function backSentence(back: PutBack, kind: 'gate' | 'rights' = 'gate'): s
 }
 
 export async function putBack(input: PutBackInput): Promise<PutBack> {
-  // BOOK-219: the guard is *this run's* landing, never the step's (`job.landed`). A resumed step
-  // whose gate said `revise` re-lands, and that re-landing is ours to put back.
+  // BOOK-219: the guard is *this run's* landing, never the step's (`job.landed`). A candidate is
+  // not a landing (nothing was served), so only a published text is ever taken back.
   if (!input.landed) return { kind: 'none' };
   const rev = input.started.rev;
   const at = input.landing === null

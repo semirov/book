@@ -18,7 +18,8 @@ import { applyChapterFile } from '../ingest/applyChapter.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import { restoreCause } from '../ingest/restore.ts';
 import { readSnapshot } from '../versions/snapshots.ts';
-import { refuse, type EngineDeps } from './types.ts';
+import * as store from './store.ts';
+import { isEngineError, refuse, type EngineDeps } from './types.ts';
 
 export type RestoreInput = {
   chapter: number;
@@ -100,4 +101,90 @@ export function restoreRevision(deps: EngineDeps, input: RestoreInput): RestoreR
   // the writer says so instead of claiming a restore that published no revision.
   const now = getChapterRow(db, chapter);
   return { rev: now?.rev ?? current.rev, sha: now?.sha256 ?? current.sha256, previousRev: now?.rev ?? current.rev };
+}
+
+// ── the refusal's restore: the pre-pass revision, back ──────────────────────
+//
+// A refusal means **no text of this pass is in the book**. The mechanism is the operator's own
+// restore (`restoreRevision`): a new revision carrying the pre-pass text, appended, never a file
+// put back. Three answers, and no fourth:
+//
+//   · nothing was landed, or the chapter had no text before the pass (`rev_before` 0: a draft's
+//     first edition) → nothing to put back;
+//   · the pre-pass text is already what the site serves → nothing to do (a second refusal of the
+//     same chapter is a no-op, so a cascade can restore every step without doubling revisions);
+//   · otherwise the served text must still be this step's own landing. If it is not, somebody
+//     else wrote the chapter after the pass, and restoring over them would destroy that work:
+//     the refusal stops with `TEXT_STUCK` instead of closing over moved text.
+
+export type PrePassRestore =
+  | { restored: false }
+  | { restored: true; rev: number; sha: string };
+
+type TargetRevision = { rev: number; snapshot: string };
+
+function textStuck(chapter: number, detail: string, extra: Record<string, unknown> = {}): never {
+  refuse(
+    'TEXT_STUCK',
+    409,
+    `главу ${String(chapter)} нельзя вернуть к прежней редакции (${detail}) — заявка не закрыта`,
+    extra,
+  );
+}
+
+/** The sha of a revision's snapshot, read back and parsed exactly as the applier will. */
+function revisionSha(deps: EngineDeps, chapter: number, target: TargetRevision): string {
+  const text = readSnapshot(deps.config.dataDir, target.snapshot);
+  if (text === null) textStuck(chapter, `снимок ревизии ${String(target.rev)} не найден`);
+  return parseChapter(chapter, text).sha256;
+}
+
+/**
+ * Put one step's chapter back to the revision the step started from. A refusal that cannot do
+ * this must not close: `TEXT_STUCK` is the loud stop, never a decision over text that moved.
+ */
+export function restorePrePass(deps: EngineDeps, step: store.StepRow, now: number): PrePassRestore {
+  const { db } = deps;
+  const chapter = step.chapter;
+  if (step.landed_at === null || chapter === null) return { restored: false };
+  const before = step.rev_before ?? 0;
+  // The pre-pass state of a chapter that did not exist is «no chapter», and there is no revision
+  // to publish it as: a draft's first edition stays (its premise is settled by the text itself).
+  if (before < 1) return { restored: false };
+  const current = getChapterRow(db, chapter);
+  if (current === undefined) textStuck(chapter, 'глава исчезла');
+  const target = db
+    .prepare('SELECT rev, snapshot FROM revisions WHERE chapter = ? AND rev = ?')
+    .get(chapter, before) as TargetRevision | undefined;
+  if (target === undefined) textStuck(chapter, `ревизии ${String(before)} нет`);
+  const sha = revisionSha(deps, chapter, target);
+  if (current.sha256 === sha) return { restored: false };
+  if (step.landed_sha !== null && current.sha256 !== step.landed_sha) {
+    textStuck(chapter, 'глава уже не тот текст, что записал шаг');
+  }
+  let restored: RestoreResult;
+  try {
+    restored = restoreRevision(deps, { chapter, rev: before, now });
+  } catch (error) {
+    // A restore the applier refuses (a moved frame, an empty or missing revision) is the same
+    // fact: the pre-pass text cannot be published. The code says so once, for the caller.
+    if (isEngineError(error)) textStuck(chapter, error.message, { cause: error.code });
+    throw error;
+  }
+  // The published text must be the pre-pass text, and the chapter must now serve that revision:
+  // a restore that returned something else would be a close over text nobody put back.
+  if (restored.sha !== sha) textStuck(chapter, 'восстановленная редакция не совпала с прежней', { sha: restored.sha });
+  return { restored: true, rev: restored.rev, sha: restored.sha };
+}
+
+/**
+ * Every chapter a ripple wrote, back to its own pre-pass revision — the refusal of a cascade
+ * change means none of its text stands, not only the last step's.
+ */
+export function restoreCascadePrePass(deps: EngineDeps, cascadeId: string, now: number): number {
+  let restored = 0;
+  for (const step of store.listCascadeSteps(deps.db, cascadeId)) {
+    if (restorePrePass(deps, step, now).restored) restored += 1;
+  }
+  return restored;
 }

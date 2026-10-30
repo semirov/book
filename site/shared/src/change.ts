@@ -392,13 +392,16 @@ export function seamReason(raw: unknown, max = 200): string {
 }
 
 // ── the reader's line for a failed attempt ──────────────────────────────────
+//
+// BOOK-218: every sentence here lives in `stateWords.ts` and is imported above, so a refused or
+// attempted row cannot be told two ways on two pages. BOOK-219 narrowed the cap's own line: the
+// third failure widens the reading and the fifth hands over to the desperate sixth, so a capped
+// attempt is still the ladder's row and keeps the sentence BOOK-206 B5 gave it.
 
 /**
  * A failed attempt is **not** a filing's state: the lane tried the filing, the machine answered
- * off-shape or did not answer at all, and the filing is still waiting for its turn — so the
- * reader is told that in one sentence, and the engine's own word for the failure stays on the
- * server. BOOK-218: the sentence lives in `stateWords.ts`. The cap is not a queue place at all:
- * it has its own line, `READING_RESCHEDULED_LINE`, with the hour in it.
+ * off-shape or did not answer at all. The cap is not a queue place either — it has its own line,
+ * with the hour in it, until the ladder's last rung settles the filing.
  */
 export const READING_RESCHEDULED_LINE = 'чтение не состоялось — следующая попытка после 00:00 UTC';
 

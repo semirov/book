@@ -8,20 +8,23 @@
  *
  *  · a dispatch younger than the window survives a reap tick, and the engine's own beat extends a
  *    live one (an expired one belongs to the reaper — the lease rule, applied to a reader);
- *  · past the window the reaper escalates with a sentence an operator can read, in the step note
- *    and in the change's reason, and the minutes come from the config, never from a constant.
+ *  · past the window the reaper escalates: the **reader's** sentence says it was our failure and
+ *    the filing was not judged, while the minutes (from the config, never a constant) and what
+ *    happened to the text live in the step's own note.
  */
 
 import type { WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import type { GateAssignment } from '../../src/engine/gates.ts';
+import { GATE_WINDOW_REASON } from '../../src/engine/refuse.ts';
 import * as store from '../../src/engine/store.ts';
 import { toIso } from '../../src/util/time.ts';
 import { chapterText, createEngineFixture, type Fixture } from './helpers.ts';
 
-/** The sentence the reaper writes, built from the window it actually ran with. */
-const sentenceOf = (minutes: number): string => `гейт не ответил за ${String(minutes)} мин — проход остановлен`;
+/** The step's own note (the operator's copy): the minutes and what happened to the text. */
+const noteOf = (minutes: number): string =>
+  `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции`;
 
 function fixtureWith(gateTtlMs?: string): Fixture {
   return createEngineFixture({
@@ -75,7 +78,7 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
     }
   });
 
-  it('escalates a dispatch past the window with a sentence, never a code', () => {
+  it('refuses a dispatch past the window with a sentence, never a code', () => {
     const fixture = fixtureWith();
     try {
       const assignment = landedStep(fixture);
@@ -87,9 +90,8 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
 
       const step = store.getStep(fixture.db, assignment.stepId);
       expect(step?.outcome).toBe('escalated');
-      expect(step?.note).toBe(sentenceOf(20));
-      // Neither a config name nor a machine code: an operator reads a sentence, the payload a code.
-      expect(step?.note).not.toContain('_');
+      // The note is the operator's copy: the window from the config, and what it cost the text.
+      expect(step?.note).toBe(noteOf(20));
       expect(step?.note).not.toContain('GATE_TTL_MS');
 
       const change = fixture.db.prepare('SELECT status, outcome, reason FROM changes').get() as {
@@ -97,9 +99,12 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
         outcome: string;
         reason: string;
       };
-      expect(change.status).toBe('escalated');
-      expect(change.outcome).toBe('gate_timeout');
-      expect(change.reason).toBe(sentenceOf(20));
+      // The gate window is a refusal of our own failure: the text is back to its pre-pass
+      // revision, the change is void·dropped, and the reader is told the filing was not judged.
+      expect(change).toEqual({ status: 'void', outcome: 'dropped', reason: GATE_WINDOW_REASON });
+      // Neither a config name nor a machine code, and no minute count for the reader.
+      expect(change.reason).not.toContain('_');
+      expect(change.reason).not.toMatch(/\d/);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
       expect(dispatchOf(fixture, assignment.stepId)).toBeUndefined();
     } finally {
@@ -116,7 +121,9 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
 
       fixture.clock.advance(900_000 + 1_000);
       expect(fixture.engine.reap().gateTimeouts).toEqual([assignment.stepId]);
-      expect(store.getStep(fixture.db, assignment.stepId)?.note).toBe(sentenceOf(15));
+      // The minutes are the operator's fact: the config moved them, the reader's line did not.
+      expect(store.getStep(fixture.db, assignment.stepId)?.note).toBe(noteOf(15));
+      expect(fixture.db.prepare('SELECT reason FROM changes').get()).toEqual({ reason: GATE_WINDOW_REASON });
     } finally {
       fixture.close();
     }

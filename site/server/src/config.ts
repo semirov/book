@@ -24,6 +24,12 @@ import { loadPipeline, type Pipeline } from './pipeline.ts';
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// Owner's correction (2026-10-29): «нет, сроков не надо — только конечное количество попыток».
+// A state between «подан» and one of the two answers is bounded by an **attempt count**; a clock
+// may pace a retry or guard a call in flight, never decide a state. triage: 6 attempts (5 calls,
+// the 6th the coded floor), backoff 60 s → 5 → 20 → 40 min, claim 900 s; queue: 6 claims
+// (`QUEUE_MAX_ATTEMPTS`); gate window 20 min (`GATE_TTL_MS`); step wall 225 min (`STEP_WALL_MS`).
+
 const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),
   dataDir: z.string().default(resolve(SITE_ROOT, '.data')),
