@@ -28,6 +28,7 @@ import { BookSocket, websocketUrl } from './lib/ws.ts';
 import { connectionAfter, FIRST_CONNECTION, type ConnectionState } from './lib/socketStatus.ts';
 import { publishLiveChange } from './lib/liveChange.ts';
 import { publishFilingLive } from './lib/filingLive.ts';
+import { publishTheatrePage, theatrePage, type TheatreTransport } from './lib/theatreStage.tsx';
 import { applyFrame, initialClientState, type ClientState, type FrameEffect } from './lib/frames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
@@ -82,6 +83,11 @@ export function App() {
   const socketRef = useRef<BookSocket | null>(null);
   const readingRef = useRef({ n: null as number | null, page: null as number | null });
 
+  /**
+   * BOOK-227 — the socket's own state, kept in a ref so the commit below can publish it with the
+   * reducer's fields: a dead transport stops every moving mark and adds none (§9.8).
+   */
+  const transportRef = useRef<TheatreTransport>('up');
   /** One write of the page: the ref and React's state move together, never apart. */
   const commit = useCallback((next: ClientState) => {
     pageRef.current = next;
@@ -94,6 +100,9 @@ export function App() {
       filingUpdates: next.filingUpdates,
       decisions: next.decisions,
     });
+    // BOOK-227 — the theatre reads the chapter's stage log and the print window's own write:
+    // `ChapterProse` hands its chapter's slice down, so no paragraph carries either as a prop.
+    publishTheatrePage({ stages: next.stages, applied: next.applied, transport: transportRef.current });
     setPage(next);
   }, []);
   const update = useCallback(
@@ -281,6 +290,17 @@ export function App() {
       socketRef.current = null;
     };
   }, []);
+
+  /**
+   * BOOK-227 §9.8 — a dead socket loses every moving mark and adds none: the theatre hears the
+   * page's own connection, and nothing else on the page changes with it.
+   */
+  useEffect(() => {
+    const transport: TheatreTransport = connection.status === 'closed' ? 'down' : 'up';
+    if (transportRef.current === transport) return;
+    transportRef.current = transport;
+    publishTheatrePage({ ...theatrePage(), transport });
+  }, [connection]);
 
   /** A fresh chapter keeps its ticket for ten seconds, and the timer belongs to the page. */
   useEffect(() => {

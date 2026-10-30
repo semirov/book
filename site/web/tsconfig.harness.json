@@ -9,5 +9,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["harness/margin.tsx"]
+  "include": ["harness/margin.tsx", "harness/theatre.tsx"]
 }

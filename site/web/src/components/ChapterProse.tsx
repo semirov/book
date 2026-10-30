@@ -12,6 +12,10 @@
  *
  * BOOK-207 — nothing sits after the paragraph: the live paragraph is the whole process, and
  * a settled pass leaves the ordinary paragraph and the record's `правка` section.
+ *
+ * BOOK-227 — the chapter's stage log, the print window's write and the page's socket are handed
+ * down through `TheatreStageProvider`, so every sentence of the chapter performs the same facts
+ * and neither shape is a prop of the paragraph (`lib/theatreStage.tsx`).
  */
 
 import type {
@@ -29,6 +33,7 @@ import { reducedMotion } from '../dom.ts';
 import type { PrintPlan } from '../lib/appliedPrint.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { activeBlockId, blockText, type RevealState } from '../lib/reveal.ts';
+import { appliedOf, stagesOf, TheatreStageProvider, useTheatrePage } from '../lib/theatreStage.tsx';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { PrintPass } from './PrintPass.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
@@ -84,6 +89,17 @@ export function ChapterProse({
   const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
   /** When the print before this one settled: the chain's own clock, the earlier place first. */
   const [chainAt, setChainAt] = useState<ReadonlyMap<string, number>>(() => new Map());
+  // BOOK-227 — this chapter's slice of the page's theatre facts, one value per chapter commit.
+  const theatre = useTheatrePage();
+  const scope = useMemo(
+    () => ({
+      chapter: entry.n,
+      stages: stagesOf(theatre, entry.n),
+      applied: appliedOf(theatre, entry.n),
+      transport: theatre.transport,
+    }),
+    [theatre, entry.n],
+  );
   const reduced = reducedMotion();
   const live = useMemo(() => prints.filter((plan) => !settled.has(plan.key)), [prints, settled]);
   /**
@@ -105,7 +121,7 @@ export function ChapterProse({
   for (const block of chapter.blocks) textCounts.set(block.text, (textCounts.get(block.text) ?? 0) + 1);
 
   return (
-    <>
+    <TheatreStageProvider value={scope}>
       {chapter.blocks.map((block, index) => {
         const text = reveal === null ? block.text : blockText(reveal, block.id, block.text);
         const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
@@ -177,6 +193,6 @@ export function ChapterProse({
           </Fragment>
         );
       })}
-    </>
+    </TheatreStageProvider>
   );
 }

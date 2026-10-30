@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru" data-theme="day">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>theatre harness</title>
+    <style>
+      /* Enough page under the fixture to scroll the sentence out of the viewport: the arrival's
+         "no visible line" rule and the print's 1.5-viewport bound are both measurements of a
+         page that is taller than the screen, and a page that fits cannot answer either. */
+      .harness-tail {
+        height: 1400px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      BOOK-227 — the CDP harness page for the theatre (BOOK-DOC-86 §2–§9).
+
+      Not a route of the site: it mounts the **real** `SentenceTheatre`, `LivePass` (through
+      `ChapterProse`'s applied-print path), `FilingMark`, `MarginNote`, `HeadStatus` and the real
+      sheets, with the book's own sentence — chapter 1, block `ch01#0594465f`, 349 characters,
+      57 words — and steps it through every act by dispatching the **real frame payloads** into
+      the real stores (`liveFacts`, the page's stage log, and the chapter a `chapter:applied`
+      frame refetched). Nothing here paints a state by timer and nothing is a visual mock.
+
+      `scripts/theatre-cdp.mjs` drives it over CDP through `window.__theatre`, measures the DOM
+      (line boxes, node counts, caret, clip, writes) and captures the plates. The numbers decide
+      pass/fail, never this page.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/harness/theatre.tsx"></script>
+  </body>
+</html>

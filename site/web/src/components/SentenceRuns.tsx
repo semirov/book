@@ -6,6 +6,7 @@ import type { ProseMarks } from '../lib/proseMarks.ts';
 import type { Sentence } from '../lib/seam.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { MarginNote } from './MarginNote.tsx';
+import { SentenceTheatre } from './SentenceTheatre.tsx';
 
 /**
  * BOOK-68 / BOOK-128 #3852 — the paragraph as slices of its own text, never re-assembled.
@@ -136,6 +137,10 @@ export function SentenceRuns({
         </span>
         {filings === undefined || filings.stale || filings.all.length === 0 ? null : (
           <>
+            {/* BOOK-227 — the sentence's own performance: an absolute overlay of lines, never
+                a per-word node; the chapter's log comes from `TheatreStageProvider`. It travels
+                with the mark: one filing, one telling (§9). */}
+            <SentenceTheatre filings={filings} />
             <FilingMark filings={filings} onOpen={(comment, origin) => onOpenFiling(comment, origin, { start: sentence.start, end: sentence.end })} />
             {/* §11.3 — one mark and one note per sentence group: the number is the mark's,
                 the count belongs to the note only when there really are several filings, and

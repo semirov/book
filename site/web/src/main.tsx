@@ -32,6 +32,9 @@ import './styles/seam.css';
 import './styles/pass-live.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
+// BOOK-227 — the theatre of a filing: the fill's rule, the nib, the spine, the tallies and the
+// foot; after the cite it shapes and the print it rides, before the margin it stands beside.
+import './styles/theatre.css';
 import './styles/marginalia.css';
 import './styles/reader.css';
 // BOOK-128 #3852 — the accordion, after the sheets whose blocks it absorbs.

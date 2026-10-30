@@ -1,0 +1,811 @@
+{
+  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+  "widths": [
+    {
+      "width": 1440,
+      "height": 900,
+      "acts": {
+        "arrival": {
+          "name": "arrival",
+          "file": "arrival-1440.png",
+          "act": "arrival",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 6,
+          "tallies": 0,
+          "head": "машина читает правку · попытка 1 из 6 · 17:25"
+        },
+        "arrival-settled": {
+          "name": "arrival-settled",
+          "file": "arrival-settled-1440.png",
+          "act": null,
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 3,
+          "tallies": 0,
+          "head": "машина читает правку · попытка 1 из 6 · 17:25"
+        },
+        "thinking": {
+          "name": "thinking",
+          "file": "thinking-1440.png",
+          "act": "thinking",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 3,
+          "tallies": 0,
+          "head": null
+        },
+        "verdict": {
+          "name": "verdict",
+          "file": "verdict-1440.png",
+          "act": "verdict",
+          "outcome": "accepted",
+          "cause": null,
+          "lines": 6,
+          "overlay": 3,
+          "tallies": 0,
+          "head": null
+        },
+        "queue": {
+          "name": "queue",
+          "file": "queue-1440.png",
+          "act": "queue",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 3,
+          "tallies": 0,
+          "head": null
+        },
+        "writing": {
+          "name": "writing",
+          "file": "writing-1440.png",
+          "act": null,
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 0,
+          "tallies": 0,
+          "head": "внесено · глава 1, редакция 16 · 17:26"
+        },
+        "checking": {
+          "name": "checking",
+          "file": "checking-1440.png",
+          "act": "checking",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 5,
+          "tallies": 2,
+          "head": null
+        },
+        "landing": {
+          "name": "landing",
+          "file": "landing-1440.png",
+          "act": "landing",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 7,
+          "tallies": 0,
+          "head": null
+        },
+        "landing-lifted": {
+          "name": "landing-lifted",
+          "file": "landing-lifted-1440.png",
+          "act": "landing",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 7,
+          "tallies": 0,
+          "head": null
+        },
+        "failure-fault": {
+          "name": "failure-fault",
+          "file": "failure-fault-1440.png",
+          "act": "failed",
+          "outcome": null,
+          "cause": "fault",
+          "lines": 6,
+          "overlay": 7,
+          "tallies": 0,
+          "head": null
+        },
+        "failure-verdict": {
+          "name": "failure-verdict",
+          "file": "failure-verdict-1440.png",
+          "act": "verdict",
+          "outcome": "refused",
+          "cause": null,
+          "lines": 6,
+          "overlay": 3,
+          "tallies": 0,
+          "head": null
+        },
+        "arrival-reduced": {
+          "name": "arrival-reduced",
+          "file": "arrival-reduced-1440.png",
+          "act": "arrival",
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 8,
+          "tallies": 0,
+          "head": "машина читает правку · попытка 1 из 6 · 17:26"
+        },
+        "writing-reduced": {
+          "name": "writing-reduced",
+          "file": "writing-reduced-1440.png",
+          "act": null,
+          "outcome": null,
+          "cause": null,
+          "lines": 6,
+          "overlay": 0,
+          "tallies": 0,
+          "head": "внесено · глава 1, редакция 16 · 17:26"
+        }
+      },
+      "arrival": {
+        "script": {
+          "count": 72,
+          "p50": 0.1,
+          "p95": 0.2,
+          "p99": 0.2,
+          "max": 0.2
+        },
+        "deltas": {
+          "count": 71,
+          "p50": 13.4,
+          "p95": 26.6,
+          "p99": 26.8,
+          "max": 26.8
+        }
+      },
+      "nodes": {
+        "overlay": 6,
+        "tallies": 2
+      },
+      "head": null,
+      "checks": [
+        {
+          "name": "arrival 30 % — the pen is on word 10",
+          "pass": true,
+          "detail": {
+            "nib": {
+              "left": 1009.58,
+              "top": 140.97,
+              "width": 30.44
+            },
+            "word": {
+              "left": 1009.58,
+              "top": 117.97,
+              "width": 30.44,
+              "right": 1040.02
+            }
+          }
+        },
+        {
+          "name": "arrival 70 % — the pen is on word 21",
+          "pass": true,
+          "detail": {
+            "nib": {
+              "left": 400,
+              "top": 201.44,
+              "width": 28.58
+            },
+            "word": {
+              "left": 400,
+              "top": 178.44,
+              "width": 28.58,
+              "right": 428.58
+            }
+          }
+        },
+        {
+          "name": "arrival 95 % — the pen is on word 28",
+          "pass": true,
+          "detail": {
+            "nib": {
+              "left": 769.27,
+              "top": 201.44,
+              "width": 20.13
+            },
+            "word": {
+              "left": 769.27,
+              "top": 178.44,
+              "width": 20.13,
+              "right": 789.39
+            }
+          }
+        },
+        {
+          "name": "arrival — the unread rule is dotted and quiet (`--ink-3`), never the accent",
+          "pass": true,
+          "detail": {
+            "rule": {
+              "style": "dotted",
+              "colour": "rgb(79, 84, 85)"
+            },
+            "ink3": "rgb(79, 84, 85)",
+            "live": "rgb(36, 85, 99)"
+          }
+        },
+        {
+          "name": "arrival past the sweep — the fact happened, nothing is performed",
+          "pass": true,
+          "detail": {
+            "act": null,
+            "rule": "solid",
+            "lines": 0,
+            "nib": "0px"
+          }
+        },
+        {
+          "name": "arrival after the fill — the pen has left, the cite is solid, the margin unchanged",
+          "pass": true,
+          "detail": {
+            "act": null,
+            "lines": 0,
+            "pen": {
+              "width": "0px",
+              "opacity": "0"
+            },
+            "rule": "solid",
+            "margin": {
+              "after": {
+                "top": 3,
+                "left": 696,
+                "right": 884,
+                "bottom": 123.44,
+                "width": 188,
+                "height": 120.44
+              },
+              "atMount": {
+                "top": 3,
+                "left": 696,
+                "right": 884,
+                "bottom": 123.44,
+                "width": 188,
+                "height": 120.44
+              }
+            },
+            "atMount": "1"
+          }
+        },
+        {
+          "name": "arrival — p95 frame work ≤ 8 ms",
+          "pass": true,
+          "detail": {
+            "script": {
+              "count": 72,
+              "p50": 0.1,
+              "p95": 0.2,
+              "p99": 0.2,
+              "max": 0.2
+            },
+            "deltas": {
+              "count": 71,
+              "p50": 13.4,
+              "p95": 26.6,
+              "p99": 26.8,
+              "max": 26.8
+            }
+          }
+        },
+        {
+          "name": "writes — ≤ 1 clip, ≤ 1 transform, ≤ 1 opacity per frame; no node or character written",
+          "pass": true,
+          "detail": {
+            "perFrame": {
+              "maxClip": 1,
+              "maxTransform": 1,
+              "maxOpacity": 0,
+              "frames": 3,
+              "over": [],
+              "commit": {
+                "clip": 0,
+                "transform": 0,
+                "opacity": 0
+              }
+            },
+            "mutations": {
+              "style": 6,
+              "childList": 0,
+              "characterData": 0,
+              "childListDetail": []
+            },
+            "frames": 67
+          }
+        },
+        {
+          "name": "arrival with no visible line — solid at once, no overlay",
+          "pass": true,
+          "detail": {
+            "visible": false,
+            "act": null,
+            "rule": "solid",
+            "lines": 0
+          }
+        },
+        {
+          "name": "thinking — the spine stands (2 px), the stub on the rule’s end, no line drawn",
+          "pass": true,
+          "detail": {
+            "spine": {
+              "top": 88.78,
+              "left": 390,
+              "right": 392,
+              "bottom": 270.19,
+              "width": 2,
+              "height": 181.41
+            },
+            "open": "true",
+            "nib": {
+              "box": {
+                "top": 169.25,
+                "left": 843.06,
+                "right": 845.06,
+                "bottom": 175.25,
+                "width": 2,
+                "height": 6
+              },
+              "shape": "stub",
+              "opacity": "1",
+              "width": "2px"
+            },
+            "foot": "false",
+            "lines": 0
+          }
+        },
+        {
+          "name": "checking — two tallies 4 px apart, inked, the spine gone",
+          "pass": true,
+          "detail": {
+            "gates": [
+              {
+                "left": 382,
+                "height": 38.23,
+                "ink": ""
+              },
+              {
+                "left": 378,
+                "height": 38.23,
+                "ink": ""
+              }
+            ],
+            "gap": 4,
+            "spine": "false"
+          }
+        },
+        {
+          "name": "writing — one print on the block, one caret, and the theatre’s own 2 px spine on it",
+          "pass": true,
+          "detail": {
+            "act": null,
+            "print": {
+              "blocks": 1,
+              "beat": "type",
+              "revealed": "9",
+              "spine": {
+                "content": "\"\"",
+                "width": "2px",
+                "colour": "rgb(36, 85, 99)",
+                "left": "-10px"
+              },
+              "caret": {
+                "box": {
+                  "top": 175.45,
+                  "left": 700.63,
+                  "right": 702.63,
+                  "bottom": 194.53,
+                  "width": 2,
+                  "height": 19.08
+                },
+                "opacity": "1"
+              },
+              "carets": 1,
+              "ghost": {
+                "opacity": "0.099"
+              }
+            },
+            "live": "rgb(36, 85, 99)"
+          }
+        },
+        {
+          "name": "writing — the ink settles, the print’s spine leaves with it, the theatre’s stroke stays",
+          "pass": true,
+          "detail": {
+            "print": {
+              "blocks": 0,
+              "beat": null,
+              "revealed": null,
+              "spine": null,
+              "caret": null,
+              "carets": 0,
+              "ghost": null
+            },
+            "act": {
+              "kind": "writing",
+              "outcome": null,
+              "cause": null
+            },
+            "spine": {
+              "open": "true",
+              "box": {
+                "top": 114.97,
+                "left": 390,
+                "right": 392,
+                "bottom": 296.38,
+                "width": 2,
+                "height": 181.41
+              },
+              "transform": ""
+            }
+          }
+        },
+        {
+          "name": "checking — the tally’s height is the changed lines of the write’s span, not the sentence’s",
+          "pass": true,
+          "detail": {
+            "tallyHeight": 38.23,
+            "linePx": 30.229999999999997,
+            "sentenceLines": 3,
+            "budget": 68.46
+          }
+        },
+        {
+          "name": "margin — the numeral and the note (1440) / the strip (390) stand through the reading",
+          "pass": true,
+          "detail": {
+            "width": 1440,
+            "mark": true,
+            "note": true,
+            "strip": false,
+            "boxes": {
+              "mark": {
+                "top": -3.87,
+                "left": 656,
+                "right": 696,
+                "bottom": 40.13,
+                "width": 40,
+                "height": 44
+              },
+              "note": {
+                "top": 3,
+                "left": 696,
+                "right": 884,
+                "bottom": 123.44,
+                "width": 188,
+                "height": 120.44
+              },
+              "strip": {
+                "top": -114.97,
+                "left": -400,
+                "right": -400,
+                "bottom": -114.97,
+                "width": 0,
+                "height": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "margin — the numeral, the note and the strip stand where the queue act leaves them (≤ 0.5 px)",
+          "pass": true,
+          "detail": {
+            "act": {
+              "mark": {
+                "top": -3.87,
+                "left": 656,
+                "right": 696,
+                "bottom": 40.13,
+                "width": 40,
+                "height": 44
+              },
+              "note": {
+                "top": 3,
+                "left": 696,
+                "right": 884,
+                "bottom": 123.44,
+                "width": 188,
+                "height": 120.44
+              },
+              "strip": {
+                "top": -114.97,
+                "left": -400,
+                "right": -400,
+                "bottom": -114.97,
+                "width": 0,
+                "height": 0
+              }
+            },
+            "queue": {
+              "mark": {
+                "top": -3.87,
+                "left": 656,
+                "right": 696,
+                "bottom": 40.13,
+                "width": 40,
+                "height": 44
+              },
+              "note": {
+                "top": 3,
+                "left": 696,
+                "right": 884,
+                "bottom": 143.69,
+                "width": 188,
+                "height": 140.69
+              },
+              "strip": {
+                "top": -88.78,
+                "left": -400,
+                "right": -400,
+                "bottom": -88.78,
+                "width": 0,
+                "height": 0
+              }
+            },
+            "delta": {
+              "mark": {
+                "x": 0,
+                "y": 0
+              },
+              "note": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "theatre — the sentence’s spans and the paragraph’s own grid survive the act",
+          "pass": true,
+          "detail": {
+            "spans": 7,
+            "queueSpans": 7,
+            "act": "arrival",
+            "grid": {
+              "act": [
+                3,
+                33.23,
+                63.47,
+                93.7,
+                123.94,
+                154.17
+              ],
+              "queue": [
+                3,
+                33.23,
+                63.47,
+                93.7,
+                123.94,
+                154.17
+              ]
+            }
+          }
+        },
+        {
+          "name": "queue — nothing stands: no line rule, no nib, no tally",
+          "pass": true,
+          "detail": {
+            "act": "queue",
+            "lines": 0,
+            "nib": "0",
+            "tallies": 0
+          }
+        },
+        {
+          "name": "verdict — the stub stands at the rule’s end (2 × 6, visible)",
+          "pass": true,
+          "detail": {
+            "stub": {
+              "box": {
+                "top": 169.25,
+                "left": 843.06,
+                "right": 845.06,
+                "bottom": 175.25,
+                "width": 2,
+                "height": 6
+              },
+              "shape": "stub",
+              "opacity": "1",
+              "width": "2px"
+            },
+            "lastRight": 842.06,
+            "lastTop": 149.25
+          }
+        },
+        {
+          "name": "landing — every line is painted at full width, visible, before the lift",
+          "pass": true,
+          "detail": {
+            "painted": [
+              445.75,
+              640,
+              442.05
+            ],
+            "widths": [
+              445.75,
+              640,
+              442.05
+            ],
+            "opacity": [
+              "1",
+              "1",
+              "1"
+            ]
+          }
+        },
+        {
+          "name": "landing — the sentence’s lines are drawn and the note’s hairline withdraws",
+          "pass": true,
+          "detail": {
+            "lines": 3,
+            "noteRule": {
+              "transform": "matrix(0, 0, 0, 1, 0, 0)",
+              "withdraw": ""
+            },
+            "lifts": [
+              "",
+              "",
+              ""
+            ],
+            "nib": "0"
+          }
+        },
+        {
+          "name": "failure, our fault — the rule is painted, ends short of the last words, and the foot stands under its end",
+          "pass": true,
+          "detail": {
+            "act": {
+              "kind": "failed",
+              "outcome": null,
+              "cause": "fault"
+            },
+            "lines": 3,
+            "painted": [
+              445.75,
+              640,
+              401.52
+            ],
+            "widths": [
+              445.75,
+              640,
+              442.05
+            ],
+            "tail": 401.52,
+            "footAtRuleEnd": -0.99,
+            "end": {
+              "top": 178.25,
+              "left": 800.53,
+              "right": 802.53,
+              "bottom": 182.25,
+              "width": 2,
+              "height": 4
+            },
+            "word": {
+              "left": 801.53,
+              "top": 178.44,
+              "width": 40.53,
+              "right": 842.06
+            },
+            "line": {
+              "top": 152.25,
+              "left": 400,
+              "right": 842.05,
+              "bottom": 153.25,
+              "width": 442.05,
+              "height": 1
+            },
+            "clip": "inset(0px 40.53px 0px 0px)"
+          }
+        },
+        {
+          "name": "failure, a verdict — refused leaves no stub, no rule-end and no foot",
+          "pass": true,
+          "detail": {
+            "act": {
+              "kind": "verdict",
+              "outcome": "refused",
+              "cause": null
+            },
+            "nib": "0",
+            "ruleEnd": false,
+            "foot": "false"
+          }
+        },
+        {
+          "name": "the phone’s tick follows the act’s ink — quiet in queue and our fault, never the accent",
+          "pass": true,
+          "detail": {
+            "queue": {
+              "bar": "rgb(79, 84, 85)",
+              "ink": "rgb(79, 84, 85)"
+            },
+            "fault": {
+              "bar": "rgb(79, 84, 85)",
+              "ink": "rgb(79, 84, 85)"
+            },
+            "live": "rgb(36, 85, 99)",
+            "ink3": "rgb(79, 84, 85)"
+          }
+        },
+        {
+          "name": "history off — the run is the sentence’s own text: 57 words, the rule inside the measure",
+          "pass": true,
+          "detail": {
+            "words": 29,
+            "lines": 3,
+            "gridLines": 3,
+            "firstLeft": 194.27,
+            "lastRight": 442.06,
+            "paragraphWidth": 640,
+            "nib": {
+              "top": 171.2,
+              "left": 891.03,
+              "right": 948.22,
+              "bottom": 173.2,
+              "width": 57.19,
+              "height": 2
+            },
+            "plainRight": 1040
+          }
+        },
+        {
+          "name": "node count — the theatre overlay ≤ 19 nodes",
+          "pass": true,
+          "detail": {
+            "nodes": 6
+          }
+        },
+        {
+          "name": "reduced motion — the arrival is the span mark at once, no rAF",
+          "pass": true,
+          "detail": {
+            "ends": 2,
+            "lines": 3,
+            "raf": 0
+          }
+        },
+        {
+          "name": "reduced motion — the spine is already whole, and no rAF runs",
+          "pass": true,
+          "detail": {
+            "spine": "true",
+            "raf": 0
+          }
+        },
+        {
+          "name": "taste — two families, the palette only, no shadow, no uppercase, no infinite animation",
+          "pass": true,
+          "detail": {
+            "families": 2,
+            "colours": [],
+            "shadows": [],
+            "shout": [],
+            "animations": 0
+          }
+        },
+        {
+          "name": "the head prints the page’s own word during a reading, and no act feeds it",
+          "pass": true,
+          "detail": {
+            "head": "машина читает правку · попытка 1 из 6 · 17:26",
+            "second": "машина читает правку · попытка 1 из 6 · 17:26",
+            "atLoad": null
+          }
+        }
+      ],
+      "pass": true,
+      "plate": {
+        "file": "all-1440.png",
+        "width": 2934,
+        "height": 6626
+      }
+    }
+  ]
+}

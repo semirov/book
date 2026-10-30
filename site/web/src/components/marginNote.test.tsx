@@ -166,7 +166,7 @@ describe('the mark at the sentence', () => {
     expect(one).not.toContain('№');
   });
 
-  it('shows a single tick for a landed change: no visible words, the fact in the label', () => {
+  it('shows a single tick for a landed change: no words painted, the fact in the label', () => {
     const [group] = filingsForBlock(
       [comment({ status: 'applied', applied: { chapter: 8, rev: 4 } })],
       'ch08#aa11bb22',
@@ -176,10 +176,11 @@ describe('the mark at the sentence', () => {
     );
     expect(html).toContain('filing-tick');
     expect(html).toContain('filing-tick-bar');
-    expect(html).not.toContain('filing-mark-num');
+    // BOOK-227 §9.7 — both forms stand in the mark: the numeral is the one the sheet fades out,
+    // so the landing is a 120 ms crossfade rather than a swap, and `data-state` says which paints.
+    expect(html).toContain('data-state="accepted"');
+    expect(html).toContain('class="filing-mark-num">12<');
     expect(html).toContain('aria-label="замечание 12 · внесено"');
-    // The tick carries no visible text at all.
-    expect(html.replace(/<[^>]+>/gu, '').trim()).toBe('');
   });
 
   it('lets the alive filing win the slot over a landed one', () => {
@@ -195,7 +196,8 @@ describe('the mark at the sentence', () => {
     );
     expect(html).toContain('filing-alive');
     expect(html).toContain('>12<');
-    expect(html).not.toContain('filing-tick');
+    // The crossfade's other half: the tick's bar is there, faded, and `data-state` says alive.
+    expect(html).toContain('data-state="alive"');
   });
 
   it('prints nothing for a hidden filing', () => {

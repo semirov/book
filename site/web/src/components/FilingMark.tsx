@@ -24,6 +24,12 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
  * written through CSSOM — no `style` attribute reaches the markup. An alive filing wins the
  * slot over a landed one: alive is louder.
  *
+ * BOOK-227 §9.7 — the landing is a **crossfade, not a swap**: both forms stand in the same
+ * button, and which one is painted is `data-state`'s alone (the sheet fades the numeral out and
+ * the tick in over 120 ms `linear`, at the numeral's own x). No node is added to the paragraph's
+ * flow and the button keeps its 40 × 44 target through the beat, so the margin's ledger measures
+ * the same box on both sides of the landing.
+ *
  * Below 1024 the numeral leaves the text (the phone gutter cannot hold it): the mark is the
  * 1 px tick only, in a 24 × 44 target, and the numeral lives in the strip. The state is never
  * colour alone — the tick is a different *shape* from the numeral, and the word travels with
@@ -79,6 +85,8 @@ export function FilingMark({
             onClick={(event) => onOpen(alive, event.currentTarget)}
           >
             <span className="filing-tick-bar" aria-hidden="true" />
+            {/* BOOK-227 — a bare row has no numeral to fade, so the form stands empty (§9.7). */}
+            <span className="filing-mark-num" />
           </button>
         </span>
       );
@@ -95,7 +103,9 @@ export function FilingMark({
           aria-label={`${number} · ${filingMarginalia(alive).word}${extra > 0 ? ` · ещё ${String(extra)}` : ''}`}
           onClick={(event) => onOpen(alive, event.currentTarget)}
         >
+          {/* Both forms, always: the sheet fades one into the other at the landing (§9.7). */}
           <span className="filing-mark-num">{filingNum(alive)}</span>
+          <span className="filing-tick-bar" aria-hidden="true" />
         </button>
       </span>
     );
@@ -113,6 +123,8 @@ export function FilingMark({
           aria-label={`${filingNumber(landed)} · ${filingMarginalia(landed).word}`}
           onClick={(event) => onOpen(landed, event.currentTarget)}
         >
+          {/* The beat's other half: the numeral is the one the sheet fades out (§9.7). */}
+          <span className="filing-mark-num">{filingNum(landed)}</span>
           <span className="filing-tick-bar" aria-hidden="true" />
         </button>
       </span>
