@@ -44,6 +44,13 @@ export type EngineDeps = {
   clock: Clock;
   /** Admin alerts (a finding that survived the cycle, a budget stop) are records, not logs. */
   alert?: (alert: EngineAlert) => void;
+  /**
+   * BOOK-235 — one operator line per fact the engine cannot put in a report: why a claim was
+   * blocked, what the zombie sweep changed, and which row it could not change. Ids and codes only,
+   * never a prose body. The engine process (`server/src/engine.ts`) hands these to its own pino
+   * instance, `app.log.info(line)` — it is the engine's log, not the writer's.
+   */
+  log?: (line: string) => void;
 };
 
 export type EngineAlert = {

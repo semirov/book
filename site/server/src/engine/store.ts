@@ -1,7 +1,7 @@
 /** The engine's tables, one place (ARCHITECTURE.md §8): hand-written SQL over `better-sqlite3`
  *  (ADR-001), one statement per fact; only `book-engine` writes them, the site reads. */
 
-import type { InterventionKind } from '@book/shared';
+import type { ChangeStatus, InterventionKind } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import type { LeaseRow, StepRow } from './storeRows.ts';
@@ -153,6 +153,16 @@ export function headPending(db: Db): ChangeRow | undefined {
 
 export function listPending(db: Db): ChangeRow[] {
   return db.prepare(`SELECT * FROM changes WHERE status = 'pending' ORDER BY seq`).all() as ChangeRow[];
+}
+
+/**
+ * Every change resting in one status, in FIFO order. BOOK-235: the zombie sweep walks the two
+ * resting places no rule moves any more (`processing`, `escalated`) instead of guessing at them.
+ * The status is typed, not a string: a typo must not read as «no rows» and let the sweep skip a
+ * whole class in silence.
+ */
+export function listWithStatus(db: Db, status: ChangeStatus): ChangeRow[] {
+  return db.prepare('SELECT * FROM changes WHERE status = ? ORDER BY seq').all(status) as ChangeRow[];
 }
 
 export function countPending(db: Db): number {

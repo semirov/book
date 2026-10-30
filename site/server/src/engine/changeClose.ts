@@ -38,6 +38,14 @@ export function releaseLane(deps: EngineDeps, changeId: string): void {
  * `onlyFrom` makes the transition conditional: a caller that may lose a race (the queue's own
  * tick refusing the same pending row twice) gets `false` and writes nothing at all — the second
  * close of one change is a no-op, never a second decision.
+ *
+ * `options.notify: false` is the one seam a caller needs when the filing's **reader** already
+ * heard the truth from another row: a superseded attempt is closed `void · dropped` so the ledger
+ * is complete, but its filing's text landed through another change, and the push a `void` row
+ * announces («правка по главе N отклонена») would contradict the page that says «внесено». The
+ * decision itself is still recorded — `change_events('decided')` and `change.decided` are what
+ * every surface derives the filing's state from — only the announcement and the admin alert are
+ * not made. Every existing caller keeps the default.
  */
 export function closeChange(
   deps: EngineDeps,
@@ -47,6 +55,7 @@ export function closeChange(
   reason: string | null,
   now: number,
   onlyFrom: ChangeStatus | null = null,
+  options: { notify?: boolean } = {},
 ): boolean {
   const db = deps.db;
   // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied`; the plan is evidence.
@@ -102,8 +111,9 @@ export function closeChange(
   releaseLane(deps, change.id);
   // BOOK-189: the reader who filed for this change hears how it was decided. The row's status
   // and outcome are written above, so `sendPassEvent` reads the decision it is announcing rather
-  // than guessing it; a failed push is not a failed close (the helper never throws).
-  sendPassEvent(db, { kind: 'decision', changeId: change.id }, now);
+  // than guessing it; a failed push is not a failed close (the helper never throws). A caller that
+  // closes a row the filing has already answered elsewhere says `notify: false` — see above.
+  if (options.notify !== false) sendPassEvent(db, { kind: 'decision', changeId: change.id }, now);
   return true;
 }
 
@@ -122,8 +132,13 @@ export function stopChange(
   now: number,
   cause: CascadeOutcome,
   onlyFrom: ChangeStatus | null = null,
+  options: { notify?: boolean } = {},
 ): boolean {
-  if (!closeChange(deps, change, 'void', 'dropped', reason, now, onlyFrom)) return false;
+  if (!closeChange(deps, change, 'void', 'dropped', reason, now, onlyFrom, options)) return false;
+  // The alert is the operator's copy of the stop. When the row being closed is a superseded
+  // attempt the reader never lost — its text landed elsewhere — an `origin` alert would be a false
+  // finding on the operator's panel, so that one caller asks for silence (`notify: false`).
+  if (options.notify === false) return true;
   recordAlert(deps, {
     kind: alertKind(cause),
     at: toIso(now),

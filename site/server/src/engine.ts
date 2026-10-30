@@ -41,6 +41,9 @@ async function main(): Promise<void> {
   const db = await bootDatabase({ dataDir: config.dataDir });
   const token = resolveToken(config);
 
+  // BOOK-235: the sweep and the claim path speak to the operator through the process log; the
+  // sink is bound below, before the boot `reconcile` writes its first line.
+  let logLine: (line: string) => void = () => undefined;
   const engine = createEngine({
     db,
     config,
@@ -50,6 +53,7 @@ async function main(): Promise<void> {
       // The alert is already a row (meta + events); this line is for the operator's terminal.
       console.warn(JSON.stringify({ level: 'warn', alert }));
     },
+    log: (line: string) => logLine(line),
   });
 
   const app = await buildControl({
@@ -61,6 +65,9 @@ async function main(): Promise<void> {
     // BOOK-187 AC7: retention is the process's own property (`TRANSCRIPT_RETENTION_DAYS`).
     transcriptRetentionDays: config.transcriptRetentionDays,
   });
+  logLine = (line: string) => {
+    app.log.info(line);
+  };
   const recovery = engine.reconcile();
   app.log.info(
     { schema: SCHEMA_VERSION, dataDir: config.dataDir, pipeline: config.pipeline.model, recovery },
