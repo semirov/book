@@ -26,9 +26,11 @@ import {
  * BOOK-236 — the `graph` row, and the contract it changed.
  *
  * The preflight is run **right after the launch reset**: the book holds one written chapter (ch01)
- * and stage 3 has filed nothing yet, so the graph is empty by construction. That state used to be
- * `fail` for ever — a gate that can never be green is a gate nobody reads. Now an empty graph over
- * a book with at most one written chapter is `pass` (and says so, with the count), a graph over a
+ * and stage 3 has filed nothing yet, so there are no dependencies by construction (measured on
+ * prod: `facts 20 · threads 1 · edges 0`, one written chapter — a one-chapter book has facts and
+ * threads, but an edge needs two things pointing at each other). That state used to be `fail` for
+ * ever — a gate that can never be green is a gate nobody reads. Now a dependency-free graph over a
+ * book with at most one written chapter is `pass` (and says so, with the counts), a graph over a
  * book with two or more written chapters keeps the old rule, and an answer without the count keeps
  * the stricter rule too: an unknown is not a fresh book.
  */
@@ -58,17 +60,45 @@ async function reportWithGraph(graph: Record<string, unknown>): Promise<DoctorRe
 }
 
 describe('doctor — the graph row tells a fresh book from a broken one (BOOK-236)', () => {
-  it('passes an empty graph on a book with one written chapter — that is the launch reset', async () => {
-    const fresh = await reportWithGraph(graphBody({ writtenChapters: 1 }));
+  it('passes a dependency-free graph on a book with one written chapter — that is the launch reset', async () => {
+    // The prod shape after the launch reset: one written chapter, facts and threads already filed,
+    // no edge yet. It used to fail on «no edges (0)» for ever.
+    const fresh = await reportWithGraph(graphBody({ facts: 20, threads: 1, edges: 0, writtenChapters: 1 }));
     expect(fresh.exitCode).toBe(0);
     const graph = byId(fresh, 'graph');
     expect(graph.verdict).toBe('pass');
-    expect(graph.evidence).toBe('no graph yet (1 written chapter)');
+    expect(graph.evidence).toBe('no dependencies yet (1 written chapter · facts 20 · threads 1)');
     expect(graph.failures).toEqual([]);
 
     const reset = await reportWithGraph(graphBody({ writtenChapters: 0 }));
     expect(reset.exitCode).toBe(0);
-    expect(byId(reset, 'graph').evidence).toBe('no graph yet (0 written chapters)');
+    expect(byId(reset, 'graph').evidence).toBe('no dependencies yet (0 written chapters · facts 0 · threads 0)');
+  });
+
+  it('passes a dependency-free graph whether or not the nested counts are zero (BOOK-236 review)', async () => {
+    // `facts:false`/`threads:''` are a payload that did not answer: strict zero on `edges` is the
+    // fresh test, and the other two need only be readable numbers.
+    const noFacts = await reportWithGraph(graphBody({ facts: 0, threads: 0, edges: 0, writtenChapters: 1 }));
+    expect(byId(noFacts, 'graph').verdict).toBe('pass');
+    expect(byId(noFacts, 'graph').evidence).toBe('no dependencies yet (1 written chapter · facts 0 · threads 0)');
+
+    const unreadable = await reportWithGraph(graphBody({ facts: null, threads: 1, edges: 0, writtenChapters: 1 }));
+    expect(byId(unreadable, 'graph').verdict).toBe('fail');
+    expect(unreadable.exitCode).toBe(1);
+  });
+
+  it('passes a book with dependencies, one chapter or many, and carries the counts', async () => {
+    const edges = await reportWithGraph(graphBody({ facts: 20, threads: 1, edges: 3, closureMs: 4, writtenChapters: 1 }));
+    expect(byId(edges, 'graph').verdict).toBe('pass');
+    expect(byId(edges, 'graph').evidence).toBe('facts 20 · threads 1 · edges 3 · written 1 chapter · closure 4 ms');
+  });
+
+  it('fails a one-chapter book whose edge count could not be read', async () => {
+    // Strict zero on `edges` only: `null` is a payload that did not answer, not an empty graph.
+    const unreadable = await reportWithGraph(graphBody({ facts: 20, threads: 1, edges: null, writtenChapters: 1 }));
+    expect(byId(unreadable, 'graph').verdict).toBe('fail');
+    expect(unreadable.exitCode).toBe(1);
+    expect(byId(unreadable, 'graph').failures.join(' ')).toContain('the graph has no edges (0), while 1 chapter is written');
   });
 
   it('fails an empty graph once a second chapter is written, and names the count', async () => {

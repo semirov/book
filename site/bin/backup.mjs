@@ -58,7 +58,6 @@
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import {
   BackupError,
@@ -76,6 +75,7 @@ import {
   takeLock,
   walkFiles,
 } from './lib/backupFs.mjs';
+import { entryState } from './lib/entry.mjs';
 
 /**
  * Where the staging copy is built: the tempdir (a tmpfs in the container) when it can hold the whole
@@ -471,7 +471,17 @@ export async function main(argv, env = process.env) {
   }
 }
 
-const entry = process.argv[1];
-if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
-  process.exitCode = await main(process.argv.slice(2));
+// BOOK-236: decided by REAL paths — the deploy root is a symlink, and the old comparison was false
+// through it (a nightly backup that printed nothing and exited 0). An entry that cannot be proved
+// is exit 2, never a silent success.
+switch (entryState(process.argv[1], import.meta.url)) {
+  case 'entry':
+    process.exitCode = await main(process.argv.slice(2));
+    break;
+  case 'unknown':
+    console.error(`book-backup: cannot resolve ${String(process.argv[1])} to decide whether it is this CLI — refusing to run (exit 2)`);
+    process.exitCode = EXIT.usage;
+    break;
+  default:
+    break;
 }

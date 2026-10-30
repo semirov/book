@@ -1,5 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -64,13 +73,24 @@ function runWrapper(args: string[], env: NodeJS.ProcessEnv, cwd: string): Promis
   return spawnWrapper(args, env, cwd).done;
 }
 
+/** The same runner for a wrapper reached by another path (the symlinked deploy root). */
+function runWrapperFrom(
+  script: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): Promise<CliResult> {
+  return spawnWrapper(args, env, cwd, script).done;
+}
+
 /** The same spawn, with the child in hand — a signal case has to hold the process it kills. */
 function spawnWrapper(
   args: string[],
   env: NodeJS.ProcessEnv,
   cwd: string,
+  script: string = WRAPPER,
 ): { child: ChildProcess; done: Promise<CliResult> } {
-  const child = spawn('bash', [WRAPPER, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('bash', [script, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout?.setEncoding('utf8');
   child.stderr?.setEncoding('utf8');
   let stdout = '';
@@ -178,6 +198,26 @@ describe('admin.sh under runtime=compose — the doctor runs on the host', () =>
     expect(result.stdout).toContain(`ADMIN_TOKEN_FILE=<token file> node ${HOST_CLI} doctor`);
     expect(result.stdout).not.toContain('exec -T site');
     expect(result.stdout).not.toContain('/app/bin/admin.mjs');
+  });
+
+  it('runs the host CLI through a symlinked deploy root, as prod does (BOOK-236)', async () => {
+    // `~/book-deploy` is a symlink (BOOK-DOC-46). Through it the old wrapper passed the symlinked
+    // path to node, the old entry guard saw a different real path, and `main()` never ran: no
+    // output, exit 0. Both halves now agree — the wrapper runs the real path, the CLI compares them.
+    const tree = scratch('compose');
+    const link = join(tree.root, 'book-deploy');
+    symlinkSync(REPO, link, 'dir');
+
+    const result = await runWrapperFrom(
+      join(link, 'site', 'deploy', 'admin.sh'),
+      ['admin', 'doctor', '--help'],
+      envFor(tree, { BOOK_DOCKER: join(tree.root, 'no-such-docker') }),
+      tree.root,
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('node bin/admin.mjs doctor [--json] [--url <url>]');
+    expect(result.stderr).toBe('');
   });
 
   it('answers `admin doctor --help` without a stack, a port or a token', async () => {
