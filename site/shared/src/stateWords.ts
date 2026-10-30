@@ -67,7 +67,7 @@ export function lockLine(lock: DispositionLock, harmCase: HarmCase | null = null
   return LOCK_LINES[lock];
 }
 
-/** One lock's sentence without the verdict word in front of it: `это чужой текст, …`. */
+/** One lock's sentence without the verdict word in front: `это чужой текст, …`. */
 export function lockTail(lock: DispositionLock, harmCase: HarmCase | null = null): string {
   return lockLine(lock, harmCase).slice(`${STATE_WORDS.refused}: `.length);
 }
@@ -89,8 +89,20 @@ export const FAILURE_LINES: Readonly<Record<FailureCase, string>> = {
 /** `не дошло` — the word our failure keeps, and never a verdict about the idea. */
 export const UNDELIVERED_WORD = 'не дошло';
 
-/** BOOK-219 — a filing no read could answer: no code, no hour, no queue, no another try. */
-export const TRIAGE_REFUSED_LINE = 'прочитать заявку не удалось — заявка отклонена';
+/**
+ * Owner's rule (2026-10-29) — the one sentence a technical failure is owed: the machinery broke,
+ * the idea was not judged, and the way back is a retry. A refusal of the **text** never borrows it.
+ */
+export const OUR_FAILURE_LINE = FAILURE_LINES.ourFailure;
+
+/** BOOK-219 — the triage sink for a read nobody could answer: ours, with the retry offered. */
+export const TRIAGE_REFUSED_LINE = OUR_FAILURE_LINE;
+
+/** The machine itself read the work and said no: about the work, and no retry is offered. */
+export const REFUSAL_LINE = 'правку писать отказались — заявка не принята';
+
+/** A filing gate C read as outside the book, with no lock to quote: still not taken. */
+export const TRIAGE_CONTENT_LINE = 'заявка не входит в книгу — отклонена';
 
 /**
  * A reading is the **accepted** half of the vocabulary: the edit was taken, and the one line
@@ -365,28 +377,44 @@ export function premiseLandedLine(chapter: number): string {
 
 /** An attempt the machine could not finish: BOOK-219 counts it, and no line promises a wait. */
 export const FAILED_ATTEMPT_LINE = 'ответ пришёл не по форме — попытка зачтена';
-
 /** An attempt that came back with nothing usable: one sentence, and the attempt is spent. */
 export const ATTEMPT_LINE = 'попытка не удалась — попытка зачтена';
-
 /** The engine itself did not answer: the attempt is not spent, the call never finished. */
 export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
 
+<<<<<<< HEAD
 /** A note (no kind, no proposed text) never lands text: its terminal is «замечание сохранено». */
+=======
+/**
+ * The pen's own sink lines, for stops no engine code names: a content fact keeps its own line, a
+ * structural dead end is ours.
+ */
+export const PASS_SINK_LINES = {
+  minimalPatch: 'правка не встала в главу без ответа машины — заявка не принята',
+  patchUnplaced: 'не дошло: правку некуда поставить. это наша ошибка, правка не отклонена — нажмите «повторить»',
+  factMissing: 'в правке есть дата или номер документа, которых книга не подтверждает — заявка не принята',
+} as const;
+
+/** A note never lands text: its terminal is «замечание сохранено». */
+>>>>>>> 69b1f88 (fix(lane): a content refusal stays content; the record offers a retry for our failures (BOOK-219))
 export const NOTE_SAVED_LINE = 'замечание сохранено';
 
-/** The full hall (BOOK-75): the reader is told they wait for a seat, not for a queue. */
+/** The full hall (BOOK-75): a seat is what the reader waits for, not a queue place. */
 export const CAPACITY_PLATE = 'Все места заняты. Вы ждёте места: кто-то уйдёт — и вы войдёте.';
 
 /** Too many filings wait at once: the only answer is a later try. */
 export const TOO_MANY_FILINGS = 'правок ждёт слишком много — попробуйте позже';
 
+<<<<<<< HEAD
 /**
  * The stop reasons, one sentence per way a pass can stop (BOOK-DOC-82). BOOK-219 owns the
  * register: a parked pass escalates the step and an escalated change is terminal, so no sentence
  * here promises a queue or a retry — each names what happened to the reader's edit and says
  * «правка остановлена».
  */
+=======
+/** The stop reasons, one per way a pass can stop — every stop ends a filing (BOOK-219). */
+>>>>>>> 69b1f88 (fix(lane): a content refusal stays content; the record offers a retry for our failures (BOOK-219))
 export type StopReason =
   | 'shape'
   | 'modelTimeout'
@@ -405,6 +433,10 @@ export type StopReason =
   | 'closeReverted'
   | 'closeStanding'
   | 'closeUncertain'
+<<<<<<< HEAD
+=======
+  | 'factMissing'
+>>>>>>> 69b1f88 (fix(lane): a content refusal stays content; the record offers a retry for our failures (BOOK-219))
   | 'stopped'
   | 'gate';
 
@@ -413,7 +445,7 @@ export const STOP_REASONS: Readonly<Record<StopReason, string>> = {
   modelTimeout: FAILURE_LINES.outOfTime,
   modelDown: FAILURE_LINES.ourFailure,
   truncated: FAILURE_LINES.ourFailure,
-  refusal: FAILURE_LINES.ourFailure,
+  refusal: REFUSAL_LINE,
   answerRejected: FAILURE_LINES.ourFailure,
   engineDown: FAILURE_LINES.ourFailure,
   rightsMissing: FAILURE_LINES.ourFailure,
@@ -430,10 +462,7 @@ export const STOP_REASONS: Readonly<Record<StopReason, string>> = {
   gate: FAILURE_LINES.ourFailure,
 };
 
-/**
- * The key an engine code maps to; `null` for a code this table does not know. The code itself
- * stays in the process log and the transcript — a reader never sees one.
- */
+/** The key an engine code maps to; `null` for an unknown one — a reader never sees a code. */
 export function stopReasonKey(code: string | null | undefined): StopReason | null {
   const value = (code ?? '').trim().toUpperCase();
   if (value === 'PROVIDER_SHAPE') return 'shape';

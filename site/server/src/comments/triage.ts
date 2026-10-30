@@ -218,32 +218,81 @@ export function desperateTriage(db: Db, now: string, limit = 8): EndedTriage[] {
 }
 
 /**
+ * The chain a lock leaves on a filing the engine's coded floor could not place. It is the same
+ * four columns the applier's rejection path writes, so the page reads one refusal (and the retry
+ * door stays shut: a lock was judged, ours was not).
+ */
+export type TriageLock = { lock: string; carrierKind: string | null; quoteKept: string | null };
+
+export type TriageRefusalInput = {
+  commentId: string;
+  n: number;
+  at: string;
+  /** The reader's sentence; the default is our own failure, never a verdict on the idea. */
+  sentence?: string;
+  /** Present when the floor could not apply because the book's law refused the text. */
+  lock?: TriageLock | null;
+  /**
+   * The attempt carries an answer the applier could not place (a broken reading, a gate that
+   * never cleared). The answer is not erased — the attempt still closes `refused`, because an
+   * unplaceable answer is our failure, and the filing must reach a sink.
+   */
+  unplaced?: boolean;
+};
+
+/**
  * End the filing in the refusal sink — the one place this ledger settles a filing it could not
  * read. The attempt is closed `refused` (never `submitted`, so no query and no tick can pick it up
- * again), the row becomes `rejected` with the one sentence a reader understands, and the moment is
+ * again), the row becomes `rejected` with one sentence a reader understands, and the moment is
  * stored. One transaction, and `true` only for the caller that moved it: a replayed `fail`, a
  * sweep racing the writer, or a row the applier already placed answers `false` and owes no alert.
  *
- * The sentence is `TRIAGE_REFUSED_LINE` and never a code: «заявка отклонена» is the second sink,
- * and the engine writes the `triage.failed` event (`retryAt: null`) the site's bridge already
- * drains into a `comment:decision` frame (`engineState/bridge.ts`).
+ * The sentence is the caller's when it has one: a lock keeps its own clause (a judgement about
+ * the text, and the retry door stays shut on the disposition), and every other exhausted ladder
+ * gets `TRIAGE_REFUSED_LINE` — which is our own failure, not «заявка отклонена» for a call that
+ * never answered. The engine writes the `triage.failed` event (`retryAt: null`) the site's
+ * bridge already drains into a `comment:decision` frame (`engineState/bridge.ts`).
  */
-export function refuseTriage(db: Db, input: { commentId: string; n: number; at: string }): boolean {
+export function refuseTriage(db: Db, input: TriageRefusalInput): boolean {
+  const sentence = input.sentence ?? TRIAGE_REFUSED_LINE;
+  const lock = input.lock ?? null;
   const run = db.transaction((): boolean => {
-    const settled = db
-      .prepare(
-        `UPDATE comment_attempts
-            SET outcome = 'refused', decided_at = ?, next_at = NULL, claim_by = NULL, claim_until = NULL
-          WHERE comment_id = ? AND n = ? AND outcome = 'submitted' AND verdict IS NULL`,
-      )
-      .run(input.at, input.commentId, input.n).changes;
+    // A read that never answered is an open `submitted` attempt with no verdict; an answer the
+    // applier could not place is `submitted` or already `held` at the cap, and its verdict stays —
+    // the record keeps what was read, the attempt closes because the filing reached its sink.
+    const settled =
+      input.unplaced === true
+        ? db
+            .prepare(
+              `UPDATE comment_attempts
+                  SET outcome = 'refused', decided_at = ?, next_at = NULL, claim_by = NULL, claim_until = NULL
+                WHERE comment_id = ? AND n = ? AND outcome IN ('submitted', 'held')`,
+            )
+            .run(input.at, input.commentId, input.n).changes
+        : db
+            .prepare(
+              `UPDATE comment_attempts
+                  SET outcome = 'refused', decided_at = ?, next_at = NULL, claim_by = NULL, claim_until = NULL
+                WHERE comment_id = ? AND n = ? AND outcome = 'submitted' AND verdict IS NULL`,
+            )
+            .run(input.at, input.commentId, input.n).changes;
     if (settled !== 1) return false;
-    const moved = db
-      .prepare(
-        `UPDATE comments SET status = 'rejected', reason = ?, decided_at = ?
-          WHERE id = ? AND status = 'new' AND disposition IS NULL`,
-      )
-      .run(TRIAGE_REFUSED_LINE, input.at, input.commentId).changes;
+    const moved =
+      lock === null
+        ? db
+            .prepare(
+              `UPDATE comments SET status = 'rejected', reason = ?, decided_at = ?
+                WHERE id = ? AND status = 'new' AND disposition IS NULL`,
+            )
+            .run(sentence, input.at, input.commentId).changes
+        : db
+            .prepare(
+              `UPDATE comments
+                  SET status = 'rejected', reason = ?, decided_at = ?,
+                      disposition = 'inadmissible', lock = ?, carrier_kind = ?, quote_kept = ?
+                WHERE id = ? AND status = 'new' AND disposition IS NULL`,
+            )
+            .run(sentence, input.at, lock.lock, lock.carrierKind, lock.quoteKept, input.commentId).changes;
     return moved === 1;
   });
   return run();

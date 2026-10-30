@@ -1,6 +1,7 @@
-import { FAILURE_LINES, type Finding, type WriterAssignment } from '@book/shared';
+import type { Finding, WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { closeReason } from '../../src/engine/cascade.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
 import { readUnresolved } from '../../src/engineState/reader.ts';
 import { PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
@@ -107,7 +108,7 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       // the sentence (`CLOSE_COPY.science`), BOOK-219 owns the sink: no `escalated` change.
       expect(trace.change.change.status).toBe('void');
       expect(trace.change.change.outcome).toBe('dropped');
-      expect(trace.change.change.reason).toBe(FAILURE_LINES.ourFailure);
+      expect(trace.change.change.reason).toBe(closeReason('science'));
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('science');
 
       // Every chapter the refused ripple wrote is back to its pre-pass revision: a refusal

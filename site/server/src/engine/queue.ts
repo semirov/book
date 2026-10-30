@@ -253,13 +253,9 @@ export function createQueue(deps: EngineDeps) {
   /** An already-created step is claimed — never one whose filing is gone (BOOK-166). */
   function claimOpenStep(session: string, lane: DraftLane | 'filing'): WriterAssignment | null {
     const nowMs = deps.clock.now();
-    try {
-      budgetGuard(nowMs);
-    } catch (error) {
-      // A paused day counts the waiting filing's claim before it answers; a stop does not.
-      if (refusalCode(error) === 'BUDGET_PAUSED') claims.paused(nowMs);
-      throw error;
-    }
+    // A paused day hands nothing out. It is a wait bound by 00:00 UTC, not an attempt of any
+    // change: the queue counter does not move for a pause (`claimAttempts.ts`).
+    budgetGuard(nowMs);
     const at = iso(nowMs);
     const candidates = store
       .listOpenSteps(db)
@@ -305,31 +301,23 @@ export function createQueue(deps: EngineDeps) {
   function claimHead(session: string): WriterAssignment | null {
     const at = deps.clock.now();
     // The guard runs before the lane is touched: a stopped book refuses at once (`reap.ts`), and
-    // a paused one hands nothing out — its re-issue was counted where the queue was first asked
-    // (`claimOpenStep`), so this door only propagates the answer.
+    // a paused one hands nothing out. A pause is a wait, not an attempt: the counter does not move
+    // (`claimAttempts.ts`), and the change is asked again after 00:00 UTC.
     budgetGuard(at);
     const head = store.headPending(db);
     if (!head) return null;
-    // The lane cannot take it: each of these is one counted claim, never a wait on a clock.
-    if (store.readLane(db).holder !== null) {
-      claims.missed(head, at);
-      return null;
-    }
-    if (processingChange(db)) {
-      claims.missed(head, at);
-      return null;
-    }
-    if (store.listOpenCascades(db).length > 0) {
-      claims.missed(head, at);
-      return null;
-    }
+    // The lane cannot take it, and that is **not** this change's attempt: the claim never
+    // reached it. Another change holds the lane, a pass or a ripple is in flight — each waits,
+    // and the queue counter (`claimAttempts.ts`) moves only on a claim the engine reached.
+    if (store.readLane(db).holder !== null) return null;
+    if (processingChange(db)) return null;
+    if (store.listOpenCascades(db).length > 0) return null;
     // A change whose step already exists is re-issued to a session, not re-created here — a step
     // is the pass's own fact, and the step wall bounds it.
     if (store.stepsOfChange(db, head.id).some((step) => step.outcome === null)) return null;
-    if (!store.claimLaneRow(db, head.id, iso(at))) {
-      claims.missed(head, at);
-      return null;
-    }
+    // Another process won the mutex for the same head: a concurrent claim, not a refusal of this
+    // change — the winner's own claim is the attempt that counts.
+    if (!store.claimLaneRow(db, head.id, iso(at))) return null;
     let created: store.StepRow | null = null;
     try {
       const current = store.getChange(db, head.id);

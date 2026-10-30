@@ -1,6 +1,7 @@
 import { CASCADE_MAX_WAVE, TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { budgetFromConfig, budgetReason } from '../../src/engine/budget.ts';
 import { createEngineFixture, DEFAULT_ABOUT, driveStub, type Fixture } from './helpers.ts';
 
 /**
@@ -116,7 +117,7 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3, BOOK-59)', ()
       // A stop is the refusal (owner's invariant): the change has no `escalated` place to wait in.
       expect(row.status).toBe('void');
       expect(row.outcome).toBe('dropped');
-      expect(row.reason).toBe('правка сделала одну волну — вторая волна только по решению владельца');
+      expect(row.reason).toBe(budgetReason('wave', budgetFromConfig(fixture.config)));
       const cascade = cascadeOf(fixture, change.id);
       expect(cascade.status).toBe('escalated');
       expect(cascade.outcome).toBe('escalated:budget');

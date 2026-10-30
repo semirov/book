@@ -8,20 +8,29 @@
  * floor stands, and the result is stored in the same shape a model's answer has, so the applier
  * places it without knowing who answered.
  *
- * The floor cannot apply in exactly three cases, and then — and only then — the sixth failure is
- * the refusal sink: a lock the ladder names (rights, the frame, a legal stop, the finale), a gate C
- * answer of `OFF` that a FITS floor would contradict, or an intent the injection guard refuses.
+ * The floor cannot apply in two ways, and the sixth failure's sentence is not the same for both:
+ * a lock the ladder names (rights, the frame, a legal stop, the finale) or a gate C answer of
+ * `OFF` is the **book's** judgement, and keeps its own clause; anything else — an intent the
+ * injection guard refuses, a filing with no wording of its own, a read that never came back —
+ * is our machinery failing, and the reader is told it was not judged (`TRIAGE_REFUSED_LINE`).
  *
  * One conditional UPDATE carries all of it: `desperate = 1` is the row's own proof that the sixth
  * attempt ran once, so a second sweep, a restarted site or a race with the applier writes nothing.
  */
 
-import { INTENT_MAX_CHARS, TRIAGE_MAX_TRIES, TRIAGE_REFUSED_LINE, normalizeInterventionKind, validateIntent } from '@book/shared';
+import {
+  INTENT_MAX_CHARS,
+  TRIAGE_CONTENT_LINE,
+  TRIAGE_MAX_TRIES,
+  TRIAGE_REFUSED_LINE,
+  normalizeInterventionKind,
+  validateIntent,
+} from '@book/shared';
 
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
-import { refuseTriage } from '../comments/triage.ts';
+import { refuseTriage, type TriageLock } from '../comments/triage.ts';
 import type { Db } from '../db/db.ts';
-import { filingWording } from '../feedback/disposition.ts';
+import { filingWording, type DispositionDecision } from '../feedback/disposition.ts';
 import { chooseFor } from '../feedback/dispositionStore.ts';
 import { chapterVocabulary } from '../feedback/vocabulary.ts';
 import { recordAlert } from './alerts.ts';
@@ -53,22 +62,41 @@ export type TriageFloor = {
 };
 
 /**
+ * What the coded floor can say about one filing. The floor is *total* only over a filing the
+ * book has not already refused: a lock (or a recorded `OFF`) is a judgement about the text, and
+ * it keeps its own sentence; anything else the rule cannot build is **our** failure — the idea
+ * was never read.
+ */
+export type FloorAnswer =
+  | { kind: 'place'; verdict: FloorVerdict; reason: string }
+  | { kind: 'lock'; decision: DispositionDecision }
+  | { kind: 'content'; sentence: string }
+  | { kind: 'ours' };
+
+/**
  * The floor reading, from rows only. `null` when the floor cannot apply — see the module note.
  * Pure with respect to the filing: it reads the row and the chapter, and writes nothing.
  */
-export function floorReadingOf(db: Db, row: CommentRow): { verdict: FloorVerdict; reason: string } | null {
-  // A recorded `OFF` is a decision about the filing's words; a FITS floor would rewrite it.
-  if (row.audit_verdict === 'OFF') return null;
+export function floorAnswerOf(db: Db, row: CommentRow): FloorAnswer {
+  // A recorded `OFF` is a decision about the filing's words; a FITS floor would rewrite it. The
+  // book's own sentence is the one a reader may print, never our failure line.
+  if (row.audit_verdict === 'OFF') {
+    const sentence = (row.audit_reason ?? '').trim();
+    return { kind: 'content', sentence: sentence.length === 0 ? TRIAGE_CONTENT_LINE : sentence };
+  }
   const decision = chooseFor(db, row, { disposition: 'as_said' });
-  if (decision.disposition === 'inadmissible') return null;
+  // A lock is the only refusal: the chain travels so the page reads the lock's own clause and
+  // the retry door stays shut (a judgement was made, and it was not ours).
+  if (decision.disposition === 'inadmissible') return { kind: 'lock', decision };
   const wording = filingWording({ body: row.body, proposedText: row.proposed_text }).replace(/\s+/gu, ' ').trim();
-  if (wording.length === 0) return null;
+  if (wording.length === 0) return { kind: 'ours' };
   const intent = validateIntent(wording.slice(0, INTENT_MAX_CHARS), row.chapter, {
     vocabulary: chapterVocabulary(db, row.chapter),
     kind: normalizeInterventionKind(row.intervention_kind),
   });
-  if (!intent.ok) return null;
+  if (!intent.ok) return { kind: 'ours' };
   return {
+    kind: 'place',
     verdict: {
       verdict: 'FITS',
       rule: null,
@@ -85,12 +113,18 @@ export function createTriageFloor(deps: EngineDeps): TriageFloor {
 
   /**
    * The refusal sink for an attempt the engine's own rule could not answer: one `triage.failed`
-   * event with the frame the bridge drains (`retryAt: null`), the row `rejected` with
-   * `TRIAGE_REFUSED_LINE`, one alert — and `true` only for the caller that moved the row.
+   * event with the frame the bridge drains (`retryAt: null`), the row `rejected` with the
+   * caller's sentence, one alert — and `true` only for the caller that moved the row.
    */
-  function refuseAtSixth(commentId: string, n: number, at: string): boolean {
+  function refuseAtSixth(
+    commentId: string,
+    n: number,
+    at: string,
+    sentence: string,
+    lock: TriageLock | null,
+  ): boolean {
     const refused = db.transaction((): boolean => {
-      if (!refuseTriage(db, { commentId, n, at })) return false;
+      if (!refuseTriage(db, { commentId, n, at, sentence, lock })) return false;
       appendCommentEvent(db, commentId, 'triage.failed', at, {
         code: 'TRIAGE_DESPERATE',
         attempt: n,
@@ -99,7 +133,7 @@ export function createTriageFloor(deps: EngineDeps): TriageFloor {
         cap: true,
         desperate: true,
         retryAt: null,
-        reason: TRIAGE_REFUSED_LINE,
+        reason: sentence,
       });
       return true;
     })();
@@ -121,14 +155,26 @@ export function createTriageFloor(deps: EngineDeps): TriageFloor {
     // Only a filing that still waits for its read is this attempt's business: a decided row has
     // an answer already, and the floor must not write a second one behind it.
     if (row === undefined || row.status !== 'new' || row.disposition !== null) return false;
-    const reading = floorReadingOf(db, row);
+    const answer = floorAnswerOf(db, row);
     return db.transaction((): boolean => {
-      if (reading === null) {
+      if (answer.kind !== 'place') {
         // The sixth failure: the count is marked on the row, then the refusal — which is itself a
         // conditional write, so a second sweep or a restarted site can never tell the reader twice.
         markDesperate(db, commentId, n);
-        return refuseAtSixth(commentId, n, at);
+        if (answer.kind === 'lock' && answer.decision.lock !== null) {
+          // A lock is the book's answer: the lock's own clause, and the retry door stays shut.
+          return refuseAtSixth(commentId, n, at, answer.decision.reason, {
+            lock: answer.decision.lock,
+            carrierKind: answer.decision.carrierKind,
+            quoteKept: answer.decision.quoteKept,
+          });
+        }
+        // Everything else is **our** failure: no model read the idea, so the reader is told the
+        // truth and offered the retry, never that the filing was refused on its merits.
+        const sentence = answer.kind === 'content' ? answer.sentence : TRIAGE_REFUSED_LINE;
+        return refuseAtSixth(commentId, n, at, sentence, null);
       }
+      const reading = answer;
       const marked = db
         .prepare(
           `UPDATE comment_attempts

@@ -142,14 +142,38 @@ export async function premiseFiling(ctx: Context): Promise<Cell> {
   return { ctx, chapter: EMPTY_CHAPTER, commentId, changeId: id, revBefore: chapterRev(ctx, EMPTY_CHAPTER) };
 }
 
-/** The queue's own bound: a lane held by another change, and every poll one counted claim. */
-export async function queueClaims(ctx: Context, mode: 'sixth-claim-wins' | 'sixth-claim-drops'): Promise<Cell> {
-  const holder = ctx.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'среда вместо четверга' });
-  const holderJob = ctx.engine.next({ for: 'filing', session: 'writer-holder' }) as WriterAssignment | null;
-  expect(holderJob?.changeId).toBe(holder.id);
+/**
+ * Every model process the engine allows is in flight: the lane itself is free, the head is asked
+ * for, and the lease is refused by the process cap. That is a claim the engine **reached**, so it
+ * is the one the queue counter counts.
+ */
+function saturate(ctx: Context): void {
+  const at = new Date(ctx.h.clock.ms).toISOString();
+  const expiresAt = new Date(ctx.h.clock.ms + 3_600_000).toISOString();
+  for (let index = 0; index < ctx.h.config.maxConcurrentProcesses; index += 1) {
+    ctx.db
+      .prepare(
+        `INSERT INTO leases (id, step_id, change_id, cascade_id, lane, chapter, is_front, kind, session,
+           expected_rev, acquired_at, heartbeat_at, expires_at)
+         VALUES (?, ?, NULL, NULL, NULL, ?, 0, 'draft', ?, 0, ?, ?, ?)`,
+      )
+      .run(`lea_hold_${String(index)}`, `stp_hold_${String(index)}`, 10 + index, `held-${String(index)}`, at, at, expiresAt);
+  }
+}
 
+function unsaturate(ctx: Context): void {
+  ctx.db.prepare("DELETE FROM leases WHERE id LIKE 'lea_hold_%'").run();
+}
+
+/**
+ * The queue's own bound: a claim that reached the change and produced no step is one attempt;
+ * a poll behind a legitimate holder is not. Row (a) frees the capacity before the sixth claim and
+ * the change is written; row (b) spends all six and the change — and its filing — are refused.
+ */
+export async function queueClaims(ctx: Context, mode: 'sixth-claim-wins' | 'sixth-claim-drops'): Promise<Cell> {
   const cell = await placedFiling(ctx);
-  // Five claims that produce no step: the lane is held, and each poll is the count.
+  saturate(ctx);
+  // Five claims that reach the change and produce no step: every one is counted.
   for (let claim = 1; claim < 6; claim += 1) {
     expect(ctx.engine.next({ for: 'filing', session: `writer-${String(claim)}` })).toBeNull();
     expect(ctx.db.prepare('SELECT attempts FROM changes WHERE id = ?').get(cell.changeId)).toEqual({ attempts: claim });
@@ -163,8 +187,9 @@ export async function queueClaims(ctx: Context, mode: 'sixth-claim-wins' | 'sixt
     return { ...cell, result: undefined };
   }
 
-  // The blocker leaves the lane before the sixth claim: the last attempt finds the lane free.
-  ctx.engine.escalate(holderJob?.leaseId ?? '', 'среда вместо четверга не подошла');
+  // The capacity is free before the sixth claim: the last attempt finds the engine able to open
+  // a step, and the change is written.
+  unsaturate(ctx);
   const claimed = ctx.engine.next({ for: 'filing', session: 'writer-sixth' }) as WriterAssignment | null;
   expect(claimed?.changeId).toBe(cell.changeId);
   await driveToDone(ctx, claimed as WriterAssignment);

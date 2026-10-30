@@ -155,6 +155,7 @@ export function PremiseEntry({
             hideFiling();
             reviseFiling(comment, origin);
           }}
+          {...(onPosted === undefined ? {} : { onRetried: onPosted })}
         />
       )}
     </>

@@ -15,11 +15,12 @@
  * answer. This tick is the enforcer of the money stop, and of nothing on a clock.
  */
 
+import { OUR_FAILURE_LINE, QUEUE_MAX_ATTEMPTS } from '@book/shared';
+
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
-import type { Db } from '../db/db.ts';
 import { budgetCapsOf, budgetSnapshot } from '../budget.ts';
 import { toIso } from '../util/time.ts';
-import { currentRev } from './close.ts';
+import { closeStep, currentRev } from './close.ts';
 import { releaseLease, stepWallOf } from './leases.ts';
 import {
   BUDGET_STOP_REASON,
@@ -30,17 +31,13 @@ import {
   stepWallReason,
 } from './refuse.ts';
 import * as store from './store.ts';
-import { changeForStep } from './helpers.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
 import { isEngineError, type EngineDeps } from './types.ts';
 
 export type ReapReport = {
   at: string;
   expiredLeases: number;
-  /**
-   * BOOK-34: open steps that reached their wall — escalated, or (a desperate dispatch nobody
-   * claimed, BOOK-220 M2) closed `interrupted`, since no session did work to stop.
-   */
+  /** BOOK-34: open steps that reached their wall and were refused, not re-issued. */
   stepWalls: string[];
   /** BOOK-34: wall closes that refused to run; the rest of the tick still ran. */
   stepWallFailures: Array<{ stepId: string; code: string }>;
@@ -66,48 +63,50 @@ function bumpAttempts(deps: EngineDeps, changeId: string | null): number {
   return attempts;
 }
 
-/**
- * §10.8/DOC-84 §10.7 — how long an **unclaimed** desperate dispatch may wait, as a multiple of
- * the dispatch's own bound. A step's wall is its attempt's bound × 5 (the prose step's 225 min is
- * exactly 5 × 45 min), so the sixth gets 5 × 180 s = 900 s — one `WRITER_PAUSE_MS` (15 min), the
- * longest silence a live writer can leave between passes.
- */
-const DESPERATE_WAIT_FACTOR = 5;
-
-/**
- * When the desperate attempt was dispatched: the `step.opened` the reaper wrote when it marked
- * the step, else the step's own opening (a step seeded already desperate).
- */
-function desperateDispatchedAt(db: Db, step: store.StepRow): number {
-  const row = db
-    .prepare(`SELECT at FROM events WHERE step_id = ? AND kind = 'step.opened' ORDER BY hseq DESC LIMIT 1`)
-    .get(step.step_id) as { at: string } | undefined;
-  const at = row === undefined ? Number.NaN : Date.parse(row.at);
-  return Number.isNaN(at) ? Date.parse(step.at) : at;
+/** Where one step's way back is counted. A step id is a row key, never a reader's word. */
+function stuckKey(stepId: string): string {
+  return `step.stuck.${stepId}`;
 }
 
 /**
- * A desperate dispatch no session ever claimed: the wait is not work, so it is bounded and closed
- * `interrupted` — one `step.closed`, hence one `pass:closed{interrupted}`. The same shape
- * `cancelOpenSteps` uses: no change is closed as applied, and the lane's own pass re-queues it.
+ * The `TEXT_STUCK` attempt counter (owner's rule, 2026-10-29): a refusal that cannot put the text
+ * back is retried by the wall, and a retry is an attempt like any other. Six is the same bound the
+ * queue and the ladders use; when they are spent the change is refused **without** the restore —
+ * the text stays where it is, but the filing reaches a sink with our-failure sentence instead of
+ * being retried forever.
  */
-function closeUnclaimedDesperate(deps: EngineDeps, step: store.StepRow, now: number): void {
-  store.updateStep(deps.db, step.step_id, {
-    outcome: 'interrupted',
-    closed_at: toIso(now),
-    note: 'отчаянная попытка не дождалась сессии — шаг снят',
-  });
-  appendEvent(
-    deps.db,
+function stuckAttempts(deps: EngineDeps, stepId: string): number {
+  const raw = store.getMeta(deps.db, stuckKey(stepId));
+  const value = raw === null ? 0 : Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * The sixth `TEXT_STUCK`: a refusal that cannot restore is still a refusal. The step closes
+ * `escalated` and the change `void · dropped` with the our-failure sentence, and the text is left
+ * exactly where it is — the reader keeps what the site serves, and the filing is not retried for
+ * an hour nobody promised.
+ */
+function refuseStuck(deps: EngineDeps, step: store.StepRow, now: number): void {
+  const note = `${OUR_FAILURE_LINE}: текст главы не удалось вернуть за ${String(QUEUE_MAX_ATTEMPTS)} попыток`;
+  closeStep(
+    deps,
+    step.step_id,
     {
-      kind: 'step.closed',
-      stepId: step.step_id,
-      cascadeId: step.cascade_id,
-      chapter: step.chapter,
-      payload: { outcome: 'interrupted', unclaimed: true },
+      outcome: 'escalated',
+      seamsOut: [],
+      note: note.slice(0, 200),
+      model: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      escalation: 'escalated:gate_timeout',
+      changeReason: OUR_FAILURE_LINE,
+      premiseCause: 'failed',
+      restoreText: false,
     },
     now,
   );
+  store.setMeta(deps.db, stuckKey(step.step_id), String(QUEUE_MAX_ATTEMPTS + 1));
 }
 
 export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapReport {
@@ -133,45 +132,18 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   // text put back, however healthy the session looks. A walled step is refused, never re-issued
   // — three attempts at 45 minutes each is a loop.
   for (const step of store.listOpenSteps(db)) {
-    // §10.8: a desperate attempt is a dispatch (180 s), not work, and its short bound runs from
-    // the attempt's own lease — never from the step's opening, or the wall would close the sixth
-    // before a session could claim it. A desperate step **nobody claimed** has no lease to run
-    // from, and skipping it left it open for ever: the wait is bounded from the dispatch itself
-    // (`DESPERATE_WAIT_FACTOR`), and past it the step is closed `interrupted` — no session did
-    // any work to stop, so nothing is escalated and nothing re-issues.
-    const liveLease = step.desperate === 1 ? store.liveLeaseForStep(db, step.step_id) : undefined;
-    const unclaimed = step.desperate === 1 && liveLease === undefined;
-    // BOOK-117: the ordinary wall is the step's window — its opening, or its reopen if later.
-    if (!step.desperate && stepWallOf(deps, step) > now) continue;
-    const wall =
-      step.desperate === 1
-        ? unclaimed
-          ? DESPERATE_WAIT_FACTOR * deps.config.desperateDeadlineMs
-          : deps.config.desperateDeadlineMs
-        : deps.config.stepWallMs;
-    const wallFrom =
-      step.desperate === 1
-        ? unclaimed
-          ? desperateDispatchedAt(db, step)
-          : Date.parse(liveLease?.acquired_at ?? step.at)
-        : Date.parse(step.at);
-    if (wallFrom + wall > now) continue;
+    if (stepWallOf(deps, step) > now) continue;
     // Closing a walled step may close its whole cascade (a ripple owns no work in flight),
     // so a later step of the same snapshot may already be closed by the time it is reached.
     if (store.getStep(db, step.step_id)?.outcome !== null) continue;
-    if (unclaimed) {
-      closeUnclaimedDesperate(deps, step, now);
-      report.stepWalls.push(step.step_id);
-      continue;
-    }
     try {
       refuseChange(deps, {
         stepId: step.step_id,
         // The reader's sentence: the pass outlived its window, so its text does not stand.
-        because: stepWallReason(Math.round(wall / 60_000)),
+        because: stepWallReason(Math.round(deps.config.stepWallMs / 60_000)),
         // The note is read by an operator and copied to a page: the step's own words, not the
         // filing's, so the two rows still tell one story each (BOOK-34's wall).
-        note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
+        note: `глава не закрылась за отведённое время (${String(Math.round(deps.config.stepWallMs / 60_000))} мин) — проход остановлен`,
         cause: 'escalated:gate_timeout',
         // A draft that wrote its chapter keeps it: a stop by the clock is not a refusal of the
         // work, and its premise is settled by the text (BOOK-7).
@@ -182,10 +154,25 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     } catch (error) {
       // One wedged step must not stop the tick (nor the boot): the lease, gate and lane passes
       // below still run, and the failure is a fact in the report instead of a swallowed throw.
-      report.stepWallFailures.push({
-        stepId: step.step_id,
-        code: isEngineError(error) ? error.code : 'UNKNOWN',
-      });
+      const code = isEngineError(error) ? error.code : 'UNKNOWN';
+      report.stepWallFailures.push({ stepId: step.step_id, code });
+      // A way back that cannot be made is counted, not looped on: the same six the queue and the
+      // ladders use. When they are spent the change is refused without the restore (the text
+      // stays where it is) and the filing reaches a sink with our-failure sentence.
+      if (code === 'TEXT_STUCK') {
+        const attempts = stuckAttempts(deps, step.step_id) + 1;
+        store.setMeta(deps.db, stuckKey(step.step_id), String(attempts));
+        store.updateStep(deps.db, step.step_id, {
+          note: `текст не вернулся к прежней редакции — попытка ${String(attempts)} из ${String(QUEUE_MAX_ATTEMPTS)}`.slice(0, 200),
+        });
+        if (attempts >= QUEUE_MAX_ATTEMPTS) {
+          try {
+            refuseStuck(deps, step, now);
+          } catch (stuck) {
+            report.stepWallFailures.push({ stepId: step.step_id, code: isEngineError(stuck) ? stuck.code : 'UNKNOWN' });
+          }
+        }
+      }
     }
   }
 
@@ -227,47 +214,7 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         report.recovered.push(step.step_id);
         continue;
       }
-      // §10.8 — the ladder: the third failure widens the requirements, the fourth widens them
-      // once more (a paragraph, then the chapter), the fifth hands over to the desperate sixth.
-      // Each widening is recorded on the step and re-issued, so the next `pass:accepted` names
-      // the attempt it opens and the writer runs under the widened mode.
-      // The mode is not stored on the step: BOOK-173 records it with the plan, and a widened
-      // attempt is a rewrite by definition (`writer/mode.ts` reads `widened` before its table).
-      const widening =
-        attempts === 3 && step.widened === null
-          ? { widened: 'wider-edit' }
-          : attempts === 4 && step.widened === 'wider-edit'
-            ? { widened: 'whole-chapter' }
-            : null;
-      if (widening !== null) {
-        store.updateStep(db, step.step_id, widening);
-        // §10.8's scope widening: a change that failed three times is no longer a phrase —
-        // the next attempt's scope is the chapter. The column is the public fact the card reads.
-        const served = changeForStep(db, step);
-        if (served !== undefined && served.scope_hint !== 'chapter') {
-          store.updateChange(db, served.id, { scope_hint: 'chapter' });
-        }
-        appendEvent(
-          db,
-          { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true, widened: widening.widened } },
-          now,
-        );
-        report.reissued.push(step.step_id);
-        continue;
-      }
-      if (attempts > 4 && step.desperate !== 1) {
-        // §10.8: five ordinary attempts, then one desperate sixth, then the close. The step is
-        // marked (the sixth is the same step, cheaper) and re-issued with its own short bound.
-        store.updateStep(db, step.step_id, { desperate: 1 });
-        appendEvent(
-          db,
-          { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true, desperate: true } },
-          now,
-        );
-        report.reissued.push(step.step_id);
-        continue;
-      }
-      if (attempts > 4) {
+      if (attempts > 2) {
         refuseChange(deps, {
           stepId: step.step_id,
           because: lostSessionReason(false),
@@ -279,16 +226,11 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         continue;
       }
       report.reissued.push(step.step_id);
-      appendEvent(
-        db,
-        { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true } },
-        now,
-      );
       continue;
     }
 
     // Landed, but the session vanished: the gates may continue under a fresh lease.
-    if (attempts > 4) {
+    if (attempts > 2) {
       refuseChange(deps, {
         stepId: step.step_id,
         because: lostSessionReason(true),

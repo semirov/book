@@ -15,19 +15,16 @@
  * verdict and Gate B's clearance, the first placement writes both, and `acceptComment` no-ops on
  * a `change_id` it already holds — so a second poll, a restarted site or a second process changes
  * nothing. Every way of *not* placing is bounded too: a gate that has not spoken parks the row for
- * six hours with one event, and a broken row is settled `held` at the tries cap, so no tick can
- * re-process the same row once a second.
+ * six hours with one event, and an answer the applier cannot place is asked once more and then
+ * refused (`defect`) — a broken row never waits on the page as «ждёт».
  */
 
-import type { CommentDecisionPayload } from '@book/shared';
+import { TRIAGE_REFUSED_LINE, type CommentDecisionPayload } from '@book/shared';
 
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { readQueue } from '../engineState/reader.ts';
 import type { Db } from '../db/db.ts';
-import { attemptCounts } from '../comments/attemptToday.ts';
-import { TRIAGE_DESPERATE_ATTEMPT, TRIAGE_MAX_TRIES, latestAttempt } from '../comments/attempts.ts';
-import { filingStateOf } from '../comments/filingState.ts';
-import { emitFilingUpdate } from './filingFrame.ts';
+import { TRIAGE_MAX_TRIES, latestAttempt, refuseTriage } from '../comments/triage.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { acceptComment } from './accept.ts';
 import type { DecisionEmit } from './decisions.ts';
@@ -70,11 +67,12 @@ export function proposalOfReading(reading: TriageReading): DispositionProposal {
 /**
  * The filings that have a stored verdict and no placement yet, oldest first.
  *
- * The attempt must still be **open** (`outcome = 'submitted'`): placing settles it, and a row
- * whose attempt was settled without a placement (a corrupt stored reading, a gate that never
- * cleared) is a visible defect on the page — not a row this tick re-processes once a second.
- * Gate B's clearance is asked here as well as in `dueTriage`: a filing whose rights verdict is
- * missing waits on the operator's surface, not in this query.
+ * The attempt must be **open** (`outcome = 'submitted'`): placing settles it. An attempt the
+ * applier already settled `held` at the tries cap is read once more — the answer may be placeable
+ * after all (a gate C column an operator filled in, a row a later build can read) — and a second
+ * failure is the refusal sink, never a second hold. Gate B's clearance is asked here as well as
+ * in `dueTriage`: a filing whose rights verdict is missing waits on the operator's surface, not
+ * in this query.
  */
 function duePlacements(db: Db, limit: number): string[] {
   return (
@@ -84,13 +82,14 @@ function duePlacements(db: Db, limit: number): string[] {
           WHERE c.status = 'new' AND c.disposition IS NULL AND c.rights_verdict = 'CLEAR'
             AND EXISTS (
               SELECT 1 FROM comment_attempts a
-               WHERE a.comment_id = c.id AND a.verdict IS NOT NULL AND a.outcome = 'submitted'
+               WHERE a.comment_id = c.id AND a.verdict IS NOT NULL
+                 AND (a.outcome = 'submitted' OR (a.outcome = 'held' AND a.tries >= ?))
                  AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
             )
           ORDER BY c.created_at, c.id
           LIMIT ?`,
       )
-      .all(limit) as Array<{ id: string }>
+      .all(TRIAGE_MAX_TRIES, limit) as Array<{ id: string }>
   ).map((row) => row.id);
 }
 
@@ -103,19 +102,14 @@ function appendOnce(
   commentId: string,
   type: string,
   at: string,
-  meta: { code?: string; attempt: number; try?: number } & Record<string, unknown>,
+  meta: { code?: string; attempt: number },
 ): void {
   const prior = db
     .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = ?`)
     .all(commentId, type) as Array<{ meta: string | null }>;
   const seen = prior.some((event) => {
     try {
-      const stored = JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number };
-      if (stored.attempt !== meta.attempt) return false;
-      // §10.8: a ladder's failures share the attempt number, and the **try** is what tells the
-      // fifth from the desperate sixth — one frame per try, or the sink is swallowed by the
-      // failure that armed it (BOOK-220 M1).
-      return meta.try === undefined || stored.try === meta.try;
+      return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === meta.attempt;
     } catch {
       return false;
     }
@@ -136,6 +130,27 @@ function nowOf(options: TriageApplierOptions): () => Date {
   return options.now ?? (() => new Date());
 }
 
+/**
+ * Close the attempt the placement answered. A `held` attempt (the recovery pass) is not open in
+ * `settleAttempt`'s sense; it is closed here by the same one-write rule, so a successful recovery
+ * does not leave a held attempt behind a placed filing.
+ */
+function settlePlaced(
+  db: Db,
+  row: CommentRow,
+  n: number,
+  outcome: 'accepted' | 'refused',
+  at: string,
+  recover: boolean,
+): void {
+  if (settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome, at }) !== null) return;
+  if (!recover) return;
+  db.prepare(
+    `UPDATE comment_attempts SET outcome = ?, decided_at = ?
+      WHERE comment_id = ? AND n = ? AND outcome = 'held'`,
+  ).run(outcome, at, row.id, n);
+}
+
 /** One `comment:decision` frame, the shape `DecisionsTailer` publishes. */
 function emitDecision(
   options: TriageApplierOptions,
@@ -144,7 +159,6 @@ function emitDecision(
   status: 'accepted' | 'registered' | 'rejected',
   at: string,
 ): void {
-  const nowMs = nowOf(options)().getTime();
   options.emit('comment:decision', {
     id: row.id,
     chapter: row.chapter,
@@ -154,28 +168,22 @@ function emitDecision(
     batchId: row.batch_id,
     changeId: row.change_id,
     queue: {
-      depth: readQueue(options.db, nowMs).depth,
+      depth: readQueue(options.db, nowOf(options)().getTime()).depth,
       ahead: queueAhead(options.db, row.change_id),
     },
     source: 'llm',
-    // BOOK-DOC-84 #19: the record line prints the tries left from the frame itself.
-    attemptsLeft: attemptCounts(options.db, row.id, nowMs).attemptsLeft,
-    at: Date.parse(at),
   } satisfies CommentDecisionPayload);
-  // BOOK-DOC-84 #17: the filing's own row — accepted, registered or refused — as a frame.
-  emitFilingUpdate(options.db, options.emit, {
-    commentId: row.id,
-    chapter: row.chapter,
-    state: filingStateOf(status),
-    changeId: row.change_id,
-    at: Date.parse(at),
-  });
 }
 
 /**
- * Settle an attempt the applier cannot place: one event, `held`, and the tries moved to the cap,
- * so the row is a visible defect (`attempt: 'failed'`) instead of a row this tick re-processes
- * every second. Returns nothing — every caller answers `false`.
+ * Settle an attempt the applier cannot place. One event names the defect, and the attempt ends in
+ * one of the **two sinks** (owner's invariant, 2026-10-29): a first failure holds it at the cap,
+ * and the next tick asks once more whether the stored answer is placeable; a second failure is
+ * the refusal sink — the row is `rejected` with our-failure sentence, the attempt closes
+ * `refused`, and the page offers the retry. Never «ждёт»: an unplaceable answer is ours, and it
+ * reaches a sink by the counter, not by an operator remembering the row.
+ *
+ * Returns nothing — every caller answers `false`.
  */
 function defect(
   db: Db,
@@ -184,14 +192,29 @@ function defect(
   at: string,
   type: string,
   code: string,
+  recover: boolean,
 ): void {
   appendOnce(db, row.id, type, at, { code, attempt });
-  settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome: 'held', at });
   db.prepare('UPDATE comment_attempts SET tries = ? WHERE comment_id = ? AND n = ?').run(
     TRIAGE_MAX_TRIES,
     row.id,
     attempt,
   );
+  if (!recover) {
+    settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome: 'held', at });
+    return;
+  }
+  // The answer was asked twice and still cannot be placed: the refusal sink, in our own words.
+  if (!refuseTriage(db, { commentId: row.id, n: attempt, at, unplaced: true })) return;
+  appendCommentEvent(db, row.id, 'triage.failed', at, {
+    code: 'TRIAGE_UNPLACED',
+    attempt,
+    try: TRIAGE_MAX_TRIES,
+    of: TRIAGE_MAX_TRIES,
+    cap: true,
+    retryAt: null,
+    reason: TRIAGE_REFUSED_LINE,
+  });
 }
 
 /**
@@ -216,38 +239,33 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
     const row = readCommentRow(db, commentId);
     if (row === undefined || row.status !== 'new' || row.disposition !== null) return null;
     // Only the **latest** attempt is placed, and only while it is still open: a settled attempt
-    // was already answered (placed, held or refused) and this tick must not answer it again.
+    // was already answered (placed, held or refused) and this tick must not answer it again —
+    // except a `held` attempt at the cap, which is asked exactly once more (the recovery).
     const attempt = latestAttempt(db, commentId);
-    if (attempt === undefined || attempt.outcome !== 'submitted') return null;
+    if (attempt === undefined) return null;
+    const recover = attempt.outcome === 'held' && attempt.tries >= TRIAGE_MAX_TRIES;
+    if (attempt.outcome !== 'submitted' && !recover) return null;
     // A verdict that is not one object is a broken row, not a reason to retry once a second.
     const stored = attempt.verdict === null ? null : safeJson<StoredVerdict>(attempt.verdict);
     if (stored === null) {
-      defect(db, row, attempt.n, at, 'triage.verdict-invalid', 'VERDICT_UNREADABLE');
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', 'VERDICT_UNREADABLE', recover);
       return null;
     }
     const verdict = stored.verdict === 'OFF' ? 'OFF' : 'FITS';
     const parsed = parseReadingBlock(stored.reading, verdict);
     if (!parsed.ok) {
-      defect(db, row, attempt.n, at, 'triage.verdict-invalid', parsed.code);
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', parsed.code, recover);
       return null;
     }
 
     const reading = parsed.reading;
-    // §10.8: a widened attempt runs a rung wider — an `as_said` reading is proposed as
-    // `through_paper`, and the chooser still decides whether the carrier licenses it.
-    const proposal = proposalOfReading(reading);
-    const widened = attempt.widened !== null;
-    const decision = chooseFor(
-      db,
-      row,
-      widened && proposal.disposition === 'as_said' ? { ...proposal, disposition: 'through_paper' } : proposal,
-    );
+    const decision = chooseFor(db, row, proposalOfReading(reading));
     if (decision.disposition === 'inadmissible') {
       // A lock is the only refusal: the chain, the status and the reader's line are the
       // rejection path's, and the decision travels with it — a finale lock the model named must
       // not be re-chosen from the row (that would lose the lock and escalate).
       disposeRejection(db, { comment: row, at, note: decision.reason, decision });
-      settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'refused', at });
+      settlePlaced(db, row, attempt.n, 'refused', at, recover);
       return { row: readCommentRow(db, commentId) ?? row, status: 'rejected' };
     }
 
@@ -274,7 +292,7 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
         return null;
       }
       // A verdict was stored, so the audit must have spoken; a caller that gets here is a defect.
-      defect(db, row, attempt.n, at, 'triage.defect', code);
+      defect(db, row, attempt.n, at, 'triage.defect', code, recover);
       return null;
     }
 
@@ -283,10 +301,10 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
       // `acceptComment` answered without writing a chain and a status: the filing was not placed,
       // and nothing may be announced — a push here would tell the reader «отклонена» for a row
       // nobody refused and nobody placed.
-      defect(db, row, attempt.n, at, 'triage.not-placed', 'PLACEMENT_EMPTY');
+      defect(db, row, attempt.n, at, 'triage.not-placed', 'PLACEMENT_EMPTY', recover);
       return null;
     }
-    settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'accepted', at });
+    settlePlaced(db, row, attempt.n, 'accepted', at, recover);
     return { row: after, status: after.status === 'registered' ? 'registered' : 'accepted' };
   })();
 
@@ -303,69 +321,11 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
   return true;
 }
 
-/**
- * §10.8 — the deterministic sixth attempt.
- *
- * The five bought calls are the ladder's ceiling. A filing the engine marked `desperate` gets
- * **no new reasoning**: if a reading was stored, the ordinary placement above consumes it under
- * the widened rules; if none was, the row is settled as a visible defect (`held`) with the sixth
- * try on record — one event, one `filing:reading{failed, attempt 6, desperate}`, and the site's
- * queue moves on. It is not a refusal: a refusal is a lock, and a reading that never arrived
- * named none (§10.3: the defect state, never a fourth resting word).
- */
-function settleDesperate(options: TriageApplierOptions, commentId: string): boolean {
-  const { db } = options;
-  const at = nowOf(options)().toISOString();
-  const done = db.transaction((): boolean => {
-    const row = readCommentRow(db, commentId);
-    if (row === undefined || row.status !== 'new' || row.disposition !== null) return false;
-    const attempt = latestAttempt(db, commentId);
-    if (attempt === undefined || attempt.outcome !== 'submitted' || attempt.desperate !== 1) return false;
-    // A stored reading is placed by the ordinary path, not here.
-    if (attempt.verdict !== null) return false;
-    appendOnce(db, commentId, 'triage.failed', at, {
-      code: 'DESPERATE',
-      attempt: attempt.n,
-      try: TRIAGE_DESPERATE_ATTEMPT,
-      desperate: true,
-      cap: true,
-    });
-    settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'held', at });
-    db.prepare('UPDATE comment_attempts SET tries = ?, desperate = 1 WHERE comment_id = ? AND n = ?').run(
-      TRIAGE_DESPERATE_ATTEMPT,
-      commentId,
-      attempt.n,
-    );
-    emitFilingUpdate(db, options.emit, {
-      commentId,
-      chapter: row.chapter,
-      state: 'held',
-      changeId: row.change_id,
-      at: Date.parse(at),
-    });
-    return true;
-  });
-  return done();
-}
-
 /** One tick: at most `limit` filings, and nothing at all when none carries a verdict. */
 export function poll(options: TriageApplierOptions): number {
   let placed = 0;
   for (const id of duePlacements(options.db, options.limit ?? TRIAGE_PLACE_LIMIT)) {
     if (placeFiling(options, id)) placed += 1;
-  }
-  const desperate = options.db
-    .prepare(
-      `SELECT c.id AS id FROM comments c
-         JOIN comment_attempts a ON a.comment_id = c.id
-        WHERE c.status = 'new' AND c.disposition IS NULL AND a.desperate = 1
-          AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
-          AND a.outcome = 'submitted'
-        LIMIT ?`,
-    )
-    .all(options.limit ?? TRIAGE_PLACE_LIMIT) as Array<{ id: string }>;
-  for (const row of desperate) {
-    if (settleDesperate(options, row.id)) placed += 1;
   }
   return placed;
 }

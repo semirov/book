@@ -19,6 +19,7 @@ import {
   getState,
   postAuthorsHide,
   postComment,
+  retryComment,
   reviseComment,
 } from './api.ts';
 
@@ -266,6 +267,25 @@ describe('one filing by id, and the refusal that names it (BOOK-111)', () => {
     respond({ code: 'INVALID', message: 'body must be a string' }, 400);
     const error = (await postComment({ chapter: 9, body: '' }).catch((caught: unknown) => caught)) as ApiError;
     expect(error.commentId).toBeUndefined();
+  });
+});
+
+describe('the retry of a broken filing (owner, 2026-10-29)', () => {
+  it('posts an empty body to the filing’s own retry path, and keeps the server’s refusal', async () => {
+    const spy = vi.fn(async () => new Response('{"comment":{"id":"cmt_1","status":"new","retryable":false}}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await expect(retryComment('cmt_1')).resolves.toMatchObject({ comment: { id: 'cmt_1', status: 'new' } });
+
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/comments/cmt_1/retry');
+    expect(init.method).toBe('POST');
+    // Nothing travels: a retry re-arms the stored filing, so no text, anchor or chapter is sent.
+    expect(init.body).toBe('{}');
+    expect(init.headers).toMatchObject({ 'content-type': 'application/json' });
+
+    respond({ code: 'RETRY_NOT_OFFERED', message: 'повторить нельзя — по этому замечанию уже сказано по существу' }, 409);
+    const refused = (await retryComment('cmt_1').catch((caught: unknown) => caught)) as ApiError;
+    expect(refused).toMatchObject({ status: 409, code: 'RETRY_NOT_OFFERED' });
   });
 });
 

@@ -12,7 +12,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { QUEUE_MAX_ATTEMPTS, type WriterAssignment } from '@book/shared';
+import { OUR_FAILURE_LINE, QUEUE_MAX_ATTEMPTS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { filingStatus } from '../../src/comments/filingState.ts';
@@ -188,6 +188,42 @@ describe('the writer’s stop is the refusal', () => {
 });
 
 describe('a refusal that cannot publish its way back', () => {
+  it('counts a TEXT_STUCK attempt and refuses with our sentence once the six are spent', () => {
+    const fixture = chapterOne();
+    try {
+      const { changeId, assignment } = landedChange(fixture);
+      // The chapter moved after the landing: every way back is refused, and the wall is the only
+      // thing that would retry it — so the retry has a count, like every other bound.
+      fixture.seedChapterBlocks(1, 'Начало', ['Чужой текст, написанный после прохода.']);
+      const moved = fixture.readChapter(1);
+      fixture.clock.advance(fixture.config.stepWallMs + 60_000);
+
+      for (let attempt = 1; attempt <= QUEUE_MAX_ATTEMPTS; attempt += 1) {
+        expect(fixture.engine.reap().stepWallFailures.map((failure) => failure.code)).toContain('TEXT_STUCK');
+        expect(store.getMeta(fixture.db, `step.stuck.${assignment.stepId}`)).toBe(
+          String(attempt === QUEUE_MAX_ATTEMPTS ? attempt + 1 : attempt),
+        );
+        if (attempt < QUEUE_MAX_ATTEMPTS) {
+          expect(store.getStep(fixture.db, assignment.stepId)?.note).toContain(
+            `попытка ${String(attempt)} из ${String(QUEUE_MAX_ATTEMPTS)}`,
+          );
+        }
+      }
+
+      // The sixth failure is a refusal without the restore: the text stays where it is, and the
+      // filing reaches a sink with the one sentence a broken way back owes.
+      const change = changeOf(fixture, changeId);
+      expect(change).toMatchObject({ status: 'void', outcome: 'dropped', reason: OUR_FAILURE_LINE });
+      expect(filingStateOf(fixture, changeId)).toBe('rejected');
+      expect(store.getStep(fixture.db, assignment.stepId)?.outcome).toBe('escalated');
+      expect(fixture.readChapter(1)).toBe(moved);
+      // A seventh tick has nothing left to retry.
+      expect(fixture.engine.reap().stepWallFailures).toEqual([]);
+    } finally {
+      fixture.close();
+    }
+  });
+
   it('answers TEXT_STUCK when the pre-pass snapshot publishes nothing, and closes nothing', () => {
     const fixture = chapterOne();
     try {
@@ -214,7 +250,7 @@ describe('a refusal that cannot publish its way back', () => {
 describe('the queue is finite by attempts, not by hours (owner, 2026-10-29)', () => {
   /**
    * Hold the lane with a change that is really processing: a `pending` change behind it cannot
-   * start, and every poll is one counted claim that produced no step.
+   * start — and that is a wait, not an attempt of the waiting change.
    */
   function blockedBy(fixture: Fixture): void {
     const first = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'среда вместо четверга' });
@@ -226,10 +262,55 @@ describe('the queue is finite by attempts, not by hours (owner, 2026-10-29)', ()
     expect(fixture.engine.next({ for: 'fwd', session })).toBeNull();
   }
 
-  it('drops a change after six claims that produced no step, and the filing with it', () => {
+  /**
+   * Every model process the engine allows is already in flight: the lane is free, the head is
+   * asked for, and the lease is refused (`PROCESS_CAP`). That is a claim that **reached** the
+   * change and produced no step, so it is the one a poll counts.
+   */
+  function saturate(fixture: Fixture): void {
+    const at = toIso(fixture.clock.now());
+    for (let index = 0; index < fixture.config.maxConcurrentProcesses; index += 1) {
+      store.insertLease(fixture.db, {
+        id: `lea_hold_${String(index)}`,
+        stepId: `stp_hold_${String(index)}`,
+        changeId: null,
+        cascadeId: null,
+        lane: null,
+        chapter: 10 + index,
+        isFront: 0,
+        kind: 'draft',
+        session: `held-${String(index)}`,
+        expectedRev: 0,
+        acquiredAt: at,
+        heartbeatAt: at,
+        expiresAt: toIso(fixture.clock.now() + 3_600_000),
+      });
+    }
+  }
+
+  it('does not count a poll that never reached the change: the lane holder leaves it pending', () => {
     const fixture = chapterOne();
     try {
       blockedBy(fixture);
+      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'четверг вместо среды' });
+
+      // Six polls behind a legitimate holder: the lane is not free, so nothing was asked of the
+      // engine and the counter does not move. «ждёт» is a wait, not an attempt.
+      for (let claim = 1; claim <= QUEUE_MAX_ATTEMPTS; claim += 1) {
+        poll(fixture, `writer-${String(claim)}`);
+        expect(changeOf(fixture, change.id)).toMatchObject({ status: 'pending', attempts: 0 });
+      }
+      expect(decisionEvents(fixture, change.id)).toHaveLength(0);
+      expect(store.countOpenSteps(fixture.db)).toBe(1);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('drops a change after six claims that reached it and produced no step, and the filing with it', () => {
+    const fixture = chapterOne();
+    try {
+      saturate(fixture);
       const change = fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'четверг вместо среды' });
 
       for (let claim = 1; claim < QUEUE_MAX_ATTEMPTS; claim += 1) {
@@ -251,13 +332,13 @@ describe('the queue is finite by attempts, not by hours (owner, 2026-10-29)', ()
       poll(fixture, 'writer-extra');
       expect(changeOf(fixture, change.id)).toMatchObject({ attempts: QUEUE_MAX_ATTEMPTS });
       expect(decisionEvents(fixture, change.id)).toHaveLength(1);
-      expect(store.countOpenSteps(fixture.db)).toBe(1);
+      expect(store.countOpenSteps(fixture.db)).toBe(0);
     } finally {
       fixture.close();
     }
   });
 
-  it('counts a premise the lane never reached either — the filing is the same fact', () => {
+  it('does not count a paused day either: a pause waits, its count does not move', () => {
     const fixture = createEngineFixture({
       chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
       filings: 'manual',
@@ -274,22 +355,17 @@ describe('the queue is finite by attempts, not by hours (owner, 2026-10-29)', ()
       const premise = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 3, intent: 'глава о дороге' });
       expect(changeOf(fixture, premise.id)?.premise).toBe(1);
 
-      // A paused day waits, and each re-issue of the waiting premise counts: the bound holds even
-      // when nothing is spent. The poll answers the pause's own code, never a decision.
-      for (let claim = 1; claim < QUEUE_MAX_ATTEMPTS; claim += 1) {
+      // The poll answers the pause's own code, never a decision — and never an attempt: the day
+      // lifts at 00:00 UTC, and a wait bound by the day is not a claim the change spent.
+      for (let claim = 1; claim <= QUEUE_MAX_ATTEMPTS; claim += 1) {
         expect(refusalOf(() => fixture.engine.next({ for: 'fwd', session: `writer-${String(claim)}` }))?.code).toBe(
           'BUDGET_PAUSED',
         );
-        expect(changeOf(fixture, premise.id)).toMatchObject({ status: 'pending', attempts: claim });
+        expect(changeOf(fixture, premise.id)).toMatchObject({ status: 'pending', attempts: 0 });
       }
-      expect(refusalOf(() => fixture.engine.next({ for: 'fwd', session: 'writer-last' }))?.code).toBe('BUDGET_PAUSED');
-      expect(changeOf(fixture, premise.id)).toMatchObject({
-        status: 'void',
-        outcome: 'dropped',
-        attempts: QUEUE_MAX_ATTEMPTS,
-      });
-      expect(changeOf(fixture, premise.id)?.reason).toBe('заявка не дошла до главы за 6 попыток');
-      expect(filingStateOf(fixture, premise.id)).toBe('rejected');
+      // BOOK-219: a claim that meets the pause spends nothing, so the counter never reaches the
+      // queue's cap — the filing waits for the next day instead of being refused for it.
+      expect(filingStateOf(fixture, premise.id)).toBe('accepted');
     } finally {
       fixture.close();
     }

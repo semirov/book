@@ -41,12 +41,12 @@ describe('the writer on disk — nothing of its own', () => {
     }
   });
 
-  it('keeps the pre-image a row too: a parked pass writes no file', async () => {
+  it('keeps the pre-image a row too: a stopped pass writes no file', async () => {
     const harness = await createHarness();
     try {
       harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
       const result = await harness.run({ chapter: 41 });
-      expect(result.status).toBe('parked');
+      expect(result.status).toBe('refused');
       // A pass that never landed and never wrote: the counter is the only row it owns.
       expect(existsSync(join(harness.dataDir, 'writer'))).toBe(false);
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM writer_state').get()).toEqual({ n: 0 });

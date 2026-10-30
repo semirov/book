@@ -1,6 +1,7 @@
 import { TOTAL_CHAPTERS, type CascadeBudget, type SeamRef, type StepOutcome, type StepPass } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { budgetReason } from '../../src/engine/budget.ts';
 import { planCascade, type CascadeFacts, type CascadePlan, type CascadeStepFact } from '../../src/engine/cascade.ts';
 
 const BUDGET: CascadeBudget = {
@@ -328,7 +329,7 @@ describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
     expect(walk.plan).toEqual({
       kind: 'close',
       outcome: 'escalated:budget',
-      reason: 'правка ушла глубже 5 волн — дальше только по решению владельца',
+      reason: budgetReason('wave', BUDGET),
       alert: true,
     });
   });
@@ -339,7 +340,7 @@ describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
     expect(planCascade(facts(atFive), ctx())).toEqual({
       kind: 'close',
       outcome: 'escalated:budget',
-      reason: 'правка ушла глубже 5 волн — дальше только по решению владельца',
+      reason: budgetReason('wave', BUDGET),
       alert: true,
     });
   });

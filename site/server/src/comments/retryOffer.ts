@@ -160,8 +160,11 @@ function readState(db: Db, commentId: string): ReadState {
     )
     .get(commentId) as { outcome: string | null; tries: number; verdict: string | null } | undefined;
   if (row === undefined) return 'answered';
-  if (row.verdict !== null) return 'answered';
+  // `refused` first: an answer the applier could not place keeps its verdict on the row (the
+  // record keeps what was read) and is still our failure — the filing never reached a sink on
+  // its merits. A lock refusal has no verdict and is shut earlier by its disposition.
   if (row.outcome === 'refused') return 'ours';
+  if (row.verdict !== null) return 'answered';
   if (row.outcome === 'held' || row.outcome === 'submitted') {
     return row.tries >= TRIAGE_MAX_TRIES ? 'ours' : 'inflight';
   }

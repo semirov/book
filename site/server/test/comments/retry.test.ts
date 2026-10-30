@@ -476,7 +476,7 @@ describe('the retry door is gated like the other write doors', () => {
 
 describe('the failure codes that are our defect', () => {
   it('counts a broken provider, shape or engine, and never the book’s own answer', () => {
-    for (const code of ['PROVIDER_TIMEOUT', 'PROVIDER_SHAPE', 'PROVIDER_HTTP_500', 'ANSWER_TRUNCATED', 'ANSWER_SHAPE', 'ENGINE_UNREACHABLE', 'DB_BUSY']) {
+    for (const code of ['PROVIDER_TIMEOUT', 'PROVIDER_SHAPE', 'PROVIDER_HTTP_500', 'ANSWER_TRUNCATED', 'ANSWER_SHAPE', 'ENGINE_UNREACHABLE', 'ENGINE_MECHANICAL_UNJUDGED', 'DB_BUSY']) {
       expect(ourFailureCode(code), code).toBe(true);
     }
     for (const code of ['ANSWER_REFUSAL', 'FRAME_CHANGED', 'RIGHTS_REQUIRED', 'RIGHTS_NOT_REQUIRED', 'STEP_CLOSED', 'TEXT_STUCK', 'BUDGET_STOP', null]) {

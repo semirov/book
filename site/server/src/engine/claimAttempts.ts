@@ -2,14 +2,19 @@
  * The queue's own bound (owner's correction, 2026-10-29): «нет, сроков не надо — только конечное
  * количество попыток».
  *
- * A change the lane cannot take is **re-issued and counted**. Every claim attempt that produced no
- * step — the lane held by another change, a pass in flight, a claim that lost its race, a lease the
- * caps refused — increments `changes.attempts` here, and the sixth ends the change through the one
- * refusal sink: `void · dropped`, the sentence «заявка не дошла до главы за 6 попыток», and the
- * filing behind it `rejected`. No hour and no operator decide it.
+ * A change the lane cannot take is **re-issued and counted** — but only a claim that actually
+ * **reached** the change. A poll that finds the lane held by another change, a pass already in
+ * flight, an open ripple or the change's own open step is not an attempt of this change: nothing
+ * was asked of the engine and nothing was refused, so `changes.attempts` does not move. What
+ * counts is a claim the engine reached and could not turn into a step — the ripple or process cap
+ * refused the lease, or the lease was already held — and the sixth of those ends the change
+ * through the one refusal sink: `void · dropped`, the sentence «заявка не дошла до главы за 6
+ * попыток», and the filing behind it `rejected`. No hour and no operator decide it.
  *
- * A paused day is a wait with a bound, so its re-issue counts too. A stopped book is not a count at
- * all: it is refused at once, with no attempt spent (`engine/reap.ts`).
+ * A paused day is a wait with a bound, and its bound is the day itself: a claim that meets the
+ * pause spends nothing here (the counter does not move), and the change waits for 00:00 UTC.
+ * A stopped book is not a count at all: it is refused at once, with no attempt spent
+ * (`engine/reap.ts`).
  */
 
 import { QUEUE_MAX_ATTEMPTS, queueAttemptsLine } from '@book/shared';
@@ -20,10 +25,8 @@ import * as store from './store.ts';
 import type { EngineDeps } from './types.ts';
 
 export type ClaimAttempts = {
-  /** Count one claim that produced no step; at the bound, drop the change and its filing. */
+  /** Count one claim that reached the change and produced no step; at the bound, drop it. */
   missed(change: store.ChangeRow, at: number): void;
-  /** A paused day: the oldest waiting filing's re-issue counts, and nothing else moves. */
-  paused(at: number): void;
 };
 
 export function createClaimAttempts(deps: EngineDeps): ClaimAttempts {
@@ -45,10 +48,5 @@ export function createClaimAttempts(deps: EngineDeps): ClaimAttempts {
     });
   }
 
-  function paused(at: number): void {
-    const waiting = store.listPending(db)[0];
-    if (waiting !== undefined) missed(waiting, at);
-  }
-
-  return { missed, paused };
+  return { missed };
 }

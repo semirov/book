@@ -19,6 +19,7 @@
 import { expect } from 'vitest';
 
 import { readCommentRow, toCommentDto } from '../../src/comments/repo.ts';
+import { readChapterRows } from '../../src/engine/text.ts';
 import { EngineBridge } from '../../src/engineState/bridge.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { createEngineClient, type EngineClient } from '../../src/writer/client.ts';
@@ -33,12 +34,22 @@ export { INTENT };
 /** The chapter the ordinary filing lives on: written before the chain starts. */
 export const CHAPTER = 8;
 /** An empty slot: its filing is a premise, and its first pass has no paragraph to patch. */
-export const EMPTY_CHAPTER = 9;
+export const EMPTY_CHAPTER = 11;
 /** A wording the floor's own intent guard refuses: the sixth attempt cannot apply «как сказано». */
 export const GUARDED = 'сократи абзац и убери повтор';
 
 /** The words the owner retired: a filing's last sentence may not end in one of them. */
-export const RETIRED = ['исчерпано', 'остановлено', 'застряло', 'остаётся в очереди', 'проверка не ответила'] as const;
+export const RETIRED = [
+  'исчерпано',
+  'остановлено',
+  'застряло',
+  'остаётся в очереди',
+  'проверка не ответила',
+  // The owner's two-sink rule: a stop is a refusal, never a third state waiting for a person.
+  'нужно решение',
+  'ждёт решения',
+  'требует решения',
+] as const;
 
 /** The one sentence a technical failure owes: it says the idea was not judged. */
 /**
@@ -65,7 +76,9 @@ export function longChapter(): string {
 
 /** The one chain every cell runs on: the site's app, the engine, the control API and the client. */
 export function bootChain(): Promise<Context> {
-  return bootTriage({ chapters: { 'ch08.md': longChapter() } });
+  // Chapter 9 is written so a ripple from chapter 8 has an upward step to repair; the empty slot
+  // the premise cells use is chapter 11 (a chapter that never exists in this chain).
+  return bootTriage({ chapters: { 'ch08.md': longChapter(), 'ch09.md': longChapter() } });
 }
 
 /**
@@ -197,6 +210,8 @@ export type Cell = {
   changeId: string | null;
   /** The chapter's revision before the stage started. */
   revBefore: number;
+  /** The chapter's text before the stage started — a refusal must leave it exactly as it was. */
+  beforeText?: string;
   result?: PassResult;
   /** The provider calls the stage spent. */
   calls?: number;
@@ -206,6 +221,8 @@ export type Frame = { type: string; data: Record<string, unknown> };
 
 export type Facts = {
   rev: number;
+  /** The text the chapter serves now. */
+  text: string | null;
   change: { status: string; outcome: string | null; reason: string | null; attempts: number } | null;
   row: { status: string; disposition: string | null; reason: string | null };
   dto: { status: string; reason: string | null; retryable: boolean; applied: { chapter: number; rev: number } | null; disposition: string | null };
@@ -265,6 +282,7 @@ export function factsOf(cell: Cell): Facts {
   );
   return {
     rev: chapterRev(ctx, cell.chapter),
+    text: readChapterRows(ctx.db, cell.chapter).raw ?? null,
     change: change ?? null,
     row: { status: raw!.status, disposition: raw!.disposition ?? null, reason: raw!.reason ?? null },
     dto: {
@@ -301,6 +319,11 @@ export type Want = {
   passSentence?: string | RegExp;
   /** A technical failure says it was ours; a lock and a content refusal keep their own words. */
   kind?: 'technical' | 'content' | 'lock' | 'queue';
+  /**
+   * A stop of a **cascade** restores every chapter the ripple wrote: the text is the pre-stage
+   * text again, at a new revision (a restore is a revision of its own, never a file put back).
+   */
+  restored?: boolean;
 };
 
 function expectSentence(value: string | null, want: string | RegExp, where: string): void {
@@ -352,7 +375,14 @@ export function expectSink(cell: Cell, want: Want): Facts {
     // The triage row keeps its own word; the DTO and the frame are the receipt of the landing.
     expect(facts.row.status).toBe('accepted');
   } else if (want.sink === 'refused') {
-    expect(facts.rev, 'a refusal never moves the chapter').toBe(cell.revBefore);
+    if (want.restored === true) {
+      // A ripple's refusal restores what it wrote: the text is back, at a new revision.
+      expect(facts.text).toBe(cell.beforeText ?? null);
+      expect(facts.rev).toBeGreaterThan(cell.revBefore);
+    } else {
+      expect(facts.rev, 'a refusal never moves the chapter').toBe(cell.revBefore);
+      if (cell.beforeText !== undefined) expect(facts.text).toBe(cell.beforeText);
+    }
     expect(facts.dto.status).toBe('rejected');
     expect(facts.dto.applied).toBeNull();
     // The row's own word stops at triage: a filing a change holds stays `accepted` (the change

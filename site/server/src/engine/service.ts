@@ -26,6 +26,7 @@ import { ensureSlice } from '../index/store.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, openRippleStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
+import { closeReason } from './cascade.ts';
 import { type DraftLane } from './draft.ts';
 import {
   assignmentOf,
@@ -260,7 +261,7 @@ export function createEngine(deps: EngineDeps) {
         // report — it is a refusal with the pair recorded (§6A.6). Its text goes back with it.
         const stopped = refuseChange(deps, {
           stepId: step.step_id,
-          because: 'починка требует главы позади волны — нужно решение',
+          because: closeReason('origin'),
           note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
           now: at,
           cause: 'escalated:origin',

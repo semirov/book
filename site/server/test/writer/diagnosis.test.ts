@@ -45,7 +45,9 @@ describe('a refused answer is a diagnosis, not a park', () => {
       harness.script.push('Я не могу написать эту главу: это не моя задача.', 'Я не могу написать эту главу.');
       const result = await harness.run({ chapter: CHAPTER });
 
-      expect(result.status).toBe('parked');
+      // A model's refusal is not a judgement of the reader's idea: it ends in the sink with our
+      // sentence, and the premise is still settled so the queue moves on at once.
+      expect(result.status).toBe('refused');
       expect(result.filingRefused).toBe(true);
     } finally {
       await harness.close();

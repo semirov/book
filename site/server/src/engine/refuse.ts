@@ -23,6 +23,7 @@
 
 import {
   NOTE_MAX_CHARS,
+  OUR_FAILURE_LINE,
   REASON_MAX_CHARS,
   type CascadeOutcome,
   type ChangeStatus,
@@ -52,7 +53,7 @@ export function stepWallReason(minutes: number): string {
  * told the filing was not judged, in the same words a broken call uses. The window itself (the
  * minute count, and whether a text had to go back) is the operator's fact, `gateWindowNote`.
  */
-export const GATE_WINDOW_REASON = 'это сбой на нашей стороне — заявку не судили, попробуйте ещё раз';
+export const GATE_WINDOW_REASON = OUR_FAILURE_LINE;
 
 /** What the window cost, for the step's note: the minutes, and what happened to the text. */
 export function gateWindowNote(minutes: number, published = true): string {

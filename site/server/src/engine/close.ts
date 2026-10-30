@@ -84,11 +84,13 @@ export function closeCascade(
   outcome: CascadeOutcome,
   reason: string,
   now: number,
+  /** `false` only for a refusal whose every way back is spent (`reap.ts`, `TEXT_STUCK`). */
+  restoreText = true,
 ): void {
   // One transaction: a refusal's restore of several chapters and the decision that follows it
   // are one fact, and a restore that cannot be made (`TEXT_STUCK`) leaves nothing half-closed.
   deps.db.transaction(() => {
-    closeCascadeIn(deps, cascadeId, outcome, reason, now);
+    closeCascadeIn(deps, cascadeId, outcome, reason, now, restoreText);
   })();
 }
 
@@ -98,6 +100,7 @@ function closeCascadeIn(
   outcome: CascadeOutcome,
   reason: string,
   now: number,
+  restoreText: boolean,
 ): void {
   const db = deps.db;
   const cascade = store.getCascade(db, cascadeId);
@@ -112,7 +115,7 @@ function closeCascadeIn(
   // it wrote goes back to its own pre-pass revision before the filing is decided. A restore that
   // cannot be made throws `TEXT_STUCK` and the whole close rolls back — the refusal is never a
   // decision over text that moved.
-  if (escalated) restoreCascadePrePass(deps, cascadeId, now);
+  if (escalated && restoreText) restoreCascadePrePass(deps, cascadeId, now);
 
   store.updateCascade(db, cascadeId, {
     status: (escalated ? 'escalated' : 'closed') satisfies CascadeStatus,
@@ -348,12 +351,15 @@ export function closeStep(
       const outcome = input.escalation ?? 'escalated:origin';
       const reason = input.changeReason ?? escalationCopy(outcome);
       if (cascade) {
-        // A whole ripple: `closeCascade` puts every chapter it wrote back before deciding.
-        closeCascade(deps, cascade.id, outcome, reason, now);
+        // A whole ripple: `closeCascade` puts every chapter it wrote back before deciding — unless
+        // every way back is spent, and the refusal is made with the text where it stands.
+        closeCascade(deps, cascade.id, outcome, reason, now, input.restoreText !== false);
       } else {
         // A broken pass is not a refusal of the work (BOOK-7): a draft that wrote its chapter
         // keeps that first edition, and its premise is settled by the text, not by the stop.
-        if (!(step.pass === 'draft' && input.premiseCause === 'failed')) restorePrePass(deps, step, now);
+        if (input.restoreText !== false && !(step.pass === 'draft' && input.premiseCause === 'failed')) {
+          restorePrePass(deps, step, now);
+        }
         if (change) {
           stopChange(deps, change, reason, now, outcome);
           return { cascadeId: null, outcome: input.outcome, changeStatus: 'void' };

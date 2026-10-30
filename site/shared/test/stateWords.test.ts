@@ -13,6 +13,7 @@ import {
   FAILED_ATTEMPT_LINE,
   OWN_WAITING_LINE,
   PASS_STOPS,
+  REFUSAL_LINE,
   PREMISE_LINES,
   STATE_LINES,
   STATE_WORDS,
@@ -179,11 +180,14 @@ describe('the reason a stopped pass leaves', () => {
       expect(sentence.length).toBeLessThanOrEqual(200);
     }
     // BOOK-218 — the only reason vocabulary: our failure (`не дошло`) and the edit not rejected.
-    for (const key of ['shape', 'modelTimeout', 'modelDown', 'truncated', 'refusal', 'answerRejected', 'engineDown'] as const) {
+    for (const key of ['shape', 'modelTimeout', 'modelDown', 'truncated', 'answerRejected', 'engineDown'] as const) {
       expect(STOP_REASONS[key], key).toMatch(/^не дошло: /u);
       expect(STOP_REASONS[key], key).toContain('правка не отклонена');
     }
     expect(STOP_REASONS.modelTimeout).toContain('не успели');
+    // BOOK-219: the machine declining the work is the one **content** stop — about the work.
+    expect(STOP_REASONS.refusal).toBe(REFUSAL_LINE);
+    expect(STOP_REASONS.refusal).not.toContain('не дошло');
   });
 });
 

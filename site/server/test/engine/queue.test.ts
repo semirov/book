@@ -2,6 +2,7 @@ import { FRAME_FIRST_SENTENCE, TOO_MANY_FILINGS, type WriterAssignment } from '@
 import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
+import { closeReason } from '../../src/engine/cascade.ts';
 import { createEngine } from '../../src/engine/service.ts';
 import * as store from '../../src/engine/store.ts';
 import { databaseFile, openDatabase } from '../../src/db/db.ts';
@@ -280,7 +281,8 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
       };
       expect(row.status).toBe('void');
       expect(row.outcome).toBe('dropped');
-      expect(row.reason).toContain('позади волны');
+      // BOOK-218 owns the sentence: the close's own origin line, never a second table.
+      expect(row.reason).toBe(closeReason('origin'));
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('origin');
     } finally {
       fixture.close();

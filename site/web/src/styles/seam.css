@@ -395,6 +395,16 @@
   margin-top: 4px;
 }
 
+/* Owner's rule (2026-10-29) — «повторить», the way back from our own failure: the same inline
+   mark as «исправить» (mono 12, the live ink, a 44 px target), with no indent of its own — it
+   stands beside a state word or under a state line, and the block it sits in owns the gap. */
+.retry {
+  display: inline-flex;
+}
+.retry .seam-inline-action {
+  margin-left: 0;
+}
+
 /* ---------- the strip while a panel speaks for it ---------- */
 /* BOOK-111 (owner, 2026-10-27) — «Два поповера»: a panel opened from the strip is not a second
    box beside it, so the strip itself becomes one line and the floating panel is the only full

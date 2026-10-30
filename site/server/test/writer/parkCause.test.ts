@@ -76,14 +76,16 @@ describe('a parked pass tells a broken call from a refusal', () => {
     }
   });
 
-  it('parks the model’s own refusal as `refused`, and the premise is dropped with that note', async () => {
+  it('sinks the model’s own refusal with its own sentence, and the premise is dropped with that note', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
       const result = await harness.run({ chapter: CHAPTER });
 
-      expect(result.status).toBe('parked');
+      // The model read the work and declined: a content refusal with **its** sentence — never our
+      // outage, and never a second ask.
+      expect(result.status).toBe('refused');
       expect(result.reason).toBe(readerSentences.refusal);
       const row = changeRow(harness, changeId);
       expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });
