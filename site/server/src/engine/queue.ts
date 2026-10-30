@@ -41,9 +41,12 @@ import { acquireLease } from './leases.ts';
 import { admitPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
+import { claimBehind, blockLine, createQueueLog, queueBlockOf, SWEEP_OWNED, type QueueBlock } from './queueBlock.ts';
+import { createPremiseBranch } from './queuePremise.ts';
 import * as store from './store.ts';
 import { isBasisSlot, isWrittenChapter, readChapterRows } from './text.ts';
 import { writerAssignment } from './trace.ts';
+import { sweepZombies, zombieFailureLine } from './zombieSweep.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export type EnqueueInput = {
@@ -71,6 +74,15 @@ export function createQueue(deps: EngineDeps) {
   const claims = createClaimAttempts(deps);
   /** BOOK-117: no pass is handed out past a cap, and a refusal touches nothing else. */
   const budgetGuard = (at: number): void => assertBudgetAllowsPass(db, caps, at);
+  /** BOOK-235: one line per fact per poll, never the same line twice in a row. */
+  const log = createQueueLog(deps);
+  const premises = createPremiseBranch({ deps, log, budgetGuard });
+  /**
+   * BOOK-235 — a capacity refusal is one fact for the whole poll. The process and step caps are
+   * the engine's, not a change's: the first refusal sets this, so the walk behind the head stops
+   * instead of spending the six attempts of every filing waiting on a saturated machine.
+   */
+  let capacityRefused = false;
 
   const assignment = (step: store.StepRow, leaseId: string): WriterAssignment =>
     writerAssignment(deps, step, leaseId, changeForStep(db, step)?.id ?? null);
@@ -284,27 +296,106 @@ export function createQueue(deps: EngineDeps) {
     return null;
   }
 
+  // ── the premise branch (BOOK-235) ────────────────────────────────────────
+  //
+  // BOOK-7: a premise waits for its chapter's first pass, never for the FIFO lane, and it must
+  // never stall the change behind it. The branch lives in `queuePremise.ts`; here it is only the
+  // order of the poll: a draft nobody can open is named and settled, then the lane is asked.
+
   /** BOOK-166: the oldest undecided filing wins — a premise (a draft) or a change, by `seq`. */
   function claimFiling(session: string): WriterAssignment | null {
     const at = deps.clock.now();
+    capacityRefused = false;
+    log.begin();
     const premise = db.prepare(`SELECT * FROM changes WHERE premise = 1 AND status = 'pending' ORDER BY seq LIMIT 1`).get() as
       | store.ChangeRow
       | undefined;
     const head = store.headPending(db);
     if (premise === undefined && (head === null || head === undefined)) return null;
     const premiseFirst = premise !== undefined && (head === null || head === undefined || premise.seq < head.seq);
-    if (premiseFirst) return draft.startDraft(session, premise.chapter <= FORWARD_LAST ? 'fwd' : 'bwd', at);
-    return claimHead(session);
+    if (premiseFirst) {
+      const drafted = draft.startDraft(session, premise.chapter <= FORWARD_LAST ? 'fwd' : 'bwd', at);
+      if (drafted !== null) return drafted;
+      // No draft was handed out: say why, end the premises the engine can end, and — unless the
+      // day is paused — ask the change queue instead of leaving the lane's head unclaimed behind
+      // a premise the draft lane cannot serve (BOOK-7's own promise).
+      if (premises.settleSkipped(at)) return null;
+    }
+    const claimed = claimHead(session);
+    if (claimed !== null) return claimed;
+
+    // BOOK-235: a null is not an answer. The owner's hole was «idle: заявок нет» beside a filing
+    // in `pending`, because every guard in `claimHead` is silent. Name the block once, heal the
+    // row that owns it, and only then let the queue's own counter move.
+    let blocked = store.headPending(db);
+    if (blocked === undefined) return null;
+    let block = blockOf(blocked);
+    log.report([blockLine(blocked.id, block)]);
+    if (SWEEP_OWNED.has(block.condition) && block.ownerId !== null) {
+      // The sweep is narrowed to the change that **owns** the blocking row — the ghost, the
+      // cascade's change — never to the head: nothing of the head's would be healed, and the head
+      // would spend an attempt for a row it does not own.
+      const heal = sweepZombies(deps, { now: at, only: { changeId: block.ownerId } });
+      log.report([...heal.lines, ...heal.failures.map((failure) => zombieFailureLine(failure.id, failure.code))]);
+      const healed = claimHead(session);
+      if (healed !== null) return healed;
+      blocked = store.headPending(db) ?? blocked;
+      block = blockOf(blocked);
+      log.report([blockLine(blocked.id, block)]);
+    }
+    // The caps are the engine's own state: the claim reached the change, so it spent **one**
+    // attempt (in `claimHeadOf`'s catch), and the poll ends here — no second count for the head,
+    // no attempt for the queue behind a machine that cannot take any of it.
+    if (block.condition === 'capacity') return null;
+    // A held lane, a live pass and a step somebody is working are not this change's attempt:
+    // nothing was asked of it, and another change is never handed out beside them.
+    const busy =
+      block.condition === 'lane_held' ||
+      block.condition === 'processing_live' ||
+      (block.condition === 'open_step' && !block.reached);
+    if (busy) return null;
+    // A foreign ghost or a foreign open cascade was never this change's attempt either: the head
+    // is not counted for a row another change owns (`claimAttempts.ts`).
+    if (block.reached) claims.missed(blocked, at);
+    // The queue behind a wedged head is not wedged itself: the same claim, one change at a time,
+    // until the engine refuses on capacity — which is the poll's fact, not the next row's.
+    return claimBehind(
+      db,
+      blocked,
+      (candidate) => claimHeadOf(session, candidate, { count: false }),
+      () => capacityRefused,
+    );
   }
 
-  /** The head of the FIFO lane becomes the change in `processing`. */
-  function claimHead(session: string): WriterAssignment | null {
+  /**
+   * The block a claim stopped on, with the poll's capacity answer folded in: a refusal by the caps
+   * is `capacity`, never `claim_lost` (which means another process won the mutex for this row).
+   */
+  function blockOf(change: store.ChangeRow): QueueBlock {
+    const block = queueBlockOf(deps, change);
+    if (block.condition === 'claim_lost' && capacityRefused) {
+      return { condition: 'capacity', detail: null, ownerId: null, reached: true };
+    }
+    return block;
+  }
+
+  /**
+   * The head of the FIFO lane becomes the change in `processing`. `change` is the row the caller
+   * asks for — `headPending` for the lane, any pending row for the claim behind a wedged head.
+   * `count: false` is the walk behind a wedged head: only the poll's own head spends an attempt
+   * there, so a saturated engine cannot void the whole queue in six polls.
+   */
+  function claimHeadOf(
+    session: string,
+    change: store.ChangeRow | undefined,
+    options: { count?: boolean } = {},
+  ): WriterAssignment | null {
     const at = deps.clock.now();
     // The guard runs before the lane is touched: a stopped book refuses at once (`reap.ts`), and
     // a paused one hands nothing out. A pause is a wait, not an attempt: the counter does not move
     // (`claimAttempts.ts`), and the change is asked again after 00:00 UTC.
     budgetGuard(at);
-    const head = store.headPending(db);
+    const head = change;
     if (!head) return null;
     // The lane cannot take it, and that is **not** this change's attempt: the claim never
     // reached it. Another change holds the lane, a pass or a ripple is in flight — each waits,
@@ -369,12 +460,19 @@ export function createQueue(deps: EngineDeps) {
       }
       const code = refusalCode(error);
       if (code === 'STEP_CAP' || code === 'PROCESS_CAP' || code === 'LEASE_HELD') {
-        // The engine could not start it: a claim with no step, counted like any other.
-        claims.missed(head, at);
+        // The engine could not start it: a claim with no step, counted like any other — but only
+        // for the poll's own head. `capacityRefused` tells the poll that its caps, not this row,
+        // are the reason, so the walk behind it stops instead of spending every filing's six.
+        capacityRefused = true;
+        if (options.count !== false) claims.missed(head, at);
         return null;
       }
       throw error;
     }
+  }
+
+  function claimHead(session: string): WriterAssignment | null {
+    return claimHeadOf(session, store.headPending(db));
   }
 
   return {

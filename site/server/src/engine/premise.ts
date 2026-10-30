@@ -241,12 +241,15 @@ export function settleDraftPremise(
  * The maintenance pass: a premise whose chapter was written outside the draft that consumed
  * it can never land in a first edition any more. It is closed with a public reason instead of
  * waiting forever; a draft step still open for that chapter keeps its premise untouched.
+ *
+ * BOOK-235: it answers the ids it settled, not a count — the sweep and the claim path name every
+ * row they closed (one line each), and a bare number says neither which filing nor why.
  */
-export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now()): number {
+export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now()): string[] {
   const rows = deps.db
     .prepare(`SELECT * FROM changes WHERE premise = 1 AND status = 'pending' ORDER BY seq`)
     .all() as store.ChangeRow[];
-  let settled = 0;
+  const settled: string[] = [];
   for (const premise of rows) {
     const open = deps.db
       .prepare(`SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`)
@@ -256,11 +259,11 @@ export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now
     // was rejected by number alone; now a **basis-only** slot is rejected the same way, and a
     // written ch01/ch42 falls to the stale branch like any other written chapter.
     if (isBasisSlot(getChapterRow(deps.db, premise.chapter))) {
-      if (settle(deps, premise, 'rejected', PREMISE_FROZEN_REASON, now) !== null) settled += 1;
+      if (settle(deps, premise, 'rejected', PREMISE_FROZEN_REASON, now) !== null) settled.push(premise.id);
       continue;
     }
     if (!isWrittenIn(deps.db, premise.chapter)) continue;
-    if (settle(deps, premise, 'rejected', PREMISE_STALE_REASON, now) !== null) settled += 1;
+    if (settle(deps, premise, 'rejected', PREMISE_STALE_REASON, now) !== null) settled.push(premise.id);
   }
   return settled;
 }
