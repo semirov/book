@@ -93,13 +93,15 @@ window_say() {
 #   R_STATUS the HTTP status (`000` when there is none)
 #   R_OK     1 when the answer is 200 and `"ok":true`
 #   R_COMMIT the commit the process reports ("" when it names none)
+#   R_SCHEMA `schema_version` the process reports (0 when it names none) — the second of BOOK-232's
+#            two readings of the volume's schema, and the deploy takes the LARGER of the two
 #   R_ERR    curl's first stderr line ("" when the read itself succeeded)
 # Always returns 0: "the site did not answer" is the answer (`R_OK=0`), and a probe that returned
 # non-zero would let `set -e` kill a deploy inside its health window — the 00:36 run died exactly
 # there, with `lock: released` as its last line and no reason.
 health_read() { # (url)
   local url="$1" raw code=0 status body
-  R_CODE=0; R_STATUS=0; R_OK=0; R_COMMIT=""; R_ERR=""
+  R_CODE=0; R_STATUS=0; R_OK=0; R_COMMIT=""; R_ERR=""; R_SCHEMA=0
   if ! command -v curl >/dev/null 2>&1; then
     R_CODE=127; R_ERR="curl: not on PATH"
     return 0
@@ -121,6 +123,10 @@ health_read() { # (url)
   if [ "$R_STATUS" = "200" ] && printf '%s' "$body" | grep -q '"ok":true' 2>/dev/null; then
     R_OK=1
     R_COMMIT="$(printf '%s' "$body" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p' 2>/dev/null || true)"
+    # BOOK-232: the volume's schema as the running build reports it. Absent or not a number is 0,
+    # which is not a version either — the caller decides what an empty fact means, never this probe.
+    R_SCHEMA="$(printf '%s' "$body" | sed -n 's/.*"schema_version":[[:space:]]*\([0-9][0-9]*\).*/\1/p' 2>/dev/null | head -n 1 || true)"
+    is_number "$R_SCHEMA" || R_SCHEMA=0
   fi
   return 0
 }
@@ -327,6 +333,46 @@ recovery_line() {
     none)
       printf 'recovery: none — %s; nothing was rolled back and nothing was restored, a human must look\n' "${2:-unknown}" ;;
     *) return 1 ;;
+  esac
+}
+
+# --- what makes an image swap unsafe: the volume's schema (BOOK-232) ----------------------------
+#
+# BOOK-217 decided the recovery from the dump the boot wrote. A dump says a copy was taken, not what
+# the file holds now, and a rollback's safety is exactly one fact about versions: the database's own
+# `user_version` and the `SCHEMA_VERSION` the target image understands. `db > target` is the incident
+# (`boot refused (SCHEMA_FUTURE)` on a v32 build over a v33 volume, a crash loop, prod 502); equal or
+# lower is an ordinary swap. Either side unreadable is `unknown`, and unknown is a REFUSAL too —
+# "the swap is probably fine" is how this class of incident happens.
+#
+# The decision is one pure function so the two drivers, the guard and the tests cannot disagree
+# about it, and `recovery_choice`/`recovery_line` keep their four fixed sentences: this decides the
+# fact those sentences are printed from.
+
+# (db_schema, target_schema) -> safe | refuse | unknown. `0` is not a version (an empty database
+# reports it, and so does a read that found nothing): both sides must be a real number above zero, or
+# the answer is `unknown` — one rule for both drivers, so `0 30` can never read as "safe".
+rollback_schema_verdict() {
+  if ! is_number "${1:-}" || ! is_number "${2:-}"; then printf 'unknown'; return 0; fi
+  if [ "${1}" -le 0 ] || [ "${2}" -le 0 ]; then printf 'unknown'; return 0; fi
+  if [ "$1" -gt "$2" ]; then printf 'refuse'; return 0; fi
+  printf 'safe'
+}
+
+# (verdict, db_schema, target_schema, target tag) -> the one line an operator reads. Both numbers are
+# always named, and the refusal always names the way back, because "refused" alone leaves a human
+# with a stopped deploy and no next step.
+rollback_schema_line() {
+  local verdict="${1:-unknown}" db="${2:-unknown}" target="${3:-unknown}" tag="${4:-the target image}"
+  [ -n "$db" ] || db="unknown"
+  [ -n "$target" ] || target="unknown"
+  case "$verdict" in
+    refuse)
+      printf 'the volume is at schema v%s and %s understands v%s — putting the older image back would boot it against a newer book (SCHEMA_FUTURE) and crash-loop; restore the pre-deploy dump instead (the deploy'"'"'s own dump-restore, or site/deploy/restore-drill.sh into a scratch copy) — nothing was started' \
+        "$db" "$tag" "$target" ;;
+    *)
+      printf 'the volume'"'"'s schema (%s) and the schema %s understands (%s) could not both be read — a swap on an unread schema is refused rather than risked; nothing was started' \
+        "$db" "$tag" "$target" ;;
   esac
 }
 
@@ -588,20 +634,38 @@ fail_state() {
     "${HEALTH:-none}" "${HEALTH_MS:-0}" "${BUDGET_MS:-0}" "${BASELINE:-unknown}" "${RELEASE:-none}"
 }
 
-# ERR: one line, once, naming the step, the command and the line it died on.
+# ERR: one line, once, naming the step, the command and the line it died on. When the driver carries
+# an alert (compose-release.sh's `alert`: one line, one `::error::`, and what prod answers now), the
+# death goes through it — a `set -e` death is still a failed run, and a run must not end without the
+# alarm because the command that failed was not a `die`.
+#
+# It ends with `exit 1`, not with `return 0`: a function that swallows the status lets the interpreter
+# carry on with the FAILING command's code, and the driver's exit code is an interface — `3` means
+# "another deploy holds the lock", which `.github/workflows/deploy.yml` must not read out of a red
+# run, and the EXIT trap skips its audit for 2/3. A failed run is 1.
 fail_on_err() { # (line, command) — passed by the trap, because `LINENO` inside a function is not it
   local status=$? line="${1:-?}" cause="${2:-unknown}"
   if [ "${REASON_PRINTED:-0}" = "1" ]; then return 0; fi
   REASON_PRINTED=1
   FAILED_CAUSE="$cause"
-  window_say "FAILED at ${STEP:-start}: ${cause} (line ${line}) — $(fail_state); nothing further will be restarted"
-  return 0
+  if declare -F alert >/dev/null 2>&1; then
+    alert "${cause} (line ${line})"
+  else
+    window_say "FAILED at ${STEP:-start}: ${cause} (line ${line}) — $(fail_state); nothing further will be restarted"
+  fi
+  exit 1
 }
 
 # EXIT: a red run never ends with `lock: released` alone. When nothing above explained the status,
 # say so, and write the one audit line the run owes.
+#
+# `trap - ERR` first (BOOK-232): the ERR reporter ends with `exit 1`, so a command that fails INSIDE
+# the exit path (the writer restore, the lock release, an audit write) would downgrade a legitimate
+# status — a 3 from `lock_refuse` is the driver's "another deploy holds the lock", not a red deploy,
+# and the workflow reads the number.
 fail_on_exit() {
   local status=$?
+  trap - ERR
   if [ "${status}" -eq 0 ] || [ "${status}" -eq 3 ]; then return 0; fi
   if [ "${REASON_PRINTED:-0}" != "1" ]; then
     REASON_PRINTED=1

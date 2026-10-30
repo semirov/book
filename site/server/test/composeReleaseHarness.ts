@@ -9,7 +9,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -57,12 +57,21 @@ export function volumeFixture(): string {
   return dir;
 }
 
-/** A git clone fixture: one commit and an `origin` pointing at itself, so `git fetch` works. */
+/**
+ * A git clone fixture: one commit and an `origin` pointing at itself, so `git fetch` works.
+ *
+ * BOOK-232: the commit carries `site/server/src/db/schema.ts` at the prod version, so the image the
+ * release builds always has a READABLE schema constant. A rollback target that must be safe is then a
+ * real earlier commit (`commitSchema(root, n)`) rather than a made-up sha only the fake `docker`
+ * could resolve — the decision under test is a git read on this clone.
+ */
 export function gitRoot(): string {
   const dir = temp('book-172-root-');
   execFileSync('git', ['-C', dir, 'init', '-q']);
-  execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
-  mkdirSync(join(dir, 'site'), { recursive: true });
+  mkdirSync(join(dir, 'site', 'server', 'src', 'db'), { recursive: true });
+  writeFileSync(join(dir, 'site', 'server', 'src', 'db', 'schema.ts'), 'export const SCHEMA_VERSION = 33;\n', 'utf8');
+  execFileSync('git', ['-C', dir, 'add', '-A']);
+  execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init']);
   execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', dir]);
   return dir;
 }
@@ -109,6 +118,14 @@ export function commitSchema(root: string, version: number): string {
  * `FAKE_STOP_FAIL=1` refuses `dc stop`. A stray `writer/`, `manuscript/` or `notes.txt` in that
  * fixture is what `home-check` refuses, and `home-migrate --apply` folds the `writer/` one away — the
  * shape of a fixable leftover and a genuinely stray file.
+ *
+ * BOOK-232: the two schema probes answer by their own marker line. The volume read (`compose run …
+ * --entrypoint node site -e '<better-sqlite3 user_version>'`) answers `FAKE_VOLUME_SCHEMA`, or the
+ * number the fake restore last wrote to `<state>/volume-schema` — a restored dump carries the version
+ * in its own name (`pre-v29-…db` → 29), exactly as the real file would. Unset means "unreadable" (the
+ * probe exits 1), which is the `unknown` the guard must refuse. The image read (`docker run … <tag> -e
+ * '<import schema.js>'`) answers `FAKE_IMAGE_SCHEMA`, and is only reached for a tag whose commit this
+ * clone does not carry.
  */
 export function fakeDocker(stateDir: string): string {
   const dir = temp('book-172-bin-');
@@ -153,7 +170,16 @@ if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_IMAGE_MISSING:-0}
 # BOOK-183: the data volume preflight. 'volume inspect' is the volume's existence; the one-shot
 # 'test -f /v/book.db' is its content. FAKE_VOLUME_MISSING/FAKE_VOLUME_EMPTY are the two refusals.
 if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_VOLUME_MISSING:-0}" = "1" ] && exit 1; exit 0; fi
-if [ "$1" = "run" ]; then [ "\${FAKE_VOLUME_EMPTY:-0}" = "1" ] && exit 1; exit 0; fi
+if [ "$1" = "run" ]; then
+  case "$*" in
+    *BOOK_SCHEMA*)
+      [ -n "\${FAKE_IMAGE_SCHEMA:-}" ] || { echo "node: cannot find module '/app/server/dist/db/schema.js'" >&2; exit 1; }
+      printf 'BOOK_SCHEMA=%s\\n' "\${FAKE_IMAGE_SCHEMA}"
+      exit 0 ;;
+  esac
+  [ "\${FAKE_VOLUME_EMPTY:-0}" = "1" ] && exit 1
+  exit 0
+fi
 case "$*" in
   *" compose version"*) echo "Docker Compose version v5.5.0"; exit 0 ;;
   *" config -q"*) exit 0 ;;
@@ -174,6 +200,9 @@ case "$*" in
         rm -f "\${FAKE_VOLUME_DIR}/book.db-wal" "\${FAKE_VOLUME_DIR}/book.db-shm"
         cp "\${FAKE_VOLUME_DIR}/backups/$name" "\${FAKE_VOLUME_DIR}/backups/.book.db.restoring"
         mv "\${FAKE_VOLUME_DIR}/backups/.book.db.restoring" "\${FAKE_VOLUME_DIR}/book.db"
+        # BOOK-232: the restored file is on the version its own name carries, so the schema probe
+        # answers that from now on — the guard after a restore judges the dump, not the live boot.
+        printf '%s\\n' "$(printf '%s' "$name" | sed -n 's/^pre-v\\([0-9][0-9]*\\)-.*$/\\1/p')" > "${stateDir}/volume-schema"
         printf 'restored backups/%s\\n' "$name"
         exit 0 ;;
       *"ls -1 /data/backups"*)
@@ -208,6 +237,15 @@ case "$*" in
   # operator reads. A 'notes.txt' is the genuinely stray file '--apply' cannot fix.
   *" run --rm -T --no-deps --entrypoint node site "*)
     case "$*" in
+      # BOOK-232: the volume's own user_version, asked read-only by one one-shot that never boots.
+      *BOOK_SCHEMA*)
+        if [ -f "${stateDir}/volume-schema" ]; then
+          printf 'BOOK_SCHEMA=%s\\n' "$(cat "${stateDir}/volume-schema")"
+          exit 0
+        fi
+        [ -n "\${FAKE_VOLUME_SCHEMA:-}" ] || { echo "BOOK_SCHEMA: the volume could not be read" >&2; exit 1; }
+        printf 'BOOK_SCHEMA=%s\\n' "\${FAKE_VOLUME_SCHEMA}"
+        exit 0 ;;
       *"home-migrate.mjs --apply"*)
         rm -rf "\${FAKE_VOLUME_DIR:-}/writer"
         exit 0 ;;
@@ -226,10 +264,13 @@ case "$*" in
   *" up -d "*)
     printf '%s\\n' "\${BOOK_IMAGE_TAG:-}" > "${stateDir}/current"
     if [ "\${FAKE_MIGRATE_ON_UP:-0}" = "1" ] && [ ! -e "${stateDir}/migrated" ]; then
+      # A volume fixture is required: without one this used to write the dump into the deploy's own
+      # working directory (site/backups/), littering the tree a test runs in.
+      [ -n "\${FAKE_VOLUME_DIR:-}" ] || { echo "fake docker: FAKE_MIGRATE_ON_UP needs FAKE_VOLUME_DIR" >&2; exit 1; }
       : > "${stateDir}/migrated"
       stamp="\${FAKE_MIGRATE_STAMP:-20261029T085300Z}"
-      mkdir -p "\${FAKE_VOLUME_DIR:-.}/backups"
-      printf 'DUMP v29 %s\\n' "$stamp" > "\${FAKE_VOLUME_DIR:-.}/backups/pre-v29-$stamp.db"
+      mkdir -p "\${FAKE_VOLUME_DIR}/backups"
+      printf 'DUMP v29 %s\\n' "$stamp" > "\${FAKE_VOLUME_DIR}/backups/pre-v29-$stamp.db"
     fi
     if [ "\${FAKE_UP_FAIL_ONCE:-0}" = "1" ] && [ ! -e "${stateDir}/up-failed" ]; then : > "${stateDir}/up-failed"; exit 1; fi
     exit 0 ;;
@@ -249,6 +290,25 @@ export type Answers = {
    * already relied on). BOOK-205: the release reads this only when the host carries the client id.
    */
   signin?: { status: number; location?: string };
+  /**
+   * BOOK-232: the age gate (BOOK-225) as the deployed site answers it. `off` (the default) serves the
+   * chapter to anybody; `on` answers `403 {"code":"AGE_GATE"}`, a `POST /api/age` writes
+   * `book_age=<today>`, and the same GET with that cookie answers 200 — the round trip the smoke
+   * must prove; `ignored` refuses even WITH the cookie, the shape of a gate no reader can satisfy;
+   * `other` refuses `403` with a code that is not `AGE_GATE` (a refusal the smoke must not read as
+   * the age gate).
+   */
+  gate?: 'off' | 'on' | 'ignored' | 'other';
+  /**
+   * BOOK-232: a file every request line is appended to (`POST /api/age age=none`), so "the smoke
+   * really asked" is an assertion. The cookie's VALUE is never written — only whether it was sent.
+   */
+  log?: string;
+  /**
+   * BOOK-232: the status `/api/chapters` answers (200 by default). The smoke must require 200 before
+   * it reads the array — a 500 whose body happens to begin with `[` is not a healthy catalog.
+   */
+  catalogStatus?: number;
 };
 
 /** What a 302 to Yandex looks like, without any real client id in it. */
@@ -264,11 +324,40 @@ export function secretsWithClientId(): string {
   return dir;
 }
 
-/** The site the gate reads: `/healthz` plus the five smokes, answered from the fake's state. */
+/** The day the fake writes on `POST /api/age` — the site's own clock, which the smoke must reuse. */
+const FAKE_AGE_DAY = new Date().toISOString().slice(0, 10);
+
+/** The `book_age` value in a `Cookie` header, or undefined. The value is a day and nothing else. */
+function ageCookie(cookie: string | undefined): string | undefined {
+  if (cookie === undefined) return undefined;
+  for (const part of cookie.split(';')) {
+    const index = part.indexOf('=');
+    if (index <= 0) continue;
+    if (part.slice(0, index).trim() !== 'book_age') continue;
+    return part.slice(index + 1).trim();
+  }
+  return undefined;
+}
+
+/** The site the gate reads: `/healthz`, the smokes and the age gate, answered from the fake's state. */
 export async function serveSite(stateDir: string, answers: Answers): Promise<string> {
+  const gate = answers.gate ?? 'off';
   const server = createServer((request, response) => {
     const url = request.url ?? '/';
     const current = readFileSync(join(stateDir, 'current'), 'utf8').trim();
+    const acknowledged = ageCookie(request.headers.cookie);
+    // The recorded log is what makes "the smoke asked, and asked again with the cookie" provable.
+    if (answers.log !== undefined) {
+      appendFileSync(answers.log, `${request.method ?? 'GET'} ${url} age=${acknowledged === undefined ? 'none' : 'sent'}\n`);
+    }
+    if (request.method === 'POST' && url === '/api/age') {
+      response.writeHead(200, {
+        'content-type': 'application/json',
+        'set-cookie': `book_age=${FAKE_AGE_DAY}; Max-Age=31536000; Path=/; SameSite=Lax`,
+      });
+      response.end(JSON.stringify({ acknowledgedAt: FAKE_AGE_DAY }));
+      return;
+    }
     if (url === '/healthz') {
       const reply = answers.healthz(current);
       response.writeHead(reply.status, { 'content-type': 'application/json' });
@@ -281,8 +370,23 @@ export async function serveSite(stateDir: string, answers: Answers): Promise<str
       return;
     }
     if (url === '/api/chapters') {
+      const status = answers.catalogStatus ?? 200;
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(status === 200 ? '[{"n":1}]' : '[{"error":"the catalog is down"}]');
+      return;
+    }
+    if (url === '/api/chapters/1') {
+      const served = gate === 'off' || (gate === 'on' && acknowledged !== undefined);
+      if (!served) {
+        // The refusal the reader meets, with the machine-readable code and `no-store`, as the route
+        // sends it: the smoke must decide from the code, never from "403 is fine".
+        response.writeHead(403, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        const code = gate === 'other' ? 'NOT_ADULTS' : 'AGE_GATE';
+        response.end(JSON.stringify({ code, message: 'The book is for adults.' }));
+        return;
+      }
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end('[{"n":1}]');
+      response.end('{"n":1,"title":"One"}');
       return;
     }
     if (url.startsWith('/api/')) {

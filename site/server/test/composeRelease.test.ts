@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   closeAll,
+  commitSchema,
   envFor,
   fakeDocker,
   gitRoot,
@@ -40,6 +41,14 @@ import {
 vi.setConfig({ testTimeout: 90_000 });
 
 afterEach(closeAll);
+
+/**
+ * BOOK-232: the image prod served before the release under test — a REAL commit of this clone
+ * carrying `SCHEMA_VERSION = <version>`, so the rollback guard reads a number from `git show`
+ * instead of refusing a target nobody can identify. A made-up sha used to be enough; now it is the
+ * exact shape the guard exists for (`unknown` refuses), so the fixtures use commits.
+ */
+const previousAt = (root: string, version: number): string => `book:${commitSchema(root, version)}`;
 
 describe('the container release: lock, exit codes, rollback', () => {
   it('a) refuses with exit 2 on an unknown argument', async () => {
@@ -122,16 +131,22 @@ describe('the container release: lock, exit codes, rollback', () => {
     const root = gitRoot();
     const stateDir = temp('book-172-state-');
     const bin = fakeDocker(stateDir);
-    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const previous = previousAt(root, 32);
+    // …and the release ships a LATER commit, so the two images are different trees.
+    commitSchema(root, 33);
+    const previous7 = previous.split(':')[1]?.slice(0, 7) ?? '';
     const siteUrl = await serveSite(stateDir, {
       // The new image answers a commit that is not its own; the previous image answers its own.
       healthz: (current) => ({
         status: 200,
-        body: { ok: true, commit: current === previous ? '0123456' : 'deadbee' },
+        body: { ok: true, commit: current === previous ? previous7 : 'deadbee' },
       }),
     });
     const env = envFor(root, stateDir, bin, siteUrl);
     env.FAKE_RUNNING_IMAGE = previous;
+    // BOOK-232: the boot ran no DDL, so the volume is still on the schema the older image understands
+    // — the one case a swap is safe, and the one this case is about (the swap itself, not the guard).
+    env.FAKE_VOLUME_SCHEMA = '32';
     writeFileSync(join(stateDir, 'current'), previous, 'utf8');
     writeFileSync(join(stateDir, 'docker.log'), '', 'utf8');
     const result = await release(['--ref', 'HEAD'], env);
@@ -165,7 +180,8 @@ describe('the container release: lock, exit codes, rollback', () => {
     const root = gitRoot();
     const stateDir = temp('book-172-state-');
     const bin = fakeDocker(stateDir);
-    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const previous = previousAt(root, 32);
+    commitSchema(root, 33);
     // The stack half-came-up: the site answers the NEW commit while `up` itself returned 1.
     const siteUrl = await serveSite(stateDir, {
       healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
@@ -173,6 +189,7 @@ describe('the container release: lock, exit codes, rollback', () => {
     const env = envFor(root, stateDir, bin, siteUrl);
     env.FAKE_RUNNING_IMAGE = previous;
     env.FAKE_UP_FAIL_ONCE = '1';
+    env.FAKE_VOLUME_SCHEMA = '32';
     writeFileSync(join(stateDir, 'current'), previous, 'utf8');
     writeFileSync(join(stateDir, 'last-good-image'), `${previous}\n`, 'utf8');
 
@@ -194,12 +211,14 @@ describe('the container release: lock, exit codes, rollback', () => {
     const root = gitRoot();
     const stateDir = temp('book-172-state-');
     const bin = fakeDocker(stateDir);
-    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const previous = previousAt(root, 32);
+    commitSchema(root, 33);
     const siteUrl = await serveSite(stateDir, {
       healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
     });
     const env = envFor(root, stateDir, bin, siteUrl);
     env.FAKE_RUNNING_IMAGE = previous;
+    env.FAKE_VOLUME_SCHEMA = '32';
     env.FAKE_STATE_ENGINE = 'once:exited';
     writeFileSync(join(stateDir, 'current'), previous, 'utf8');
     writeFileSync(join(stateDir, 'last-good-image'), `${previous}\n`, 'utf8');
@@ -254,6 +273,8 @@ describe('the container release: lock, exit codes, rollback', () => {
     });
     const env = envFor(root, stateDir, bin, siteUrl);
     env.FAKE_RUNNING_IMAGE = `book:${head}`;
+    // BOOK-232: both commits carry the same schema, so the swap is the ordinary one.
+    env.FAKE_VOLUME_SCHEMA = '33';
     writeFileSync(join(stateDir, 'current'), `book:${head}`, 'utf8');
     writeFileSync(join(stateDir, 'previous-image'), `${previous}\n`, 'utf8');
 
@@ -294,7 +315,8 @@ describe('the container release: lock, exit codes, rollback', () => {
     const root = gitRoot();
     const stateDir = temp('book-172-state-');
     const bin = fakeDocker(stateDir);
-    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const previous = previousAt(root, 32);
+    commitSchema(root, 33);
     const siteUrl = await serveSite(stateDir, {
       // Each image answers its own commit, so both gates (new image, then the rollback) are green on
       // `/healthz` and the only thing that can go red is the sign-in read.
@@ -305,6 +327,7 @@ describe('the container release: lock, exit codes, rollback', () => {
     // A recorded previous image: this is the shape in which `red()` really rolls back.
     env.FAKE_RUNNING_IMAGE = previous;
     env.BOOK_SECRETS_DIR = secretsWithClientId();
+    env.FAKE_VOLUME_SCHEMA = '32';
     writeFileSync(join(stateDir, 'current'), previous, 'utf8');
     writeFileSync(join(stateDir, 'last-good-image'), `${previous}\n`, 'utf8');
 
@@ -405,7 +428,8 @@ describe('the container release: lock, exit codes, rollback', () => {
     const root = gitRoot();
     const stateDir = temp('book-172-state-');
     const bin = fakeDocker(stateDir);
-    const previous = 'book:0123456789abcdef0123456789abcdef01234567';
+    const previous = previousAt(root, 32);
+    commitSchema(root, 33);
     const siteUrl = await serveSite(stateDir, {
       healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
       // The host carries the client id; the older image still answers `OAUTH_UNCONFIGURED`.
@@ -413,6 +437,7 @@ describe('the container release: lock, exit codes, rollback', () => {
     });
     const env = envFor(root, stateDir, bin, siteUrl);
     env.FAKE_RUNNING_IMAGE = `book:${sha(root)}`;
+    env.FAKE_VOLUME_SCHEMA = '32';
     env.BOOK_SECRETS_DIR = secretsWithClientId();
     writeFileSync(join(stateDir, 'current'), `book:${sha(root)}`, 'utf8');
     writeFileSync(join(stateDir, 'previous-image'), `${previous}\n`, 'utf8');
