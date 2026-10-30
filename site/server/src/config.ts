@@ -24,19 +24,11 @@ import { loadPipeline, type Pipeline } from './pipeline.ts';
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/**
- * The named caps of the writing process, in one table (owner's correction, 2026-10-29: «нет,
- * сроков не надо — только конечное количество попыток»). A state between «подан» and one of the
- * two answers is bounded by an **attempt count**; a clock may pace a retry or guard a call in
- * flight, and never decides a state. The engine's own are the schema fields below; the writer's
- * call caps are **stated, not changed** (`writer/**`).
- *   · triage: 6 attempts — 5 model calls, the 6th the coded floor rung; backoff 60 s → 5 min →
- *     20 min → 40 min between calls, claim lease 900 s (a liveness guard, not a decision);
- *   · queue: 6 claim attempts (`QUEUE_MAX_ATTEMPTS`, `shared/src/change.ts`) with no step;
- *   · draft call 420 s × 2 (`writer/**`); landing 60 s × 2 (`WRITER_ENGINE_TIMEOUT_MS`);
- *   · gate window 20 min (`GATE_TTL_MS`); step wall 45 min (`STEP_WALL_MS`);
- *   · lease 120 s (`LEASE_TTL_MS`), engine-beaten; lane 90 s (`LANE_TTL_MS`).
- */
+// Owner's correction (2026-10-29): «нет, сроков не надо — только конечное количество попыток».
+// A state between «подан» and one of the two answers is bounded by an **attempt count**; a clock
+// may pace a retry or guard a call in flight, never decide a state. triage: 6 attempts (5 calls,
+// the 6th the coded floor), backoff 60 s → 5 → 20 → 40 min, claim 900 s; queue: 6 claims
+// (`QUEUE_MAX_ATTEMPTS`); gate window 20 min (`GATE_TTL_MS`); step wall 225 min (`STEP_WALL_MS`).
 
 const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),

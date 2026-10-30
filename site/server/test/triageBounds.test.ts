@@ -98,9 +98,9 @@ describe('a claim that expired is re-claimed, never lost (BOOK-206 M4)', () => {
     expect(attemptOf(db, id)).toMatchObject({ widened: null });
 
     const widened = await claim(context, 'writer-4', id);
-    expect(widened).toMatchObject({ attempt: 1, tries: 4, of: 6, widened: 'rung' });
+    expect(widened).toMatchObject({ attempt: 1, tries: 4, of: 6, widened: 'as-document' });
     expect(String(widened?.wideningNote)).toContain('through_paper');
-    expect(attemptOf(db, id)).toMatchObject({ tries: 4, widened: 'rung' });
+    expect(attemptOf(db, id)).toMatchObject({ tries: 4, widened: 'as-document' });
 
     // Two crashes are one fact, told once: one marker, one alert, however many ticks follow.
     expect(context.alerts).toHaveLength(1);
@@ -154,12 +154,12 @@ describe('six attempts decide a read: the third widens, the sixth is desperate (
       h.clock.advance(backoff + 1);
     }
     // The third failure is where the reading widens, and the row says so before attempt 4.
-    expect(attemptOf(db, id)).toMatchObject({ tries: 3, widened: 'rung', outcome: 'submitted' });
+    expect(attemptOf(db, id)).toMatchObject({ tries: 3, widened: 'as-document', outcome: 'submitted' });
     expect(String(attemptOf(db, id).widening_note)).toContain('through_paper');
 
     // Attempts 4–5 read under the widening — the assignment itself carries it.
     for (const tryNo of [4, 5]) {
-      expect(await claim(context, `writer-${String(tryNo)}`, id)).toMatchObject({ tries: tryNo, widened: 'rung' });
+      expect(await claim(context, `writer-${String(tryNo)}`, id)).toMatchObject({ tries: tryNo, widened: 'as-document' });
       const result = (await fail(context, id, 1)) as { cap: boolean; desperate?: boolean };
       if (tryNo === 4) {
         expect(result).toMatchObject({ cap: false, nextAt: expect.any(String) });

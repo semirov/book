@@ -261,14 +261,10 @@ describe('a technical failure offers the button, and a retry re-arms the same fi
     bridge.prime();
     bridge.tick();
 
-    const decisions = frames.filter((frame) => frame.type === 'comment:decision');
-    // One frame per drained fact: the failure the engine recorded and the retry that followed it.
-    // A replayed failure is read from the row as it stands (`new` again) — that is the point of
-    // the gate: the frame is always the DTO, never a second story about the same row.
-    expect(decisions).toHaveLength(2);
-    const latest = decisions.at(-1)?.data;
-    expect(latest).toMatchObject({ id, status: 'new', reason: '' });
-    expect(latest).not.toHaveProperty('attempt');
+    // The one word the page must not hear is a decision: the row is `new` again, and no frame may
+    // say otherwise (BOOK-220 narrates a re-armed filing with the row's own reading frames).
+    expect(frames.filter((frame) => frame.type === 'comment:decision')).toEqual([]);
+    expect(frames.filter((frame) => frame.type === 'change:decided' && frame.data.id === id)).toEqual([]);
     expect(frames.map((frame) => frame.type)).not.toContain('change:queued');
   });
 });

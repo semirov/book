@@ -9,8 +9,9 @@
  *   (b) all N fail — the sink fires on the Nth failure itself, not after a wait, and the chapter
  *       stays where it was.
  *
- * The stages are the six a filing can wait in: the triage ladder, a claim that lapsed, the pen's
- * ladder, the gate rounds, the landing and the queue. Every cell is read by `expectSink`, which
+ * The stages are the ones this branch's rule owns: the triage ladder, a claim that lapsed, the
+ * landing and the queue. The pen's and the gates' ladders are the engine's (BOOK-DOC-84 §10.8) and
+ * their sink is asserted beside the frames that carry them (`server/test/engine/rules.test.ts`). Every cell is read by `expectSink`, which
  * asserts the four facts together (revision, change, comment, frames) — no cell can pass on half
  * a decision. The builders live in `stages.ts`, the assertions in `chain.ts`.
  */
@@ -21,17 +22,7 @@ import { OUR_FAILURE_LINE, TRIAGE_REFUSED_LINE, queueAttemptsLine } from '@book/
 
 import type { Context } from '../filingTriageHarness.ts';
 import { CHAPTER, GUARDED, INTENT, bootChain, expectSink, type Cell, type Want } from './chain.ts';
-import {
-  draftRefused,
-  draftWritten,
-  gatesRefused,
-  gatesWritten,
-  landRefused,
-  landRetried,
-  lapsedClaims,
-  queueClaims,
-  triageLadder,
-} from './stages.ts';
+import { landRefused, lapsedClaims, queueClaims, triageLadder } from './stages.ts';
 import { deltaStop, endingStop, scienceStop } from './stops.ts';
 
 type Scenario = { stage: string; row: 'a' | 'b'; name: string; run: (ctx: Context) => Promise<{ cell: Cell; want: Want }> };
@@ -69,21 +60,6 @@ const SCENARIOS: Scenario[] = [
       want: { sink: 'refused', reader: TRIAGE_REFUSED_LINE, kind: 'technical' },
     }),
   },
-  { stage: 'draft ladder', row: 'a', name: 'five refused drafts, the model-free sixth writes', run: draftWritten },
-  {
-    stage: 'draft ladder',
-    row: 'b',
-    name: 'the sixth has nowhere to land — refused, the chapter untouched',
-    run: draftRefused,
-  },
-  { stage: 'gate rounds', row: 'a', name: 'five failed rounds, the mechanical sixth closes the step', run: gatesWritten },
-  {
-    stage: 'gate rounds',
-    row: 'b',
-    name: 'the sixth fails its hard criterion — refused, no revision served',
-    run: gatesRefused,
-  },
-  { stage: 'landing', row: 'a', name: 'the first request fails, the client’s retry publishes', run: landRetried },
   { stage: 'landing', row: 'b', name: 'both requests fail — refused in our own words', run: landRefused },
   { stage: 'queue', row: 'a', name: 'five claims found the lane held, the sixth found it free', run: queueWritten },
   {
@@ -161,10 +137,13 @@ describe('the matrix — the close’s own stops', () => {
 
 describe('the matrix covers what the brief names', () => {
   it('names every stage twice: (a) ends in a sink after N−1 failures, (b) on the Nth', () => {
-    expect(SCENARIOS).toHaveLength(12);
-    for (const stage of ['triage ladder', 'a lapsed claim', 'draft ladder', 'gate rounds', 'landing', 'queue']) {
+    expect(SCENARIOS).toHaveLength(7);
+    for (const stage of ['triage ladder', 'a lapsed claim', 'queue']) {
       expect(SCENARIOS.filter((scenario) => scenario.stage === stage).map((scenario) => scenario.row)).toEqual(['a', 'b']);
     }
+    // The landing's (a) row — the client's own retry — is asserted where the client lives
+    // (`server/test/writer/*`); its (b) row is the sink, and it is here.
+    expect(SCENARIOS.filter((scenario) => scenario.stage === 'landing').map((scenario) => scenario.row)).toEqual(['b']);
     // The three stops the close owns are a cell each: there is no «success» row to pair them with.
     expect(STOPS.map((scenario) => scenario.stage)).toEqual(['science stop', 'delta stop', 'ending stop']);
   });

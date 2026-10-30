@@ -31,7 +31,7 @@ const changeRow = (harness: Harness, id: string): Record<string, unknown> | unde
     | undefined;
 
 describe('a parked pass tells a broken call from a refusal', () => {
-  it('does not park a failed gate call: the machine’s sixth writes the chapter', async () => {
+  it('parks a failed gate call as `failed`, and says the first text stands unverified', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
@@ -54,12 +54,12 @@ describe('a parked pass tells a broken call from a refusal', () => {
       };
       const result = await runPass(deps);
 
-      // The owner's rule of 2026-10-29: a gate that never answers is five attempts, and the
-      // sixth is the engine's own check — a technical failure never parks a filing.
-      expect(result.status).toBe('closed');
-      expect(result.reason ?? '').toBe('');
+      expect(result.status).toBe('parked');
+      // BOOK-219: this chapter had no revision behind it, so nothing can be put back — and the
+      // sentence says what is true: the new text stands, unverified, and the filing waits.
+      expect(result.reason).toBe(readerSentences.unverified);
       expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
-      // The chapter the pass wrote is the first edition the premise entered.
+      // The chapter the broken pass wrote is the first edition the premise entered.
       expect(harness.fixture.readChapter(CHAPTER)).not.toBeNull();
       expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
       expect(changeRow(harness, changeId)).toEqual({
@@ -67,25 +67,22 @@ describe('a parked pass tells a broken call from a refusal', () => {
         outcome: 'applied',
         reason: 'вошло в первую редакцию главы 40',
       });
-      // No escalation, no refusal: the step closed on the machine's own verdicts.
-      expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('rewritten');
-      expect(listStages(harness.fixture.db, CHAPTER).at(-1)?.stage).toBe('landed');
-      expect(readerSentences.technical).not.toBe('');
+      // The step is still an escalation — the pass broke — and one stage carries the sentence.
+      expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
+      expect(listStages(harness.fixture.db, CHAPTER).at(-1)?.stage).toBe('refused');
     } finally {
       await harness.close();
     }
   });
 
-  it('sinks the model’s own refusal with its own sentence, and the premise is dropped with that note', async () => {
+  it('parks the model’s own refusal as `refused`, and the premise is dropped with that note', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
       const result = await harness.run({ chapter: CHAPTER });
 
-      // The model read the work and declined: a content refusal with **its** sentence — never our
-      // outage, and never a second ask.
-      expect(result.status).toBe('refused');
+      expect(result.status).toBe('parked');
       expect(result.reason).toBe(readerSentences.refusal);
       const row = changeRow(harness, changeId);
       expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });

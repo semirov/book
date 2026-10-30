@@ -82,13 +82,13 @@ describe('a dead step', () => {
       const result = await harness.run({ lanes: ['fwd'] });
 
       expect(result.status).toBe('gone');
-      // BOOK-222: the draft was a **candidate**, so a wall that closes the step drops it — the
-      // chapter still reads what the site served, and there is no revision to restore.
+      // BOOK-219: the text this run published goes back to what the site served before the pass.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       const revisions = harness.fixture.db
         .prepare('SELECT rev, cause_kind AS kind FROM revisions WHERE chapter = ? ORDER BY rev DESC')
         .all(CHAPTER) as Array<{ rev: number; kind: string }>;
-      expect(revisions.map((row) => row.kind)).toEqual(['draft']);
+      // The engine's own refusal puts the base back; the writer's client never asks for it.
+      expect(revisions.map((row) => row.kind)).toEqual(['restore', 'change', 'draft']);
       expect(harness.engineCalls).not.toContain('restore');
       // A `gone` step never claims a landing: no stage, no push, no second park sentence.
       expect(listStages(harness.fixture.db, CHAPTER).some((stage) => stage.stage === 'landed')).toBe(false);

@@ -109,10 +109,8 @@ describe('stageSummary', () => {
     expect(stageSummary.landed({ chapter: 65, chars: 22_140, blocks: 12, tokensIn: 126_900, tokensOut: 22_400, costUsd: 0.42 })).toBe(
       'глава 65: 22 140 знаков, 12 абзацев · 126 900 → 22 400 токенов · $0.4200',
     );
-    // The line is the sentence itself: the stage's own word is `refused`, and a prefix here
-    // would read «заявка не принята: заявку не судили».
     expect(stageSummary.refused({ reason: 'ответ модели не прошёл проверку' })).toBe(
-      'ответ модели не прошёл проверку',
+      'проход остановлен: ответ модели не прошёл проверку',
     );
   });
 

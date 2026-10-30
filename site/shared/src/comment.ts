@@ -258,12 +258,9 @@ export type CommentDto = {
    */
   revise?: CommentRevise;
   /**
-   * Owner's rule (2026-10-29) — may this filing be **retried** (`POST /api/comments/:id/retry`)?
-   * A retry is not a revision: the words stay and only the machinery that failed is re-armed, so
-   * the flag is true only when the last outcome was a defect on **our** side (a ladder that ran
-   * out, a pass that broke or rolled back, a read that never happened) and false when the last
-   * word was the book's own (a lock, a content refusal, the money cap, a landing, `RETRY_MAX`).
-   * Optional for the same reason as `hint`: `undefined` reads as `false`.
+   * May this filing be **retried** (`POST /api/comments/:id/retry`)? True only when the last
+   * outcome was a defect on **our** side; a lock, a content refusal, the money cap or a landing
+   * leave it false. `undefined` reads as `false`, like `hint`.
    */
   retryable?: boolean;
   createdAt: string;
@@ -358,10 +355,8 @@ export type ReviseCommentInput = {
 export type ReviseCommentResponse = { comment: CommentDto };
 
 /**
- * Owner's rule (2026-10-29) — `POST /api/comments/:id/retry`. The request carries **nothing**: a
- * retry re-runs the machinery on the stored filing, so there is no text, anchor or chapter for a
- * client to send — or to move. The answer is the filing as it stands once re-armed: `new`, no
- * sentence, its change back in the queue.
+ * `POST /api/comments/:id/retry` — the request carries **nothing**: a retry re-runs the machinery
+ * on the stored filing, so there is no text or anchor to send. The answer is the row as re-armed.
  */
 export type RetryCommentResponse = { comment: CommentDto };
 
@@ -473,26 +468,8 @@ export type ComposerInfo = {
   editMaxChars: number;
 };
 
-/**
- * The stored author palette (§11.6): `CommentDto.authorColor` is written by the server and kept
- * on the wire, and this list is the only authority on what a value may be.
- *
- * BOOK-199 (audit #21) — the book no longer paints it. Six colours for six readers measured
- * 1.98–2.41:1 on the day paper and named nothing a reader could use: identity is the name, and
- * a reader's own filing is marked by the word `ваше`. The palette stays so stored rows keep
- * their shape; the sheet gives every name one ink (`--ink`).
- */
-export const AUTHOR_COLORS = ['#6f9bb5', '#a98b6f', '#7d9b6f', '#9b7f9e', '#b58f6f', '#6f8fb5'] as const;
-
-/** Stable colour for a display name: same reader, same stored value, no server state. */
-export function authorColor(seed: string): string {
-  let hash = 2166136261;
-  for (const char of seed) {
-    hash ^= char.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619) >>> 0;
-  }
-  return AUTHOR_COLORS[hash % AUTHOR_COLORS.length] ?? AUTHOR_COLORS[0];
-}
+// The stored author palette and its hash live in `naming.ts` (BOOK-199 keeps them for stored rows).
+export { AUTHOR_COLORS, authorColor } from './naming.ts';
 
 /** Statuses a public thread shows; `hidden` is a moderation state and is never listed. */
 export const PUBLIC_COMMENT_STATUSES: readonly CommentStatus[] = [

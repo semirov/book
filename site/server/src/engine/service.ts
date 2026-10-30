@@ -43,7 +43,6 @@ import {
 import { blockHashes, changeForStep, measureDelta, preBlocksOf, safeJson, sameSequence } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
 import { normalizeProvenance, requirePipelineModel } from './model.ts';
-import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { refuseChange, stopCauseOf, type RefuseInput } from './refuse.ts';
 import { reap, type ReapReport } from './reap.ts';
@@ -52,6 +51,8 @@ import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapterRows, readFrontRows, textViewsOf, type ChapterTextView } from './text.ts';
 import { writerAssignment } from './trace.ts';
+import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
+import { reconcileSweep } from './sweep.ts';
 import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
@@ -100,7 +101,9 @@ export function createEngine(deps: EngineDeps) {
 
   function nextGate(role: GateRole, session: string): GateAssignment | null {
     for (const step of store.listOpenSteps(db)) {
-      if (step.landed_at === null) continue;
+      // BOOK-222: a step whose text is a **candidate** is a step the gates must read — nothing is
+      // served before the verdict, so `landed_at` is still null while the candidate stands.
+      if (step.landed_at === null && step.candidate_sha === null) continue;
       if (store.getVerdict(db, step.step_id, role)) continue;
       if (role === 'consultant' && !store.getVerdict(db, step.step_id, 'editor')) continue;
       const existing = store.getDispatch(db, step.step_id, role);
@@ -224,7 +227,9 @@ export function createEngine(deps: EngineDeps) {
     const model = requirePipelineModel(config, options.model, options.where, provenance);
     const at = options.now ?? deps.clock.now();
     const { lease, step, expired } = leaseStep(leaseId);
-    if (step.landed_at === null) {
+    // BOOK-222: a provisional landing holds the text as a **candidate** and publishes nothing —
+    // the close is what publishes it, so a step with a candidate is ready to close.
+    if (step.landed_at === null && step.candidate_sha === null) {
       refuse('NOT_LANDED', 409, 'a step closes on a landed file — call land first (§6A.11)');
     }
     // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
@@ -294,10 +299,15 @@ export function createEngine(deps: EngineDeps) {
 
     const front = step.pass === 'front' ? readFrontRows(db) : null;
     const chapter = step.pass === 'front' || step.chapter === null ? null : readChapterRows(db, step.chapter);
+    // BOOK-222: while a **candidate** stands, the text the close is about is the candidate — the
+    // chapter rows still hold the text the site serves. An unchanged candidate is a no-op; any
+    // other candidate is a rewrite, and the publication happens inside `closeStep`.
     const unchanged =
-      step.pass === 'front'
-        ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
-        : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
+      step.candidate_sha !== null
+        ? step.start_sha !== null && step.candidate_sha === step.start_sha
+        : step.pass === 'front'
+          ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
+          : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
 
     // ADR-024: a GAP on the ending escalates — the fix is never another rewrite of the last chapter.
     const endingGap =
@@ -320,11 +330,17 @@ export function createEngine(deps: EngineDeps) {
     let outcome: StepOutcome = gateStop !== null ? 'escalated' : editorBlocked ? 'published_with_finding' : step.pass === 'ending' ? 'evaluated' : unchanged ? 'holds' : 'rewritten';
     let escalation: CascadeOutcome | null = gateStop === null ? null : gateStop === 'ending' ? 'escalated:ending' : 'escalated:science';
 
+    // BOOK-222: a candidates' own text is what the delta is measured against — the chapter rows
+    // still hold the text the site serves until the close publishes.
+    const measuredBlocks =
+      step.candidate_text !== null && step.chapter !== null
+        ? parseChapter(step.chapter, normalizeChapterText(step.candidate_text)).blocks
+        : (chapter?.blocks ?? []);
     if (step.pass === 'cascade' && !editorBlocked && outcome === 'rewritten' && chapter !== null) {
       const budget = step.cascade_id
         ? safeJson<{ maxDeltaRatio: number }>(store.getCascade(db, step.cascade_id)?.budget ?? null)
         : null;
-      const measured = measureDelta(step, chapter.blocks);
+      const measured = measureDelta(step, measuredBlocks);
       if (budget && measured.ratio > budget.maxDeltaRatio) {
         outcome = 'escalated';
         escalation = 'escalated:delta';
@@ -432,30 +448,6 @@ export function createEngine(deps: EngineDeps) {
 
   // ── reconcile ─────────────────────────────────────────────────────────────
 
-  function reconcile(): Record<string, unknown> {
-    const report = reap(deps, deps.clock.now());
-    const leaked = db
-      .prepare(
-        `SELECT l.id FROM leases l JOIN steps s ON s.step_id = l.step_id
-          WHERE l.released_at IS NULL AND s.outcome IS NOT NULL`,
-      )
-      .all() as Array<{ id: string }>;
-    for (const lease of leaked) releaseLease(db, lease.id, 'expired', deps.clock.now());
-    // BOOK-7: a premise whose chapter was written outside its own first pass can never land
-    // in that edition any more; it is closed with a public reason instead of waiting forever.
-    const premisesSettled = reconcilePremises(deps, deps.clock.now());
-    const processing = store.countProcessing(db);
-    return {
-      ...report,
-      lane: { holder: store.readLane(db).holder },
-      leakedLeases: leaked.length,
-      premisesSettled,
-      processing,
-      pending: store.countPending(db),
-      openSteps: store.countOpenSteps(db),
-    };
-  }
-
   return {
     next,
     // BOOK-206: the filing's own ledger — the writer holds the only model key, so triage rides with it.
@@ -483,7 +475,7 @@ export function createEngine(deps: EngineDeps) {
     commentKind: overview.commentKind,
     state: overview.state,
     trace: overview.trace,
-    reconcile,
+    reconcile: () => reconcileSweep(deps),
     /** Two meanings of one word (§13.3): with a chapter, the mark on a restore; without, a sweep. */
     reconcileRestore: (input: { chapter: number; because: string; actor?: string }): RestoreReconcileResult =>
       reconcileRestore(deps, input),

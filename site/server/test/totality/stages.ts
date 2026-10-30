@@ -7,7 +7,7 @@
 import type { WriterAssignment } from '@book/shared';
 import { expect } from 'vitest';
 
-import { TRIAGE_MAX_TRIES } from '../../src/comments/triage.ts';
+import { TRIAGE_MAX_TRIES, TRIAGE_MODEL_TRIES } from '../../src/comments/triage.ts';
 import { admitPremise } from '../../src/engine/premise.ts';
 import { newChangeId } from '../../src/util/ulid.ts';
 import { readerSentences } from '../../src/writer/reasons.ts';
@@ -90,7 +90,7 @@ export async function lapsedClaims(ctx: Context, mode: 'floor' | 'refused'): Pro
     widened: string | null;
     tries: number;
   };
-  expect(attempt).toMatchObject({ widened: 'as-document', tries: TRIAGE_MAX_TRIES - 1 });
+  expect(attempt).toMatchObject({ widened: 'as-document', tries: TRIAGE_MODEL_TRIES });
   // The sweep runs the sixth attempt: no clock decides, the count does.
   await ctx.pulse();
   expect(ctx.place()).toBe(mode === 'floor' ? 1 : 0);

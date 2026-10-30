@@ -13,11 +13,6 @@
  * of the same content is still a no-op — the ingest is idempotent by sha, so a retried call
  * cannot duplicate a revision. Without a `text` the call re-lands the rows the site already
  * serves; it never falls back to a file.
- *
- * BOOK-222 — a **provisional** land (the lane's own, `{ text, provisional: true }`) publishes
- * nothing: the text is held on the step as a candidate, the gates read the candidate, and the
- * close publishes it once. The reader never sees a text before the verdict, and a failed gate can
- * no longer be mistaken for a refusal of the filing: there is nothing to take back.
  */
 
 import {
@@ -28,24 +23,21 @@ import {
   REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
   type Relevance,
+  type WriteMode,
 } from '@book/shared';
 
 import { frameIntact } from '../ingest/frameGuard.ts';
 import { getFrontRow } from '../db/repo/front.ts';
+import type { RipplePlan } from '../ledger/graph/plan.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { changeForStep, measureDelta, safeJson } from './helpers.ts';
-import {
-  chapterTarget,
-  frontTarget,
-  FRAME_CHANGED_MESSAGE,
-  ingestLanding,
-  type IngestOutcome,
-} from './landing.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
+import { chapterTarget, frontTarget, ingestLanding, type IngestOutcome } from './landing.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
@@ -72,9 +64,19 @@ export type LandOptions = {
   rev?: number;
   now?: number;
   /**
+   * BOOK-173 §2: the patch this landing applies, as one character edit per block — what lets the
+   * ingest keep sentence ids across the write (`sentences/transform.ts`). Absent for a rewrite, a
+   * draft or a front sheet: none of them knows where inside a paragraph the text moved.
+   */
+  sentences?: ReadonlyArray<SentencePatchEdit>;
+  /** BOOK-173 §4: the mode the pass ran, recorded with the plan (or, with no plan, on the close). */
+  mode?: WriteMode;
+  /** BOOK-173 §4: the pass's estimate, frozen with the plan and replaced by the actual at close. */
+  estimateUsd?: number;
+  /**
    * BOOK-222: hold the text as a **candidate** on the step instead of publishing it. Nothing is
-   * served — no blocks, no revision, no push — until `done`; a second call with the same sha is a
-   * no-op, and a different sha replaces the candidate (the latest attempt wins).
+   * served — no blocks, no revision, no push — until the close; a second call with the same sha is
+   * a no-op, and a different sha replaces the candidate (the latest attempt wins).
    */
   provisional?: boolean;
 };
@@ -86,9 +88,18 @@ export type LandResult = {
   changed: boolean;
   deltaRatio: number;
   blocksTouched: number;
+  /**
+   * BOOK-173: the change's ripple plan, computed here because the ledger lives here (§3, §7).
+   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
+   */
+  plan?: RipplePlan | null;
   /** BOOK-222: the text is held on the step and nothing was published. */
   provisional?: boolean;
 };
+
+/** BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest, and the
+ * ingest again; the letter of the answer never changes. */
+const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой главы не меняется — правка остаётся бумагой';
 
 export function createWriteOps(deps: EngineDeps) {
   const { db } = deps;
@@ -222,10 +233,6 @@ export function createWriteOps(deps: EngineDeps) {
     if (step.pass === 'draft' && options.noWrite === true) {
       refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
     }
-    // BOOK-222: a provisional land is the lane's own door, and it holds a text that has not been
-    // published. A **resumed** step (its earlier run already served a text) may hold a new
-    // candidate too: the gates must read the revision the pass produced, and nothing is served
-    // before the close — so a resumed pass never publishes first and puts its own text back.
 
     const supplied = step.pass === 'front' ? options.frontRaw : options.text;
     const front = step.pass === 'front' ? frontTarget(db, supplied) : null;
@@ -335,8 +342,9 @@ export function createWriteOps(deps: EngineDeps) {
 
     // BOOK-222 — the lane's own landing is a **candidate**: the text is validated here (size,
     // frame, the rights scan of its delta) and held on the step, and *nothing* is published. The
-    // reader keeps the chapter the site already serves until the close; a gate reads the
-    // candidate, and a refusal drops it without a revision to take back.
+    // reader keeps the chapter the site already serves until the close; a gate reads the candidate,
+    // and a refusal drops it without a revision to take back. A resumed step may hold a new
+    // candidate too — nothing is served before the close, so it never publishes first.
     if (options.provisional === true) {
       if (supplied === undefined) {
         refuse('TARGET_MISSING', 409, 'a provisional land carries its text — there is nothing to serve');
@@ -396,8 +404,8 @@ export function createWriteOps(deps: EngineDeps) {
     // re-applying the rows' own canonical text would invent a second one for the same prose.
     const ingested: IngestOutcome =
       supplied !== undefined && changedFromStart
-        ? ingestLanding(deps, step, at, target.raw)
-        : { rev: null, changed: false, frameRejected: false };
+        ? ingestLanding(deps, step, at, target.raw, options)
+        : { rev: null, changed: false, frameRejected: false, planned: null };
     // BOOK-137, second read: the guard above read the text once and the applier reads it again,
     // so a text that moved in between publishes nothing. The guard's question is asked of the
     // target as it stands now — the detail says whether it already flipped back — and the step
@@ -423,9 +431,6 @@ export function createWriteOps(deps: EngineDeps) {
       blocks_touched: measured.touched,
       chars_delta: measured.delta,
       rights_scan: state.stored,
-      // BOOK-222: this landing published its text, so a candidate it may have carried is the
-      // same text and is not a second publication waiting for a close.
-      ...(step.candidate_sha === null ? {} : { candidate_text: null, candidate_sha: null }),
     });
     appendEvent(
       db,
@@ -451,6 +456,7 @@ export function createWriteOps(deps: EngineDeps) {
       changed: changedFromStart,
       deltaRatio: measured.ratio,
       blocksTouched: measured.touched,
+      ...(ingested.planned === null ? {} : { plan: ingested.planned.plan }),
     };
   }
 

@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness } from './harness.ts';
 
 const CHAPTER = 40;
@@ -45,31 +44,24 @@ describe('a refused answer is a diagnosis, not a park', () => {
       harness.script.push('Я не могу написать эту главу: это не моя задача.', 'Я не могу написать эту главу.');
       const result = await harness.run({ chapter: CHAPTER });
 
-      // A model's refusal is not a judgement of the reader's idea: it ends in the sink with our
-      // sentence, and the premise is still settled so the queue moves on at once.
-      expect(result.status).toBe('refused');
+      expect(result.status).toBe('parked');
       expect(result.filingRefused).toBe(true);
     } finally {
       await harness.close();
     }
   });
 
-  it('names the check when both answers are refused, and the machine’s sixth still closes', async () => {
+  it('parks with the reason when the retry is refused too', async () => {
     const harness = await createHarness();
     try {
       harness.hooks.budget = null;
-      // The editor never parses: the lane's own re-ask is refused, and the ladder spends its
-      // five model attempts before attempt 6 answers from the engine's check.
       harness.script.push(chapterAnswer(), 'мусор', 'и снова мусор');
       const result = await harness.run({ chapter: CHAPTER });
 
-      // The rule of 2026-10-29: a shape failure is an attempt, never a park.
-      expect(result.status).toBe('closed');
+      expect(result.status).toBe('parked');
       expect(harness.logs.some((line) => line.includes('ответ гейта editor отклонён снова'))).toBe(true);
-      // The code stayed in the log and the record; the reader's line is a sentence.
-      const summaries = listStages(harness.fixture.db, CHAPTER).map((stage) => stage.summary);
-      expect(summaries.join('\n')).not.toContain('GATE_UNPARSED');
-      expect(summaries.some((line) => line.startsWith('отчаянная попытка 6'))).toBe(true);
+      // The note the reader sees is still a sentence; the code stayed in the log and the record.
+      expect(result.reason).not.toContain('GATE_UNPARSED');
     } finally {
       await harness.close();
     }

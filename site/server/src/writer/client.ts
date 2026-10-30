@@ -315,6 +315,8 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
         ...(input?.sentences === undefined ? {} : { sentences: input.sentences }),
         ...(input?.mode === undefined ? {} : { mode: input.mode }),
         ...(input?.estimateUsd === undefined ? {} : { estimateUsd: input.estimateUsd }),
+        // BOOK-222: the lane's own landing holds its text as a candidate until the close.
+        ...(input?.provisional === undefined ? {} : { provisional: input.provisional }),
       })) as LandView,
     // `trace` answers `{ kind: 'step', step: { step, gates, rights } }`: the row is nested once.
     step: async (stepId) => {

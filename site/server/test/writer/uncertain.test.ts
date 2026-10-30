@@ -114,8 +114,9 @@ describe('a lost answer — the rows decide, never the missing response', () => 
       const result = await harness.run({ lanes: ['fwd'] });
 
       expect(result.status).toBe('parked');
-      // No restore: the close may have happened, and undoing it would contradict the reader's push.
-      expect(harness.fixture.readChapter(CHAPTER)).toContain('новый');
+      // BOOK-222: the text is a candidate until the close, so an unknown close serves nothing new
+      // and there is nothing to restore either way.
+      expect(harness.fixture.readChapter(CHAPTER)).not.toContain('новый');
       expect(harness.engineCalls).not.toContain('restore');
       expect(stagesOf(harness)).not.toContain('landed');
       expect(result.reason).toBe(readerSentences.closeUncertain);

@@ -89,8 +89,8 @@ describe('migrate — BOOK-209 (v34): the reader’s place', () => {
   it('creates the table on a fresh install, at the head version, keyed by the identity', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(35);
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(35);
+    expect(SCHEMA_VERSION).toBe(37);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(37);
 
     expect(tableColumns(db, 'reader_places')).toEqual(['identity_id', 'chapter', 'sentence_id', 'delta_px', 'at']);
     expect(REQUIRED_TABLES).toContain('reader_places');

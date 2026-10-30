@@ -110,15 +110,17 @@ describe('the plan the engine computes at land', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(result.reason).toContain('замыкание не держится');
-      expect(changeOf(harness.fixture.db, changeId)).toMatchObject({ status: 'escalated' });
+      // BOOK-219: the stop is the refusal — `void · dropped`, with its sentence.
+      expect(changeOf(harness.fixture.db, changeId)).toMatchObject({ status: 'void', outcome: 'dropped' });
       // Nothing else was written: the closure has no patch, and no gate was asked.
       expect(harness.engineCalls).not.toContain('nextGate');
       expect(harness.engineCalls).not.toContain('verdict');
       const plan = planRow(harness.fixture.db, changeId);
       expect(plan?.outcome).toBe('ripple');
       expect(JSON.parse(plan?.closure ?? '{}').patches).toEqual([]);
-      // The point patch stayed in the book: the refusal is about the rest of the closure.
-      expect(harness.fixture.readChapter(ORIGIN)).toContain('аннулирован');
+      // BOOK-222: nothing was served before the close, so the refusal leaves the book exactly as
+      // the reader has it — the point patch never reaches the chapter.
+      expect(harness.fixture.readChapter(ORIGIN)).not.toContain('аннулирован');
     } finally {
       await harness.close();
     }

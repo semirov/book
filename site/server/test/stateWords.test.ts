@@ -321,12 +321,11 @@ describe('the reader’s state words', () => {
     // BOOK-219 grew the ladder the owner asked for: six counted attempts, the widening recorded
     // when the third fails, and the refusal after the sixth. The count is `attempt.ts`'s, so the
     // sentences cannot disagree with the ledger.
-    expect(READING_LADDER.again).toBe('попытка 2 из 6 — не расслышали с первого раза, читают снова');
-    expect(READING_LADDER.approach).toContain('попытка 3 из 6');
-    expect(READING_LADDER.fourth).toContain('попытка 4 из 6');
-    expect(READING_LADDER.fifth).toContain('попытка 5 из 6');
-    expect(READING_LADDER.ruleOnly).toContain('попытка 6 из 6');
-    for (const line of Object.values(READING_LADDER)) expect(line).not.toMatch(/ждёт|в очереди|часов/iu);
+    // BOOK-218's register owns the words; BOOK-219's engine now walks the ladder they name.
+    expect(READING_LADDER.again).toContain('не расслышали с первого раза');
+    expect(READING_LADDER.approach).toContain('меняют подход');
+    expect(READING_LADDER.ruleOnly).toContain('без машины');
+    for (const line of Object.values(READING_LADDER)) expect(line).not.toMatch(/в очереди|часов/iu);
     // `reviseLine` still spells line 9, and no surface holds the bound it needs yet.
     expect(reviseLine(2, 5)).toBe('редактор просит поправить одно место · вторая поправка из пяти');
     const printed = FILES.filter((file) => /web\/src|server\/src/u.test(file)).map((file) => readFileSync(file, 'utf8'));

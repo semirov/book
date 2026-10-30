@@ -389,10 +389,11 @@ export function getDispatch(db: Db, stepId: string, role: string): DispatchRow |
 
 export function upsertDispatch(db: Db, dispatch: DispatchRow): void {
   db.prepare(
-    `INSERT INTO gate_dispatches (step_id, role, session, dispatched_at, expires_at)
-     VALUES (@step_id, @role, @session, @dispatched_at, @expires_at)
+    `INSERT INTO gate_dispatches (step_id, role, session, dispatched_at, expires_at, landed_sha)
+     VALUES (@step_id, @role, @session, @dispatched_at, @expires_at, @landed_sha)
      ON CONFLICT(step_id, role) DO UPDATE SET
-       session = excluded.session, dispatched_at = excluded.dispatched_at, expires_at = excluded.expires_at`,
+       session = excluded.session, dispatched_at = excluded.dispatched_at,
+       expires_at = excluded.expires_at, landed_sha = excluded.landed_sha`,
   ).run(dispatch);
 }
 

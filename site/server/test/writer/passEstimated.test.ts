@@ -138,7 +138,8 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
       const change = harness.fixture.db
         .prepare('SELECT id, status FROM changes WHERE chapter = ? AND premise = 0')
         .get(CHAPTER) as { id: string; status: string };
-      expect(change.status).toBe('escalated');
+      // BOOK-219: a stopped pass ends the change `void · dropped`, never `escalated`.
+      expect(change.status).toBe('void');
       expect(filingStateOf(harness, change.id)).not.toBe('applied');
       // No `landed` stage: the pass did not leave a publication behind.
       expect(listStages(harness.fixture.db, CHAPTER).some((stage) => stage.stage === 'landed')).toBe(false);
@@ -173,7 +174,8 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
 
       expect(result.status).toBe('parked');
       // The chapter still carries the pass's landing — nobody put it back — and the note says so.
-      expect(harness.fixture.readChapter(CHAPTER)).toContain('новый');
+      // BOOK-222: nothing was served before the close, so the site keeps the text it had.
+      expect(harness.fixture.readChapter(CHAPTER)).not.toContain('новый');
       expect(result.reason).toBe(readerSentences.unverified);
       expect(stepRow(harness.fixture, result.stepId ?? '')?.note).toBe(readerSentences.unverified);
       // The revision it stands at is in the detail (the log and the transcript), never the note.
