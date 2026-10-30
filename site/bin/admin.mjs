@@ -44,9 +44,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import { parseDoctorArgs, printDoctorReport, runDoctor } from './adminDoctor.mjs';
+import { entryState } from './lib/entry.mjs';
 import { parsePassArgs, runPassStart } from './adminPass.mjs';
 import { post } from './adminPost.mjs';
 
@@ -458,7 +459,18 @@ async function main(argv) {
   return parsed.kind === 'reset-book' ? runReset(parsed, target, token) : runBudget(parsed, target, token);
 }
 
-const entry = process.argv[1];
-if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
-  process.exitCode = await main(process.argv.slice(2));
+// BOOK-236: the deploy root is a symlink, so the entry is decided by REAL paths (bin/lib/entry.mjs)
+// — the old `pathToFileURL(argv[1])` comparison was false through it, and the CLI printed nothing
+// and exited 0. A command that cannot prove it is the entry refuses with 2 instead of reporting
+// success.
+switch (entryState(process.argv[1], import.meta.url)) {
+  case 'entry':
+    process.exitCode = await main(process.argv.slice(2));
+    break;
+  case 'unknown':
+    console.error(`admin: cannot resolve ${String(process.argv[1])} to decide whether it is this CLI — refusing to run (exit 2)`);
+    process.exitCode = 2;
+    break;
+  default:
+    break;
 }

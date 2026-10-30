@@ -40,14 +40,19 @@ set -euo pipefail
 # and this shell do not inherit a login PATH, and without it the nightly backup fails with exit 127.
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin
 
-HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd -P)"
+ROOT="$(cd "$HERE/../.." && pwd -P)"
 STATE_DIR="${BOOK_STATE_DIR:-${HOME}/.local/state/book-deploy}"
 PROJECT="${BOOK_PROJECT:-book}"
 COMPOSE_FILE="${BOOK_COMPOSE_FILE:-${ROOT}/site/docker-compose.yml}"
 DOCKER="${BOOK_DOCKER:-docker}"
 # The prod host data dir the launchd jobs serve from; the same one `flip.sh --to launchd` exports to.
 HOST_DATA_DIR="${BOOK_HOST_DATA_DIR:-${HOME}/book-site-data}"
+# The host CLI, by its REAL path (BOOK-236): the deploy root `~/book-deploy` is a symlink
+# (BOOK-DOC-46) and Node resolves `import.meta.url` to the real file, so a CLI started through the
+# symlinked path failed its own entry test — no output, exit 0. Running it at the real path means
+# the wrapper does not depend on that guard at all.
+HOST_CLI="$(cd "$ROOT/site" && pwd -P)/bin/admin.mjs"
 
 # The doctor's temp token file, removed by the one trap below on every exit path. Global on
 # purpose: the trap outlives the function that made it.
@@ -119,14 +124,14 @@ run_doctor_on_host() {
   # `--help` never needs the stack: no port to resolve, no token to read, nothing to leak.
   for arg in "$@"; do
     case "$arg" in
-      -h|--help) exec node "$ROOT/site/bin/admin.mjs" "$@" ;;
+      -h|--help) exec node "$HOST_CLI" "$@" ;;
     esac
   done
   # The shape next: a dry run must resolve nothing, so the address stays a placeholder there.
   if [ "$DRY_RUN" = 1 ]; then
     printf 'admin.sh: doctor runs on the host — the preflight reads host facts; the token crosses as a 0600 temp file, never as an argument\n'
     printf '  %s compose --env-file /dev/null -f %s -p %s port site 8080\n' "$DOCKER" "$COMPOSE_FILE" "$PROJECT"
-    printf '  ADMIN_TOKEN_FILE=<token file> node %s/site/bin/admin.mjs' "$ROOT"
+    printf '  ADMIN_TOKEN_FILE=<token file> node %s' "$HOST_CLI"
     for arg in "$@"; do
       if [ "$arg" = "--print-command" ]; then continue; fi
       printf ' %s' "$arg"
@@ -160,9 +165,9 @@ run_doctor_on_host() {
   fi
 
   if [ -n "$url" ]; then
-    ADMIN_TOKEN_FILE="$TOKEN_FILE" node "$ROOT/site/bin/admin.mjs" "$@" --url "$url" || status=$?
+    ADMIN_TOKEN_FILE="$TOKEN_FILE" node "$HOST_CLI" "$@" --url "$url" || status=$?
   else
-    ADMIN_TOKEN_FILE="$TOKEN_FILE" node "$ROOT/site/bin/admin.mjs" "$@" || status=$?
+    ADMIN_TOKEN_FILE="$TOKEN_FILE" node "$HOST_CLI" "$@" || status=$?
   fi
   exit "$status"
 }
