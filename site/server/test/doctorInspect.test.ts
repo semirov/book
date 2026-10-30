@@ -396,7 +396,15 @@ describe('inspectGraph', () => {
     const fixture = framed();
     // BOOK-185 stage 3 (v29): the edge table is in this image, so the answer is «shipped» even
     // on a volume whose graph has not been built yet — the CLI then reports the counts as zero.
-    expect(inspectGraph(fixture.db)).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null });
+    // BOOK-236: ch01/ch42 are basis slots, so nothing is written and the count says 0.
+    expect(inspectGraph(fixture.db)).toEqual({
+      shipped: true,
+      facts: 0,
+      threads: 0,
+      edges: 0,
+      closureMs: null,
+      writtenChapters: 0,
+    });
   });
 
   it('counts facts, threads and edges and times the closure once stage 3 is in the image', () => {
@@ -421,13 +429,38 @@ describe('inspectGraph', () => {
     expect(graph.edges).toBe(2);
     expect(typeof graph.closureMs).toBe('number');
     expect(graph.closureMs).toBeGreaterThanOrEqual(0);
+    // No `chapters` projection in this skeleton: the count is unknown, never a fresh zero.
+    expect(graph.writtenChapters).toBeNull();
   });
 
   it('reports shipped with an empty edge table and no closure to time', () => {
     const dir = tempDir('graph-empty-');
     const db = scratchDb(dir);
     db.exec('CREATE TABLE fact_dependency ("from" TEXT NOT NULL, "to" TEXT NOT NULL, chapter INTEGER, kind TEXT)');
-    expect(inspectGraph(db)).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null });
+    expect(inspectGraph(db)).toEqual({
+      shipped: true,
+      facts: 0,
+      threads: 0,
+      edges: 0,
+      closureMs: null,
+      writtenChapters: null,
+    });
+  });
+
+  it('counts the written chapters the engine counts, and not the basis slots (BOOK-236)', () => {
+    const fixture = framed();
+    // A basis-only slot is not prose: ch42's one frozen sentence must not read as «written».
+    expect(inspectGraph(fixture.db)).toMatchObject({ writtenChapters: 0 });
+
+    fixture.db
+      .prepare(
+        'INSERT INTO chapters (n, title, sha256, chars, block_count, basis, written_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+      )
+      .run(8, 'Восьмая', sha('Абзац.'), 6, 1, '2026-10-30T00:00:00Z', '2026-10-30T00:00:00Z');
+    fixture.db
+      .prepare('INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run('ch08#0', 8, 0, 'Абзац.', sha('Абзац.'), 1, 1);
+    expect(inspectGraph(fixture.db)).toMatchObject({ writtenChapters: 1 });
   });
 
   it('reports an edge table without both from and to as not shipped', () => {

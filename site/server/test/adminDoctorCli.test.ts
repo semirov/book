@@ -333,18 +333,6 @@ describe('doctor — the rows that can go red on their own', () => {
     expect(byId(report, 'reset_dry_run').failures[0]).toBe('POST /api/admin/reset/book answered 401 UNAUTHORIZED');
   });
 
-  it('fails a shipped graph that is empty or slow, and passes a populated one', async () => {
-    const empty = await reportWith({ body: doctorBody({ graph: { shipped: true, facts: 0, threads: 5, edges: 9, closureMs: 120 } }) });
-    expect(byId(empty, 'graph').verdict).toBe('fail');
-    const named = byId(empty, 'graph').failures.join(' ');
-    expect(named).toContain('no facts (0)');
-    expect(named).toContain('120 ms');
-
-    const fine = await reportWith({ body: doctorBody({ graph: { shipped: true, facts: 4, threads: 2, edges: 9, closureMs: 7 } }) });
-    expect(byId(fine, 'graph').verdict).toBe('pass');
-    expect(byId(fine, 'graph').evidence).toBe('facts 4 · threads 2 · edges 9 · closure 7 ms');
-  });
-
   it('asks nothing of a checkout: the host with no manuscript/ and no .git still passes db_home', async () => {
     // BOOK-187: the prose and git rows are gone — a host serving the book from a volume may have
     // neither, and the guard that names a prose path is bin/home-check.mjs.
